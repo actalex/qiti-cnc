@@ -866,7 +866,7 @@ const ERRORS = { 1: 'lettre de commande attendue', 2: 'valeur numérique invalid
 const machine = { port: null, writer: null, reader: null, state: null, sub: null, stopWait: null, grbl: {}, quietSettings: false, settingsAsked: false, jogWarn: 0, noted: {}, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
 function log(text, cls) { const el = $('#log'), d = document.createElement('div'); if (cls) d.className = cls; d.textContent = text; el.appendChild(d); while (el.childNodes.length > 400) el.firstChild.remove(); el.scrollTop = el.scrollHeight; }
 const enc = new TextEncoder();
-function writeRaw(data) { if (!machine.writer) return; const bytes = typeof data === 'string' ? enc.encode(data) : data; machine.wchain = machine.wchain.then(() => machine.writer.write(bytes)).catch(e => log('Écriture impossible : ' + e.message, 'err')); }
+function writeRaw(data) { if (!machine.writer) return; const bytes = typeof data === 'string' ? enc.encode(data) : data; machine.wchain = machine.wchain.then(() => machine.writer.write(bytes)).catch(e => { if (!machine.writeErr) log('Écriture impossible : ' + e.message + ' (le port ne répond plus : déconnecte).', 'err'); machine.writeErr = true; }); }
 function rt(byte) { writeRaw(new Uint8Array([byte])); }
 function cleanLine(l) { return l.replace(/\(.*?\)/g, '').replace(/;.*$/, '').trim().toUpperCase(); }
 function sendLines(lines, meta) { for (const l of lines) { const c = cleanLine(l); if (c) machine.queue.push({ line: c, meta, echo: !meta }); } pump(); }
@@ -967,7 +967,7 @@ async function connect() {
     const port = await navigator.serial.requestPort(), opts = { baudRate: +S.machine.baud || 115200 };
     try { await port.open(opts); }
     catch (e) { if (e.name !== 'InvalidStateError') throw e; await port.close(); await port.open(opts); } // resté ouvert par cette page : on le rouvre
-    machine.port = port; machine.writer = port.writable.getWriter(); machine.queue = []; machine.inflight = []; machine.used = 0; machine.settingsAsked = false; machine.grbl = {}; machine.noted = {};
+    machine.port = port; machine.writer = port.writable.getWriter(); machine.queue = []; machine.inflight = []; machine.used = 0; machine.settingsAsked = false; machine.grbl = {}; machine.noted = {}; machine.writeErr = false;
     // Identité du port : un port sans identifiant USB (Bluetooth, port intégré) s'ouvre mais ne répond jamais
     const info = port.getInfo ? port.getInfo() : {}, hex = v => v.toString(16).padStart(4, '0');
     log('Port ouvert à ' + S.machine.baud + ' bauds' + (info.usbVendorId ? ` (USB ${hex(info.usbVendorId)}:${hex(info.usbProductId)}).` : ' (pas un port USB : Bluetooth ou port intégré ?).'), 'msg');
