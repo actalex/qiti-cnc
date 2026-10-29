@@ -134,6 +134,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
           <option value="inside">Contour intérieur</option>
           <option value="on">Sur la ligne</option>
           <option value="pocket">Poche (remplissage)</option>
+          <option value="vcarve">Remplissage en V (fraise en V)</option>
           <option value="none">Ne pas usiner</option>
         </select></div>
       <div class="row"><label>Profondeur (mm)</label><input type="number" id="sDepth" step="0.1" min="0"></div>
@@ -527,20 +528,23 @@ function loopWithTabs(pts, z, tab) {
   }
   return out;
 }
+const VSTEP = 0.1; // pas radial du remplissage en V (mm)
 function computeCAM() {
-  const res = { groups: [], warns: [] };
+  const res = { groups: [], warns: [], skipped: new Set() };
+  const skip = (sh, msg) => { res.warns.push(msg); res.skipped.add(sh.id); };
   if (!D) return res;
   const T = tool(), r = T.d / 2, th = S.stock.t, tf = toStockFn();
   const doc = Math.max(0.05, T.doc), step = T.d * Math.min(0.95, Math.max(0.05, T.so / 100));
-  const order = { on: 0, pocket: 1, inside: 2, outside: 3 };
+  const order = { on: 0, pocket: 1, vcarve: 1, inside: 2, outside: 3 };
   for (const sh of D.shapes) {
     if (sh.op === 'none' || !(sh.depth > 0)) continue;
     const depth = sh.depth;
     if (depth > th + 1e-6) res.warns.push(`« ${sh.name} » : profondeur ${depth} mm > épaisseur du brut`);
     const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
     const passes = depthPasses(depth, doc), cuts = [];
-    if (isV(T) && sh.op !== 'on') { res.warns.push(`« ${sh.name} » : avec une fraise en V, seul « Sur la ligne » est usiné`); continue; }
-    if (isV(T) && 2 * depth * Math.tan((T.angle || 60) * Math.PI / 360) + (T.tip || 0) > T.d) res.warns.push(`« ${sh.name} » : profondeur plus grande que la partie conique de la fraise`);
+    if (isV(T) && sh.op !== 'on' && sh.op !== 'vcarve') { skip(sh, `« ${sh.name} » ignorée : avec une fraise en V, choisir « Sur la ligne » ou « Remplissage en V »`); continue; }
+    if (!isV(T) && sh.op === 'vcarve') { skip(sh, `« ${sh.name} » ignorée : le remplissage en V demande une fraise en V`); continue; }
+    if (isV(T) && sh.op === 'on' && 2 * depth * Math.tan((T.angle || 60) * Math.PI / 360) + (T.tip || 0) > T.d) res.warns.push(`« ${sh.name} » : profondeur plus grande que la partie conique de la fraise`);
     if (sh.op === 'on') {
       for (const s of subs) {
         let zPrev = 0;
@@ -551,20 +555,42 @@ function computeCAM() {
       }
     } else {
       const closedSubs = subs.filter(s => s.closed);
-      if (!closedSubs.length) { res.warns.push(`« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`); continue; }
+      if (!closedSubs.length) { skip(sh, `« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`); continue; }
       const region = unionEO(closedSubs.map(s => toC(s.pts)));
       const reverse = sh.op === 'outside' ? S.climb : !S.climb;
       const orient = p => { const q = fromC(p); return reverse ? q.reverse() : q; };
-      if (sh.op === 'pocket') {
+      if (sh.op === 'vcarve') {
+        // Anneaux concentriques vers l'intérieur : à la distance o du bord, la fraise descend à (o - pointe/2) / tan(angle/2),
+        // ce qui pose le flanc du V exactement sur le contour. Au-delà de la profondeur max : fond plat.
+        const k = Math.tan((T.angle || 60) * Math.PI / 360), tip2 = (T.tip || 0) / 2;
+        const zCone = (T.d / 2 - tip2) / k, zMax = Math.min(depth, zCone), oMax = tip2 + zMax * k;
+        if (depth > zCone + 1e-6) res.warns.push(`« ${sh.name} » : profondeur limitée à ${f3(zCone)} mm (partie conique de la fraise)`);
+        const flatStep = Math.max(VSTEP, cutWidth(-zMax, T) * Math.min(0.95, Math.max(0.05, T.so / 100)));
+        const rings = []; let flat = false;
+        for (let o = tip2 + VSTEP, guard = 0; guard++ < 5000;) {
+          const ps = offsetPaths(region, -o); if (!ps.length) break;
+          if (o > oMax + 1e-9) flat = true;
+          rings.push({ d: Math.min(zMax, (o - tip2) / k), loops: ps.map(orient) });
+          o = o < oMax - 1e-9 ? Math.min(o + VSTEP, oMax) : o + flatStep;
+        }
+        if (!rings.length) { skip(sh, `« ${sh.name} » : trop étroite pour la pointe de la fraise`); continue; }
+        if (flat) res.warns.push(`« ${sh.name} » : fond plat à ${f3(zMax)} mm (forme plus large que le V à cette profondeur)`);
+        let prev = 0;
+        for (const lv of passes) {
+          const L = -lv;
+          for (const rg of rings) if (rg.d > prev + 1e-9) { const z = -Math.min(rg.d, L); for (const lp of rg.loops) cuts.push({ pts: loopWithTabs(lp, z, null), zTop: -prev }); }
+          prev = L;
+        }
+      } else if (sh.op === 'pocket') {
         const rings = []; let cur = offsetPaths(region, -r), guard = 0;
         while (cur.length && guard++ < 2000) { rings.push(...cur); cur = offsetPaths(cur, -step); }
-        if (!rings.length) { res.warns.push(`« ${sh.name} » : trop étroite pour la fraise de ${T.d} mm`); continue; }
+        if (!rings.length) { skip(sh, `« ${sh.name} » : trop étroite pour la fraise de ${T.d} mm`); continue; }
         const loops = rings.reverse().map(orient);
         let zPrev = 0;
         for (const z of passes) { for (const lp of loops) cuts.push({ pts: loopWithTabs(lp, z, null), zTop: zPrev }); zPrev = z; }
       } else {
         const loops = offsetPaths(region, sh.op === 'outside' ? r : -r).map(orient);
-        if (!loops.length) { res.warns.push(`« ${sh.name} » : trop petite pour la fraise de ${T.d} mm`); continue; }
+        if (!loops.length) { skip(sh, `« ${sh.name} » : trop petite pour la fraise de ${T.d} mm`); continue; }
         const through = depth >= th - 1e-6;
         const tab = (through && S.tabs.on) ? { z: -(th - S.tabs.h), n: Math.max(1, Math.round(S.tabs.n)), w: S.tabs.w + T.d } : null;
         for (const lp of loops) { let zPrev = 0; for (const z of passes) { cuts.push({ pts: loopWithTabs(lp, z, tab), zTop: zPrev }); zPrev = z; } }
@@ -649,7 +675,7 @@ function fitView() {
   view.oy = r.height - m - 40 - ((r.height - 2 * m - 40) - (y1 - y0) * view.s) / 2 + y0 * view.s;
   draw();
 }
-const OPCOL = { outside: '#1f6feb', inside: '#8e44ad', on: '#16a085', pocket: '#d35400', none: '#999' };
+const OPCOL = { outside: '#1f6feb', inside: '#8e44ad', on: '#16a085', pocket: '#d35400', vcarve: '#b7950b', none: '#999' };
 function depthColor(z) {
   const t = Math.min(1, Math.max(0, -z / Math.max(0.1, S.stock.t)));
   const a = [214, 180, 128], b = [92, 54, 24];
@@ -690,6 +716,7 @@ function drawShapes(alpha) {
     ctx.beginPath();
     for (const s of sh.subpaths) { s.pts.forEach((p, k) => { const [a, b] = W2S(...tf(p)); k ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); if (s.closed) ctx.closePath(); }
     if (sh.op === 'pocket') { ctx.fillStyle = 'rgba(211,84,0,.18)'; ctx.fill('evenodd'); }
+    if (sh.op === 'vcarve') { ctx.fillStyle = 'rgba(183,149,11,.18)'; ctx.fill('evenodd'); }
     ctx.lineWidth = isSel ? 2.5 : 1.3; ctx.strokeStyle = isSel ? '#e74c3c' : OPCOL[sh.op]; ctx.setLineDash(sh.op === 'none' ? [4, 3] : []); ctx.stroke();
   }
   ctx.setLineDash([]); ctx.globalAlpha = 1;
@@ -770,13 +797,13 @@ function refreshTools() {
   $('#tType').value = isV(T) ? 'v' : 'flat'; $('#tAng').value = T.angle || 60; $('#tTip').value = T.tip || 0;
   $$('.vonly').forEach(e => e.classList.toggle('hide', !isV(T))); $$('.flatonly').forEach(e => e.classList.toggle('hide', isV(T)));
   $('#lD').textContent = isV(T) ? 'Diamètre du corps (mm)' : 'Diamètre (mm)';
-  if (isV(T)) $('#vNote').textContent = `Largeur de trait : ${f3(cutWidth(-0.5, T))} mm à 0,5 mm de profondeur, ${f3(cutWidth(-1, T))} mm à 1 mm, ${f3(cutWidth(-2, T))} mm à 2 mm. Utilisable en « Sur la ligne ».`;
+  if (isV(T)) $('#vNote').textContent = `Largeur de trait : ${f3(cutWidth(-0.5, T))} mm à 0,5 mm de profondeur, ${f3(cutWidth(-1, T))} mm à 1 mm, ${f3(cutWidth(-2, T))} mm à 2 mm. Utilisable en « Sur la ligne » et « Remplissage en V ».`;
   $('#tName').value = T.name; $('#tD').value = T.d; $('#tF').value = T.feed; $('#tP').value = T.plunge; $('#tDoc').value = T.doc; $('#tSo').value = T.so;
 }
 function refreshShapes() {
   const box = $('#shapeList');
   if (!D) return;
-  const label = { outside: 'ext.', inside: 'int.', on: 'ligne', pocket: 'poche', none: '—' };
+  const label = { outside: 'ext.', inside: 'int.', on: 'ligne', pocket: 'poche', vcarve: 'V', none: '—' };
   // mise à jour en place (reconstruire la liste ferait perdre le clic en cours)
   if (box.dataset.design !== String(D.uid)) {
     box.innerHTML = ''; box.dataset.design = String(D.uid);
@@ -788,7 +815,9 @@ function refreshShapes() {
   }
   D.shapes.forEach((sh, k) => {
     const d = box.children[k]; d.className = sel.has(sh.id) ? 'sel' : '';
-    const sm = d.lastChild; sm.style.color = OPCOL[sh.op]; sm.textContent = label[sh.op] + (sh.op !== 'none' ? ' · ' + sh.depth + ' mm' : '');
+    const skipped = CAM && CAM.skipped && CAM.skipped.has(sh.id);
+    const sm = d.lastChild; sm.style.color = skipped ? '#c0392b' : OPCOL[sh.op];
+    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + sh.depth + ' mm' : '');
   });
   const ed = $('#selEdit');
   if (!sel.size) { ed.classList.add('hide'); return; }
@@ -821,7 +850,19 @@ function recompute() {
   $('#iLines').textContent = G ? G.lines.length.toLocaleString('fr') : '—';
   $('#iDepth').textContent = G ? f3(-G.zMin) + ' mm' : '—';
   $('#warns').textContent = warns.length ? '⚠ ' + [...new Set(warns)].join(' · ') : '';
-  updateButtons(); draw();
+  refreshShapes(); updateButtons(); draw();
+}
+// Passage à une fraise en V : proposer de convertir les usinages qu'elle ne sait pas faire
+function offerVConvert() {
+  if (!D || !isV()) return;
+  const pockets = D.shapes.filter(s => s.op === 'pocket'), contours = D.shapes.filter(s => s.op === 'inside' || s.op === 'outside');
+  if (!pockets.length && !contours.length) return;
+  const parts = [];
+  if (pockets.length) parts.push(`${pockets.length} poche(s) → « Remplissage en V »`);
+  if (contours.length) parts.push(`${contours.length} contour(s) → « Sur la ligne »`);
+  if (!confirm('Une fraise en V ne fait ni contours décalés ni poches. Convertir :\n' + parts.join('\n') + ' ?\n\nSinon ces formes seront ignorées.')) return;
+  pockets.forEach(s => s.op = 'vcarve'); contours.forEach(s => s.op = 'on');
+  refreshShapes();
 }
 function refreshAll() {
   $('#stW').value = S.stock.w; $('#stH').value = S.stock.h; $('#stT').value = S.stock.t;
@@ -832,9 +873,9 @@ function refreshAll() {
 // matériau
 [['#stW', 'w'], ['#stH', 'h'], ['#stT', 't']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.stock[k]); if (v > 0) S.stock[k] = v; saveSettings(); invalidate(); }));
 // fraise
-$('#toolSel').addEventListener('change', e => { S.toolIdx = +e.target.value; saveSettings(); refreshTools(); invalidate(); });
+$('#toolSel').addEventListener('change', e => { S.toolIdx = +e.target.value; saveSettings(); refreshTools(); offerVConvert(); invalidate(); });
 [['#tD', 'd'], ['#tF', 'feed'], ['#tP', 'plunge'], ['#tDoc', 'doc'], ['#tSo', 'so']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, tool()[k]); if (v > 0) tool()[k] = v; saveSettings(); invalidate(); }));
-$('#tType').addEventListener('change', e => { const T = tool(); T.type = e.target.value; if (T.type === 'v') { T.angle = T.angle || 60; T.tip = T.tip ?? 0.2; } saveSettings(); refreshTools(); invalidate(); });
+$('#tType').addEventListener('change', e => { const T = tool(); T.type = e.target.value; if (T.type === 'v') { T.angle = T.angle || 60; T.tip = T.tip ?? 0.2; } saveSettings(); refreshTools(); offerVConvert(); invalidate(); });
 $('#tAng').addEventListener('change', e => { const v = num(e.target, tool().angle); if (v > 0 && v < 180) tool().angle = v; saveSettings(); refreshTools(); invalidate(); });
 $('#tTip').addEventListener('change', e => { const v = num(e.target, tool().tip); if (v >= 0) tool().tip = v; saveSettings(); refreshTools(); invalidate(); });
 $('#origin').addEventListener('change', e => { S.origin = e.target.value; saveSettings(); invalidate(); });
@@ -1076,7 +1117,7 @@ new ResizeObserver(resize).observe(cv);
 refreshAll(); updateButtons();
 setTimeout(fitView, 0);
 log('Atelier CNC prêt. Importe un SVG, choisis les usinages, puis connecte la machine.', 'msg');
-window.__atelier = { get G() { return G; }, get D() { return D; }, get job() { return job; }, machine, S, loadDesign, recompute };
+window.__atelier = { get G() { return G; }, get D() { return D; }, get CAM() { return CAM; }, get job() { return job; }, machine, S, loadDesign, recompute, computeCAM };
 </script>
 </body>
 </html>

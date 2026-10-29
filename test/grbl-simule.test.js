@@ -1,6 +1,6 @@
-const { chromium } = require('playwright');
+const launch = require('./navigateur');
 (async () => {
-  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1400, height: 860 } });
+  const b = await launch(); const p = await b.newPage({ viewport: { width: 1400, height: 860 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type()==='error') errs.push(m.text()); });
   await p.addInitScript(() => {
     // Faux GRBL
