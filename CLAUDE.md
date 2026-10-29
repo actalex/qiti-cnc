@@ -20,9 +20,23 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 
 `window.__atelier` expose l'état pour les tests.
 
-## Pistes suivantes (par priorité)
-1. Fraise par forme + enchaînement de gravures avec pause changement d'outil et re-zéro Z (GRBL n'autorise pas le jog en Hold : découper en jobs séparés plutôt que `M0`).
-2. Entrée en rampe pour les contours/poches.
-3. Remplissage en V : éviter la remontée au Z de sécurité entre anneaux (comme pour les poches) ; affiner le dernier anneau sur l'axe médian.
-4. Simulation 3D (carte de hauteurs) et estimation de temps tenant compte des accélérations ($120-$122).
-5. Lecture des réglages `$$` à la connexion (limites logicielles, $30) pour pré-remplir la config machine.
+## Pistes suivantes (analyse du 2026-10-29, par priorité)
+**1. Fiabilité**
+- Découper la source en fichiers (import SVG, FAO, G-code, machine, interface) assemblés par `build.js` en une seule page.
+- Sauvegarde automatique du projet (recharger la page perd le dessin non enregistré).
+- Étendre les tests à assertions (offsets, attaches, G-code).
+
+**2. Se rapprocher d'Easel**
+- Fraise par forme + enchaînement de gravures avec pause changement d'outil et re-zéro Z (GRBL n'autorise pas le jog en Hold : découper en jobs séparés plutôt que `M0`).
+- Réglages par matériau (essences, acrylique) : avance, plongée, profondeur par passe pré-remplies selon la fraise.
+- Aperçu 3D réaliste (carte de hauteurs).
+- Attaches placées à la main en cliquant sur le contour.
+- Édition sur le plan de travail : déplacer, redimensionner, tourner, aligner, annuler.
+- Texte avec polices intégrées (bibliothèque de lecture de polices intégrée au build, comme Clipper).
+
+**3. Qualité d'usinage et machine**
+- Poches et remplissage en V : rester dans la matière entre anneaux quand c'est sûr au lieu de remonter au Z de sécurité ; affiner le dernier anneau V sur l'axe médian.
+- Entrée en rampe plutôt que plongée verticale.
+- « Arrêter » : le reset part 300 ms après le hold sans attendre l'arrêt réel (risque d'alarme et de perte de position à avance élevée) → attendre `Hold:0`.
+- Arrêt sur erreur : la machine reste en pause broche allumée → proposer l'arrêt complet.
+- Lire `$$` à la connexion (course, $30) ; estimation de durée avec les accélérations ($120-$122).

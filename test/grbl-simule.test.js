@@ -56,5 +56,6 @@ const launch = require('./navigateur');
   console.log(log.split('\n').slice(-8).join('\n'));
   console.log('lignes reçues par GRBL:', await p.evaluate(() => __grbl.lines), 'G-code:', g.length);
   console.log('erreurs:', errs);
+  if (errs.length || !log.includes('Gravure terminée')) { console.error('ÉCHEC'); process.exitCode = 1; }
   await b.close();
 })();
