@@ -110,6 +110,22 @@ function vcarveCuts(region, reverse, T, zMax, doc, cleared) {
   });
   return { cuts, flat };
 }
+// Entrée en rampe : allers-retours le long du début du tracé en descendant de zFrom à zTo sous l'angle S.ramp.angle,
+// sans jamais passer sous le profil du tracé (attaches) ; finit au point de départ. null si le tracé est trop court.
+function rampPts(pts, zFrom, zTo) {
+  const L = (zFrom - zTo) / Math.tan(Math.max(0.5, S.ramp.angle) * Math.PI / 180), cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const len = cum[cum.length - 1]; if (len < 1) return null;
+  const n = Math.ceil(L / (2 * len) - 1e-9), a = L / (2 * n), out = [];
+  const at = s => { let i = 1; while (i < pts.length - 1 && cum[i] < s) i++; const t = (s - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1), p = pts[i - 1], q = pts[i]; return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, Math.max(p[2], q[2])]; };
+  const push = (s, d) => { const q = at(s); out.push([q[0], q[1], Math.max(zFrom - (zFrom - zTo) * Math.min(1, d / L), q[2])]); };
+  for (let k = 0; k < n; k++) {
+    const d0 = 2 * a * k, inner = cum.filter(c => c > 1e-9 && c < a - 1e-9);
+    inner.forEach(c => push(c, d0 + c)); push(a, d0 + a);
+    inner.reverse().forEach(c => push(c, d0 + 2 * a - c)); push(0, d0 + 2 * a);
+  }
+  return out;
+}
 function loopWithTabs(pts, z, tab) {
   const P = pts.concat([pts[0]]);
   if (!tab || z >= tab.z - 1e-9) return P.map(p => [p[0], p[1], z]);
@@ -279,6 +295,12 @@ function buildGcode(step) {
         if (z < safe) mv(0, x, y, safe);
         mv(0, p0[0], p0[1], safe);
         const app = c.zTop + 0.5; if (app < safe) mv(0, p0[0], p0[1], app);
+      }
+      if (!isV(T) && S.ramp.on && p0[2] < z - 1e-6) {
+        // fraise plate : descente verticale seulement jusqu'au-dessus de la matière, puis rampe
+        const z0 = Math.min(z, c.zTop); if (z0 < z - 1e-6) mv(1, p0[0], p0[1], z0, T.plunge);
+        const R = p0[2] < z0 - 1e-6 && rampPts(c.pts, z0, p0[2]);
+        if (R) for (const q of R) mv(1, q[0], q[1], q[2], T.feed);
       }
       mv(1, p0[0], p0[1], p0[2], p0[2] < z ? T.plunge : T.feed);
       for (let k = 1; k < c.pts.length; k++) {

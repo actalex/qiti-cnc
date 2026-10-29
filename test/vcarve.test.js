@@ -92,6 +92,23 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
   assert.ok(r.gouge < 0.03, `poches : entaille de ${r.gouge} mm`);
   assert.ok(r.retracts <= 4, `poches : ${r.retracts} remontées (2 formes × 2 passes au plus)`);
 
+  // Entrée en rampe (fraise plate) : aucune descente dans la matière plus raide que l'angle réglé ;
+  // les seules descentes verticales s'arrêtent au-dessus de la matière (0, puis le fond de la passe précédente)
+  const ramp = await p.evaluate(() => {
+    const A = window.__atelier, S = A.S, res = {};
+    for (const on of [true, false]) {
+      S.ramp = { on, angle: 3 }; A.recompute();
+      const d = A.PLAN.flatMap(P => P.moves).filter(m => m.g === 1 && m.z < m.z0 - 1e-6);
+      const vert = d.filter(m => Math.hypot(m.x - m.x0, m.y - m.y0) < 1e-6), slant = d.filter(m => !vert.includes(m));
+      res[on] = { vertEnds: [...new Set(vert.map(m => +m.z.toFixed(3)))].sort((a, b) => b - a), steep: Math.max(0, ...slant.map(m => (m.z0 - m.z) / Math.hypot(m.x - m.x0, m.y - m.y0))), n: slant.length };
+    }
+    S.ramp = { on: true, angle: 3 }; return res;
+  });
+  console.log('rampe :', JSON.stringify(ramp));
+  assert.ok(ramp.true.n > 0 && ramp.true.steep <= Math.tan(3 * Math.PI / 180) + 1e-6, 'pente des rampes');
+  assert.ok(ramp.true.vertEnds.every(z => z >= -1 - 1e-6), 'descentes verticales au-dessus de la matière : ' + ramp.true.vertEnds);
+  assert.ok(ramp.false.vertEnds.includes(-2), 'sans rampe : plongée verticale jusqu\'au fond');
+
   // Fond du V dégagé à la fraise plate : deux étapes (plate puis V), sans entaille, fond creusé
   for (const doc of [10, 0.8]) {
     const sans = await run('v', { crochet: ['vcarve', 2] }, doc);

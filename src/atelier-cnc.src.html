@@ -156,6 +156,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row"><label>Sens de fraisage</label>
       <select id="climb" style="width:150px"><option value="0">Conventionnel</option><option value="1">En avalant</option></select></div>
     <div class="note">Conventionnel : plus sûr sur une machine légère comme la TTC450.</div>
+    <div class="row" style="margin-top:6px"><label><input type="checkbox" id="rampOn"> Entrée en rampe (fraises plates), angle (°)</label><input type="number" id="rampA" step="0.5" min="0.5" max="30" style="width:60px"></div>
+    <div class="note">La fraise entre dans la matière en descendant en biais le long du trajet au lieu de plonger à la verticale.</div>
   </section>
 </aside>
 
@@ -290,6 +292,7 @@ const DEFAULTS = {
   toolIdx: 0,
   tabs: { on: true, n: 4, w: 5, h: 1.5 },
   climb: false,
+  ramp: { on: true, angle: 3 },
   origin: 'corner'
 };
 let S = clone(DEFAULTS);
@@ -739,6 +742,7 @@ function refreshAll() {
   $('#stW').value = S.stock.w; $('#stH').value = S.stock.h; $('#stT').value = S.stock.t;
   $('#tabOn').checked = S.tabs.on; $('#tabN').value = S.tabs.n; $('#tabW').value = S.tabs.w; $('#tabH').value = S.tabs.h;
   $('#climb').value = S.climb ? '1' : '0'; $('#origin').value = S.origin;
+  $('#rampOn').checked = S.ramp.on; $('#rampA').value = S.ramp.angle;
   refreshTools(); refreshShapes(); refreshPlace(); invalidate();
 }
 // matériau
@@ -767,6 +771,8 @@ $('#bThrough').onclick = () => { if (!D) return; for (const sh of D.shapes) if (
 $('#tabOn').addEventListener('change', e => { S.tabs.on = e.target.checked; saveSettings(); invalidate(); });
 [['#tabN', 'n'], ['#tabW', 'w'], ['#tabH', 'h']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.tabs[k]); if (v > 0) S.tabs[k] = v; saveSettings(); invalidate(); }));
 $('#climb').addEventListener('change', e => { S.climb = e.target.value === '1'; saveSettings(); invalidate(); });
+$('#rampOn').addEventListener('change', e => { S.ramp.on = e.target.checked; saveSettings(); invalidate(); });
+$('#rampA').addEventListener('change', e => { const v = num(e.target, S.ramp.angle); if (v >= 0.5 && v <= 30) S.ramp.angle = v; saveSettings(); invalidate(); });
 // vue
 $$('#viewbar [data-v]').forEach(b => b.onclick = () => { viewMode = b.dataset.v; $$('#viewbar [data-v]').forEach(x => x.classList.toggle('on', x === b)); draw(); });
 $('#bFit').onclick = fitView;
