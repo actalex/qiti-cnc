@@ -92,6 +92,21 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
   assert.ok(r.gouge < 0.03, `poches : entaille de ${r.gouge} mm`);
   assert.ok(r.retracts <= 4, `poches : ${r.retracts} remontées (2 formes × 2 passes au plus)`);
 
+  // Estimation de durée avec accélérations : valeurs calculées à la main
+  const tp = await p.evaluate(() => {
+    const plan = { acc: [100, 100, 50], rate: [6000, 6000, 600], jd: 0.01 }, mv = (x0, y0, x, y, f = 600) => ({ g: 1, f, x0, y0, z0: 0, x, y, z: 0 });
+    const circle = []; for (let i = 0; i < 360; i++) { const a = i * Math.PI / 180, b = (i + 1) * Math.PI / 180; circle.push(mv(50 * Math.cos(a), 50 * Math.sin(a), 50 * Math.cos(b), 50 * Math.sin(b))); }
+    return { line: planTime([mv(0, 0, 100, 0)], plan), back: planTime([mv(0, 0, 100, 0), mv(100, 0, 0, 0)], plan), circle: planTime(circle, plan),
+      fast: planTime([mv(0, 0, 10, 0, 6000)], plan), z: planTime([{ g: 1, f: 6000, x0: 0, y0: 0, z0: 0, x: 0, y: 0, z: -20 }], plan) };
+  });
+  console.log('durées :', JSON.stringify(tp));
+  const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-3, `${msg} : ${a} au lieu de ${b}`);
+  near(tp.line, 10.1, 'ligne 100 mm à 10 mm/s, 100 mm/s²');      // 2 × 0,1 s d'accélération + 99 mm à 10 mm/s
+  near(tp.back, 20.2, 'aller-retour : arrêt au demi-tour');
+  near(tp.fast, 2 * Math.sqrt(10 / 100), 'trop court pour 100 mm/s : profil triangle');
+  near(tp.z, 20 / 10 + 10 / 50, 'Z limité à 600 mm/min et 50 mm/s²');
+  assert.ok(tp.circle > 2 * Math.PI * 50 / 10 && tp.circle < 2 * Math.PI * 50 / 10 + 0.5, `cercle presque à pleine vitesse : ${tp.circle}`);
+
   // Entrée en rampe (fraise plate) : aucune descente dans la matière plus raide que l'angle réglé ;
   // les seules descentes verticales s'arrêtent au-dessus de la matière (0, puis le fond de la passe précédente)
   const ramp = await p.evaluate(() => {

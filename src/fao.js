@@ -269,7 +269,7 @@ function buildGcode(step) {
     const dist = Math.hypot(nx - x, ny - y, nz - z);
     if (g === 1) { if (feed !== F) { parts.push('F' + Math.round(feed)); F = feed; } time += dist / feed * 60; }
     else time += dist / m.rapid * 60;
-    moves.push({ g, x0: x, y0: y, z0: z, x: nx, y: ny, z: nz });
+    moves.push({ g, f: g === 1 ? feed : m.rapid, x0: x, y0: y, z0: z, x: nx, y: ny, z: nz });
     x = nx; y = ny; z = nz; if (z < zMin) zMin = z;
     push(parts.join(' '));
   };
@@ -314,6 +314,7 @@ function buildGcode(step) {
   push('M5');
   mv(0, gx, gy, safe);
   push('M2');
+  if (m.plan) time = planTime(moves, m.plan) + Math.max(0, m.dwell); // accélérations lues sur la carte
   return { lines: L, moves, lineMove, time, zMin, tool: T };
 }
 

@@ -770,7 +770,7 @@ function buildGcode(step) {
     const dist = Math.hypot(nx - x, ny - y, nz - z);
     if (g === 1) { if (feed !== F) { parts.push('F' + Math.round(feed)); F = feed; } time += dist / feed * 60; }
     else time += dist / m.rapid * 60;
-    moves.push({ g, x0: x, y0: y, z0: z, x: nx, y: ny, z: nz });
+    moves.push({ g, f: g === 1 ? feed : m.rapid, x0: x, y0: y, z0: z, x: nx, y: ny, z: nz });
     x = nx; y = ny; z = nz; if (z < zMin) zMin = z;
     push(parts.join(' '));
   };
@@ -815,9 +815,41 @@ function buildGcode(step) {
   push('M5');
   mv(0, gx, gy, safe);
   push('M2');
+  if (m.plan) time = planTime(moves, m.plan) + Math.max(0, m.dwell); // accélérations lues sur la carte
   return { lines: L, moves, lineMove, time, zMin, tool: T };
 }
 
+/* ====================== Estimation de durée ====================== */
+// Durée d'un G-code à la manière du planificateur GRBL : vitesse de jonction par déviation ($11), accélération
+// ($120-$122) et vitesse max ($110-$112) par axe, ramenées à la direction du mouvement ; arrêt au début et à la fin.
+// plan = { acc: [x, y, z] mm/s², rate: [x, y, z] mm/min, jd: mm } ; moves[{ g, f (mm/min), x0, y0, z0, x, y, z }].
+function planTime(moves, plan) {
+  const segs = [];
+  for (const m of moves) {
+    const d = [m.x - m.x0, m.y - m.y0, m.z - m.z0], len = Math.hypot(d[0], d[1], d[2]); if (len < 1e-9) continue;
+    const u = d.map(c => c / len); let a = Infinity, v = m.f / 60;
+    u.forEach((c, k) => { if (Math.abs(c) > 1e-9) { a = Math.min(a, plan.acc[k] / Math.abs(c)); if (plan.rate[k] > 0) v = Math.min(v, plan.rate[k] / 60 / Math.abs(c)); } });
+    segs.push({ len, u, a, v });
+  }
+  const n = segs.length; if (!n) return 0;
+  const vj = new Array(n + 1).fill(0); // vitesse aux jonctions (0 au départ et à l'arrivée)
+  for (let i = 1; i < n; i++) {
+    const p = segs[i - 1], q = segs[i], cos = -(p.u[0] * q.u[0] + p.u[1] * q.u[1] + p.u[2] * q.u[2]);
+    let lim = 0;
+    if (cos < -0.999999) lim = Infinity; // tout droit
+    else if (cos < 0.999999) { const s = Math.sqrt(0.5 * (1 - cos)); lim = Math.sqrt(Math.min(p.a, q.a) * (plan.jd || 0.01) * s / (1 - s)); }
+    vj[i] = Math.min(lim, p.v, q.v);
+  }
+  for (let i = n - 1; i >= 0; i--) vj[i] = Math.min(vj[i], Math.sqrt(vj[i + 1] ** 2 + 2 * segs[i].a * segs[i].len));
+  for (let i = 0; i < n; i++) vj[i + 1] = Math.min(vj[i + 1], Math.sqrt(vj[i] ** 2 + 2 * segs[i].a * segs[i].len));
+  let t = 0;
+  segs.forEach((s, i) => {
+    const v0 = vj[i], v1 = vj[i + 1], a = s.a, v = s.v, da = (v * v - v0 * v0) / (2 * a), dd = (v * v - v1 * v1) / (2 * a);
+    if (da + dd <= s.len) t += (v - v0) / a + (v - v1) / a + (s.len - da - dd) / v; // trapèze
+    else { const vp = Math.sqrt((2 * a * s.len + v0 * v0 + v1 * v1) / 2); t += (vp - v0) / a + (vp - v1) / a; } // triangle
+  });
+  return t;
+}
 /* ====================== Vue ====================== */
 const cv = $('#cv'), ctx = cv.getContext('2d');
 let view = { s: 1, ox: 0, oy: 0 }, viewMode = 'design', job = null, G = null, CAM = null, PLAN = [], stepIdx = 0; // PLAN : une étape (G-code) par fraise ; G = étape choisie
@@ -1154,7 +1186,7 @@ $('#mOk').onclick = () => { MF.forEach(([id, k, t]) => { if (t === 's') S.machin
 const RX_BUF = 127;
 const ALARMS = { 1: 'fin de course matériel déclenché', 2: 'déplacement hors limites logicielles', 3: 'reset pendant un mouvement : position perdue, refais l\'origine', 4: 'sonde déjà en contact au départ', 5: 'la sonde n\'a pas touché la plaque', 6: 'homing interrompu', 7: 'porte ouverte pendant le homing', 8: 'homing : impossible de dégager le fin de course', 9: 'homing : fin de course introuvable' };
 const ERRORS = { 1: 'lettre de commande attendue', 2: 'valeur numérique invalide', 3: 'commande $ inconnue', 5: 'homing non activé ($22)', 8: 'commande refusée hors état Idle', 9: 'G-code verrouillé : alarme active (déverrouiller)', 10: 'limites logicielles sans homing', 15: 'jog hors limites', 16: 'commande de jog invalide', 20: 'commande G-code non supportée', 22: 'avance F non définie', 33: 'cible de mouvement invalide', 36: 'mots G-code inutilisés' };
-const machine = { port: null, writer: null, reader: null, state: null, sub: null, stopWait: null, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
+const machine = { port: null, writer: null, reader: null, state: null, sub: null, stopWait: null, grbl: {}, quietSettings: false, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
 function log(text, cls) { const el = $('#log'), d = document.createElement('div'); if (cls) d.className = cls; d.textContent = text; el.appendChild(d); while (el.childNodes.length > 400) el.firstChild.remove(); el.scrollTop = el.scrollHeight; }
 const enc = new TextEncoder();
 function writeRaw(data) { if (!machine.writer) return; const bytes = typeof data === 'string' ? enc.encode(data) : data; machine.wchain = machine.wchain.then(() => machine.writer.write(bytes)).catch(e => log('Écriture impossible : ' + e.message, 'err')); }
@@ -1177,6 +1209,7 @@ function onAck(err) {
     if (job && it && it.q.meta === 'job') { abortJob('Erreur GRBL ' + err + ' sur la ligne « ' + it.q.line + ' »'); return; }
     machine.queue = machine.queue.filter(q => q.meta === 'job');
   }
+  if (it && it.q.meta === 'settings') { machine.quietSettings = false; applyGrblSettings(); }
   if (job && it && it.q.meta === 'job') { job.acked++; if (!job.stopping) feedJob(); }
   pump();
 }
@@ -1208,7 +1241,8 @@ function handleLine(l) {
   if (l === 'ok') return onAck(null);
   if (l.startsWith('error:')) return onAck(l.slice(6));
   if (l.startsWith('ALARM:')) { const c = +l.slice(6); log(`ALARME ${c} — ${ALARMS[c] || ''}`, 'err'); if (job) abortJob('Alarme ' + c + ' : ' + (ALARMS[c] || '')); return; }
-  if (/^Grbl/i.test(l)) { machine.queue = []; machine.inflight = []; machine.used = 0; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); return; }
+  if (/^Grbl/i.test(l)) { machine.queue = []; machine.inflight = []; machine.used = 0; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); readGrblSettings(); return; }
+  if (/^\$\d+=/.test(l)) { const [k, v] = l.slice(1).split('='); machine.grbl[+k] = parseFloat(v); if (!machine.quietSettings) log(l); return; }
   if (l.startsWith('[PRB:')) { log(l, 'msg'); return; }
   log(l, l.startsWith('[MSG') ? 'msg' : '');
 }
@@ -1227,6 +1261,23 @@ async function readLoop() {
       if (!machine.port) break;
     }
   } catch (e) { if (machine.port) log('Lecture interrompue : ' + e.message, 'err'); }
+}
+// Réglages de la carte ($$), lus à chaque démarrage : ils font foi pour la course ($130-$132), la valeur S max de la
+// broche ($30, que M3 S doit respecter) et la vitesse rapide ; accélérations et vitesses max servent à l'estimation de durée.
+function readGrblSettings() { machine.grbl = {}; machine.quietSettings = true; sendLines(['$$'], 'settings'); }
+function applyGrblSettings() {
+  const g = machine.grbl, M = S.machine, ch = [];
+  if (!Object.keys(g).length) return;
+  const set = (k, v, label) => { if (v > 0 && Math.abs((M[k] || 0) - v) > 1e-6) { ch.push(`${label} ${M[k]} → ${v}`); M[k] = v; } };
+  set('w', g[130], 'course X'); set('h', g[131], 'course Y'); set('z', g[132], 'course Z'); set('spindleS', g[30], 'broche S max');
+  if (g[110] > 0 && g[111] > 0) set('rapid', Math.min(g[110], g[111]), 'vitesse rapide');
+  const plan = g[120] > 0 && g[121] > 0 && g[122] > 0 ? { acc: [g[120], g[121], g[122]], rate: [g[110], g[111], g[112]], jd: g[11] > 0 ? g[11] : 0.01 } : null;
+  const planChanged = JSON.stringify(plan) !== JSON.stringify(M.plan || null); M.plan = plan;
+  saveSettings();
+  log(ch.length ? 'Réglages de la carte appliqués : ' + ch.join(', ') + '.' : 'Réglages de la carte lus.', 'msg');
+  if (planChanged && plan) log(`Estimation de durée avec les accélérations de la carte (${plan.acc.join(' / ')} mm/s²).`, 'msg');
+  if (g[20] === 0) log('Limites logicielles désactivées ($20=0) : vérifie que le dessin tient dans la course avant de graver.', 'msg');
+  if (ch.length || planChanged) invalidate();
 }
 async function connect() {
   if (machine.port) return disconnect();
