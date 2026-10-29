@@ -39,7 +39,22 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
       }
     }
     const retracts = G.moves.filter(m => m.g === 0 && m.z > m.z0).length;
-    return { zs, warns: cam.warns, skipped: [...cam.skipped], T: { d: T.d }, gouge, retracts, time: G.time };
+    // manque : sur une grille, profondeur obtenue (cônes de tous les mouvements) vs profondeur idéale du V
+    let short = 0, shortFlat = 0;
+    if (T.type === 'v' && segs.length < 2000) {
+      const zMax = Math.min(...A.D.shapes.filter(s => s.op === 'vcarve').map(s => s.depth), T.d / 2 / k);
+      const cutsM = G.moves.filter(m => m.g === 1 && m.z < 0 && Math.abs(m.z - m.z0) < 1e-6);
+      const xs = segs.flatMap(s => [s[0][0], s[1][0]]), ys = segs.flatMap(s => [s[0][1], s[1][1]]);
+      for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.2) for (let y = Math.min(...ys); y <= Math.max(...ys); y += 0.2) {
+        let d = Infinity; for (const [a, c] of segs) d = Math.min(d, segDist(x, y, a, c));
+        const inside = A.D.shapes.some(sh => sh.op === 'vcarve' && sh.subpaths.filter(s => pointInPoly(x, y, s.pts.map(tf))).length % 2);
+        if (!inside) continue;
+        const ideal = Math.min(zMax, d / k);
+        let got = 0; for (const m of cutsM) { got = Math.max(got, -m.z - segDist(x, y, [m.x0, m.y0], [m.x, m.y]) / k); if (got >= ideal) break; }
+        if (ideal < zMax - 0.01) short = Math.max(short, ideal - got); else shortFlat = Math.max(shortFlat, ideal - got);
+      }
+    }
+    return { zs, warns: cam.warns, skipped: [...cam.skipped], T: { d: T.d }, gouge, short, shortFlat, retracts, time: G.time };
   }, [toolSel, ops, doc]);
 
   // V 60°, pointe 0 : profondeur = distance au bord / tan 30°
@@ -57,14 +72,16 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
   assert.ok(Math.abs(-r.zs.disque - zCone) < 1e-6, `disque limité à ${zCone}, obtenu ${-r.zs.disque}`);
   assert.ok(r.warns.some(w => w.includes('partie conique')));
 
-  // Liaisons dans la matière : une seule remontée par forme convexe, aucune entaille (y compris dans le C)
+  // Liaisons dans la matière (quand elles sont plus rapides qu une remontée) : aucune entaille (y compris dans le C)
   r = await run('v', { barre: ['vcarve', 10] });
-  assert.ok(r.retracts <= 1, `barre en V : ${r.retracts} remontées`);
+  console.log(`barre en V : ${r.retracts} remontées, ${Math.round(r.time)} s`);
   assert.ok(r.gouge < 0.03, `barre en V : entaille de ${r.gouge} mm`);
   for (const [tool, op, doc] of [['v', 'vcarve', 10], ['v', 'vcarve', 0.8], ['flat', 'pocket', 1]]) {
     r = await run(tool, { crochet: [op, 2] }, doc);
     assert.ok(r.gouge < 0.03, `crochet ${op} (passe ${doc}) : entaille de ${r.gouge} mm`);
-    console.log(`crochet ${op}, passe ${doc} mm : ${r.retracts} remontées, entaille max ${Math.max(0, r.gouge).toFixed(3)} mm`);
+    // pente : le V doit atteindre la profondeur idéale (au plus une petite arête près de l axe médian, pas de 0,1 mm)
+    assert.ok(r.short < 0.2, `crochet ${op} (passe ${doc}) : il manque ${r.short} mm dans la pente`);
+    console.log(`crochet ${op}, passe ${doc} mm : ${r.retracts} remontées, entaille max ${Math.max(0, r.gouge).toFixed(3)} mm, manque pente ${r.short.toFixed(3)} / fond ${r.shortFlat.toFixed(3)} mm, ${Math.round(r.time)} s`);
   }
   r = await run('flat', { barre: ['pocket', 2], disque: ['pocket', 2] }, 1);
   assert.ok(r.gouge < 0.03, `poches : entaille de ${r.gouge} mm`);

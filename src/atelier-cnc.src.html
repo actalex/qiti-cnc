@@ -181,8 +181,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <button id="bConnect" class="pri" style="flex:1">Connecter (USB)</button>
       <button id="bUnlock" title="$X">Déverrouiller</button>
       <button id="bHome" title="$H — nécessite les fins de course">Origine</button>
-      <button id="bHalt" class="danger" title="Arrêt sûr : pause, attente de l'arrêt complet, puis reset (coupe la broche)">Stop</button>
     </div>
+    <div class="row" style="margin-top:6px"><button id="bHalt" class="danger" style="flex:1" title="Pause, attente de l'arrêt complet, puis reset (coupe la broche)">Stop (arrêt sûr)</button></div>
     <div class="dro" style="margin-top:8px">
       <span>X</span><span class="v" id="wx">—</span><button data-zero="X">X=0</button>
       <span>Y</span><span class="v" id="wy">—</span><button data-zero="Y">Y=0</button>
@@ -524,11 +524,66 @@ function segHit(a, b, c, d) {
 function segInArea(area, a, b) {
   const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 2e-3) return true;
   const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-  if (!(area.filter(P => pointInPoly(mx, my, P)).length % 2)) return false;
+  const onEdge = () => area.some(P => P.some((q, i) => segDist(mx, my, P[i ? i - 1 : P.length - 1], q) < 1e-3));
+  if (!(area.filter(P => pointInPoly(mx, my, P)).length % 2) && !onEdge()) return false; // le long du bord : autorisé
   for (const P of area) for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
     const t = segHit(a, b, P[j], P[i]); if (t !== null && t * L > 1e-3 && (1 - t) * L > 1e-3) return false;
   }
   return true;
+}
+// Parties des tracés ouverts « paths » hors des polygones « clip » (Clipper, entiers)
+function clipOpen(paths, clip) {
+  const c = new CL.Clipper();
+  for (const p of paths) c.AddPath(p, CL.PolyType.ptSubject, false);
+  c.AddPaths(clip, CL.PolyType.ptClip, true);
+  const tree = new CL.PolyTree(); c.Execute(CL.ClipType.ctDifference, tree, CL.PolyFillType.pftEvenOdd, CL.PolyFillType.pftNonZero);
+  return CL.Clipper.OpenPathsFromPolyTree(tree);
+}
+// Recolle les morceaux qui se suivent (une boucle est coupée à son point de départ)
+function joinPieces(ps) {
+  for (let i = 0; i < ps.length; i++) for (let j = 0; ps[i] && j < ps.length; j++) {
+    if (i === j || !ps[j]) continue;
+    const a = ps[i][ps[i].length - 1], b = ps[j][0];
+    if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 2e-3) { ps[i] = ps[i].concat(ps[j].slice(1)); ps[j] = null; j = -1; }
+  }
+  return ps.filter(Boolean);
+}
+const polyLen = P => { let l = 0; for (let i = 1; i < P.length; i++) l += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); return l; };
+// Remplissage en V. À la distance o du bord, la fraise descend à (o - pointe/2) / tan(angle/2) : le flanc du V tombe
+// exactement sur le contour. Pour chaque passe de profondeur L : anneaux « de pente » tous les VSTEP jusqu'à
+// oL = pointe/2 + L·tan(angle/2), puis fond plat à L avec un pas adapté à la largeur du V.
+// Un point d'un anneau de pente est inutile si l'anneau suivant passe à dr de lui : le cône suivant, plus profond de
+// dr/tan, contient le précédent. On ne garde que les morceaux non couverts (pointes, angles, parties étroites) ;
+// le dernier anneau de pente de chaque passe (celui qui forme le flanc) reste entier.
+function vcarveCuts(region, reverse, T, zMax, doc) {
+  const k = Math.tan((T.angle || 60) * Math.PI / 360), tip2 = (T.tip || 0) / 2, so = Math.min(0.95, Math.max(0.05, T.so / 100));
+  const cuts = []; let prev = 0, at = [0, 0], flat = false;
+  const ring = o => { const ps = offsetPaths(region, -o).map(p => reverse ? p.slice().reverse() : p); return ps.length ? { o, ps, area: ps.map(fromC) } : null; };
+  const emitLoops = (rg, z) => { for (const p of rg.ps) { const q = rotateTo(fromC(p), at); at = q[0]; cuts.push({ pts: loopWithTabs(q, z, null), zTop: -prev, area: rg.area }); } };
+  const passes = depthPasses(zMax, doc);
+  passes.forEach((lv, li) => {
+    const L = -lv, oL = tip2 + L * k, slope = [], flats = [];
+    for (let o = tip2 + prev * k; ;) { o = Math.min(o + VSTEP, oL); const rg = ring(o); if (!rg) break; slope.push(rg); if (o >= oL - 1e-9) break; }
+    if (slope.length && slope[slope.length - 1].o >= oL - 1e-9) {
+      const fs = Math.max(VSTEP, cutWidth(-L, T) * so);
+      for (let o = oL + fs, guard = 0; guard++ < 2000; o += fs) { const rg = ring(o); if (!rg) break; flats.push(rg); }
+    }
+    if (flats.length && li === passes.length - 1) flat = true;
+    slope.forEach((rg, i) => {
+      const z = -Math.min(L, (rg.o - tip2) / k), nx = slope[i + 1];
+      if (!nx) return emitLoops(rg, z);
+      let pieces = joinPieces(clipOpen(rg.ps.map(p => p.concat([p[0]])), offsetPaths(nx.ps, nx.o - rg.o + 0.01)).map(fromC)).filter(P => polyLen(P) > 0.01);
+      while (pieces.length) {
+        let bi = 0, bd = Infinity;
+        pieces.forEach((P, n) => { const d = Math.hypot(P[0][0] - at[0], P[0][1] - at[1]); if (d < bd) { bd = d; bi = n; } });
+        const P = pieces.splice(bi, 1)[0]; at = P[P.length - 1];
+        cuts.push({ pts: P.map(q => [q[0], q[1], z]), zTop: -prev, area: rg.area });
+      }
+    });
+    for (const rg of flats) emitLoops(rg, -L);
+    prev = L;
+  });
+  return { cuts, flat };
 }
 function loopWithTabs(pts, z, tab) {
   const P = pts.concat([pts[0]]);
@@ -583,30 +638,13 @@ function computeCAM() {
       const reverse = sh.op === 'outside' ? S.climb : !S.climb;
       const orient = p => { const q = fromC(p); return reverse ? q.reverse() : q; };
       if (sh.op === 'vcarve') {
-        // Anneaux concentriques vers l'intérieur : à la distance o du bord, la fraise descend à (o - pointe/2) / tan(angle/2),
-        // ce qui pose le flanc du V exactement sur le contour. Au-delà de la profondeur max : fond plat.
         const k = Math.tan((T.angle || 60) * Math.PI / 360), tip2 = (T.tip || 0) / 2;
-        const zCone = (T.d / 2 - tip2) / k, zMax = Math.min(depth, zCone), oMax = tip2 + zMax * k;
+        const zCone = (T.d / 2 - tip2) / k, zMax = Math.min(depth, zCone);
         if (depth > zCone + 1e-6) res.warns.push(`« ${sh.name} » : profondeur limitée à ${f3(zCone)} mm (partie conique de la fraise)`);
-        const flatStep = Math.max(VSTEP, cutWidth(-zMax, T) * Math.min(0.95, Math.max(0.05, T.so / 100)));
-        const rings = []; let flat = false;
-        for (let o = tip2 + VSTEP, guard = 0; guard++ < 5000;) {
-          const ps = offsetPaths(region, -o); if (!ps.length) break;
-          if (o > oMax + 1e-9) flat = true;
-          rings.push({ d: Math.min(zMax, (o - tip2) / k), loops: ps.map(orient), area: ps.map(fromC) });
-          o = o < oMax - 1e-9 ? Math.min(o + VSTEP, oMax) : o + flatStep;
-        }
-        if (!rings.length) { skip(sh, `« ${sh.name} » : trop étroite pour la pointe de la fraise`); continue; }
-        if (flat) res.warns.push(`« ${sh.name} » : fond plat à ${f3(zMax)} mm (forme plus large que le V à cette profondeur)`);
-        let prev = 0, at = [0, 0];
-        for (const lv of passes) {
-          const L = -lv;
-          for (const rg of rings) if (rg.d > prev + 1e-9) {
-            const z = -Math.min(rg.d, L);
-            for (const lp of rg.loops) { const q = rotateTo(lp, at); at = q[0]; cuts.push({ pts: loopWithTabs(q, z, null), zTop: -prev, area: rg.area }); }
-          }
-          prev = L;
-        }
+        const vc = vcarveCuts(region, reverse, T, zMax, doc);
+        if (!vc.cuts.length) { skip(sh, `« ${sh.name} » : trop étroite pour la pointe de la fraise`); continue; }
+        if (vc.flat) res.warns.push(`« ${sh.name} » : fond plat à ${f3(zMax)} mm (forme plus large que le V à cette profondeur)`);
+        cuts.push(...vc.cuts);
       } else if (sh.op === 'pocket') {
         const rings = []; let cur = offsetPaths(region, -r), guard = 0;
         const area = cur.map(fromC); // zone où le centre de la fraise peut aller sans entamer le contour
@@ -671,7 +709,10 @@ function buildGcode(cam) {
     for (const c of g.cuts) {
       const p0 = c.pts[0];
       const here = Math.hypot(p0[0] - x, p0[1] - y) < 1e-3 && z <= c.zTop + 1e-6 && z < safe;
-      const link = !here && last && last.g === g && last.c.area && z < safe && segInArea(last.c.area, [x, y], p0);
+      // liaison dans la matière si elle est sûre et plus rapide que remonter, traverser en rapide et redescendre
+      const dl = Math.hypot(p0[0] - x, p0[1] - y), app0 = Math.min(safe, c.zTop + 0.5);
+      const tRetract = (2 * safe - z - app0 + dl) / m.rapid + Math.max(0, app0 - z) / T.plunge;
+      const link = !here && last && last.g === g && last.c.area && z < safe && dl / T.feed <= tRetract && segInArea(last.c.area, [x, y], p0);
       if (link) mv(1, p0[0], p0[1], z, T.feed);
       else if (!here) {
         if (z < safe) mv(0, x, y, safe);
