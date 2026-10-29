@@ -257,6 +257,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <label class="check"><input type="checkbox"> <span id="cTool">La bonne fraise est installée.</span></label>
     <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
     <label class="check"><input type="checkbox"> <span id="cZ">Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).</span></label>
+    <label class="check"><input type="checkbox"> <span>La vitesse de broche est réglée sur le variateur.</span></label>
     <label class="check"><input type="checkbox"> <span>Lunettes, protection auditive et aspiration en place.</span></label>
   </div>
   <div class="ft"><button id="cCancel">Annuler</button><button id="cGo" class="pri" disabled>Lancer la gravure</button></div>
@@ -758,7 +759,8 @@ $('#matSel').addEventListener('change', e => {
   if (mat && !confirm(`Appliquer les réglages « ${mat.name} » à toutes les fraises (avance, plongée, profondeur par passe) ?
 
 Ce sont des valeurs de départ prudentes : fais un essai dans une chute et ajuste.`)) { e.target.value = S.material || ''; return; }
-  S.material = id; if (mat) { applyMaterial(id); log(`Réglages « ${mat.name} » appliqués aux fraises.`, 'msg'); }
+  S.material = id;
+  if (mat) { const capped = applyMaterial(id); log(`Réglages « ${mat.name} » appliqués aux fraises.` + (capped ? ` Limités par la vitesse max de la carte : ${capped} mm/min.` : ''), 'msg'); }
   saveSettings(); refreshTools(); invalidate();
 });
 [['#stW', 'w'], ['#stH', 'h'], ['#stT', 't']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.stock[k]); if (v > 0) S.stock[k] = v; saveSettings(); invalidate(); }));

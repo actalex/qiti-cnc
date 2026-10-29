@@ -257,6 +257,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <label class="check"><input type="checkbox"> <span id="cTool">La bonne fraise est installée.</span></label>
     <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
     <label class="check"><input type="checkbox"> <span id="cZ">Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).</span></label>
+    <label class="check"><input type="checkbox"> <span>La vitesse de broche est réglée sur le variateur.</span></label>
     <label class="check"><input type="checkbox"> <span>Lunettes, protection auditive et aspiration en place.</span></label>
   </div>
   <div class="ft"><button id="cCancel">Annuler</button><button id="cGo" class="pri" disabled>Lancer la gravure</button></div>
@@ -868,10 +869,18 @@ function materialParams(mat, T) {
   const k = T.d <= 1 ? 0.4 : T.d < 2 ? 0.6 : 1, r = v => Math.max(5, Math.round(v * k / 10) * 10);
   return { feed: r(mat.flat.feed), plunge: r(mat.flat.plunge), doc: Math.max(0.1, Math.round(Math.min(mat.flat.docMax, mat.flat.doc * T.d) * 20) / 20) };
 }
+// Avances plafonnées aux vitesses max de la carte ($110-$112, lues à la connexion) : la machine ne va pas plus vite.
+// Renvoie les plafonds appliqués (texte), '' si aucun.
 function applyMaterial(id) {
-  const mat = MATERIALS.find(m => m.id === id); if (!mat) return false;
-  for (const T of S.tools) Object.assign(T, materialParams(mat, T));
-  return true;
+  const mat = MATERIALS.find(m => m.id === id); if (!mat) return null;
+  const r = S.machine.plan && S.machine.plan.rate, capXY = r ? Math.min(r[0], r[1]) : Infinity, capZ = r ? r[2] : Infinity, capped = new Set();
+  for (const T of S.tools) {
+    const p = materialParams(mat, T);
+    if (p.feed > capXY) { p.feed = capXY; capped.add(`avance ${capXY}`); }
+    if (p.plunge > capZ) { p.plunge = capZ; capped.add(`plongée ${capZ}`); }
+    Object.assign(T, p);
+  }
+  return [...capped].join(', ');
 }
 /* ====================== Vue ====================== */
 const cv = $('#cv'), ctx = cv.getContext('2d');
@@ -1128,7 +1137,8 @@ $('#matSel').addEventListener('change', e => {
   if (mat && !confirm(`Appliquer les réglages « ${mat.name} » à toutes les fraises (avance, plongée, profondeur par passe) ?
 
 Ce sont des valeurs de départ prudentes : fais un essai dans une chute et ajuste.`)) { e.target.value = S.material || ''; return; }
-  S.material = id; if (mat) { applyMaterial(id); log(`Réglages « ${mat.name} » appliqués aux fraises.`, 'msg'); }
+  S.material = id;
+  if (mat) { const capped = applyMaterial(id); log(`Réglages « ${mat.name} » appliqués aux fraises.` + (capped ? ` Limités par la vitesse max de la carte : ${capped} mm/min.` : ''), 'msg'); }
   saveSettings(); refreshTools(); invalidate();
 });
 [['#stW', 'w'], ['#stH', 'h'], ['#stT', 't']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.stock[k]); if (v > 0) S.stock[k] = v; saveSettings(); invalidate(); }));

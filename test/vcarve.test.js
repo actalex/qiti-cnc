@@ -195,6 +195,13 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
   const mat = await p.evaluate(() => { const T = window.__atelier.S.tools, f = n => T.find(n), pick = t => [t.feed, t.plunge, t.doc];
     return { f3: pick(f(t => t.type !== 'v' && t.d === 3.175)), f1: pick(f(t => t.type !== 'v' && t.d === 1)), f6: pick(f(t => t.type !== 'v' && t.d === 6)), v: pick(f(t => t.type === 'v')) }; });
   assert.deepStrictEqual(mat, { f3: [500, 150, 0.95], f1: [200, 60, 0.3], f6: [500, 150, 1.2], v: [500, 150, 0.6] });
+  // Vitesses max de la carte connues : avances plafonnées (bois tendre : 800 → 750, plongée 250 → 200)
+  await p.evaluate(() => { window.__atelier.S.machine.plan = { acc: [400, 400, 400], rate: [750, 750, 200], jd: 0.01 }; });
+  p.once('dialog', d => d.accept()); await p.selectOption('#matSel', 'tendre'); await p.waitForTimeout(200);
+  const cap = await p.evaluate(() => { const T = window.__atelier.S.tools, t3 = T.find(t => t.type !== 'v' && t.d === 3.175), v = T.find(t => t.type === 'v');
+    return { f3: [t3.feed, t3.plunge], v: [v.feed, v.plunge], log: $('#log').innerText.includes('avance 750, plongée 200 mm/min') }; });
+  assert.deepStrictEqual(cap, { f3: [750, 200], v: [700, 200], log: true });
+  await p.evaluate(() => { delete window.__atelier.S.machine.plan; });
 
   assert.deepStrictEqual(errs, []);
   console.log('vcarve : OK');
