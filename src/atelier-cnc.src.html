@@ -933,7 +933,7 @@ async function readLoop() {
       try {
         while (true) {
           const { value, done } = await machine.reader.read(); if (done) break;
-          buf += dec.decode(value, { stream: true }); let k;
+          machine.rx += value.length; buf += dec.decode(value, { stream: true }); let k;
           while ((k = buf.indexOf('\n')) >= 0) { handleLine(buf.slice(0, k).trim()); buf = buf.slice(k + 1); }
         }
       } finally { machine.reader.releaseLock(); }
@@ -968,7 +968,11 @@ async function connect() {
     try { await port.open(opts); }
     catch (e) { if (e.name !== 'InvalidStateError') throw e; await port.close(); await port.open(opts); } // resté ouvert par cette page : on le rouvre
     machine.port = port; machine.writer = port.writable.getWriter(); machine.queue = []; machine.inflight = []; machine.used = 0; machine.settingsAsked = false; machine.grbl = {}; machine.noted = {};
-    log('Port ouvert à ' + S.machine.baud + ' bauds.', 'msg');
+    // Identité du port : un port sans identifiant USB (Bluetooth, port intégré) s'ouvre mais ne répond jamais
+    const info = port.getInfo ? port.getInfo() : {}, hex = v => v.toString(16).padStart(4, '0');
+    log('Port ouvert à ' + S.machine.baud + ' bauds' + (info.usbVendorId ? ` (USB ${hex(info.usbVendorId)}:${hex(info.usbProductId)}).` : ' (pas un port USB : Bluetooth ou port intégré ?).'), 'msg');
+    machine.rx = 0;
+    setTimeout(() => { if (machine.port === port && !machine.rx) { log('Aucune réponse de la carte sur ce port. Vérifie que c\'est bien le port USB de la CNC (pas un port Bluetooth), que la machine est sous tension, puis déconnecte et réessaie ; sinon éteins et rallume la machine.', 'err'); $('#state').textContent = 'muette'; } }, 4000);
     readLoop();
     setTimeout(() => { writeRaw('\r\n\r\n'); rt(0x3f); }, 1500);
     machine.poll = setInterval(() => rt(0x3f), 250);
