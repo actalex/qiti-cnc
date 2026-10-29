@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier CNC</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#f4f2ee;--panel:#fff;--line:#e2ded6;--txt:#22201c;--mut:#7a746a;--acc:#1f6feb;--ok:#2e8b57;--warn:#c77700;--err:#c0392b;--wood:#e8d2a8}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font:13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--txt);background:var(--bg)}
+header{height:46px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#22201c;color:#fff}
+header h1{font-size:15px;margin:0 12px 0 0;font-weight:600;letter-spacing:.3px}
+header .sp{flex:1}
+main{display:grid;grid-template-columns:290px 1fr 300px;height:calc(100% - 46px)}
+aside{background:var(--panel);overflow:auto;border-right:1px solid var(--line)}
+aside#right{border-right:0;border-left:1px solid var(--line);display:flex;flex-direction:column}
+section.box{padding:10px 12px;border-bottom:1px solid var(--line)}
+section.box h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 8px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.row{display:flex;gap:6px;align-items:center;margin:4px 0}
+.row label{flex:1;color:var(--mut)}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.grid3 label{display:block;color:var(--mut);font-size:11px}
+input[type=number],input[type=text],select{width:100%;padding:4px 6px;border:1px solid var(--line);border-radius:5px;font:inherit;background:#fff}
+.row input[type=number]{width:84px}
+button{font:inherit;padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;color:var(--txt)}
+button:hover:not(:disabled){border-color:#bbb;background:#faf9f7}
+button:disabled{opacity:.45;cursor:default}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.pri:hover:not(:disabled){background:#1a5fd0}
+button.big{width:100%;padding:10px;font-size:15px;font-weight:600}
+button.danger{background:var(--err);border-color:var(--err);color:#fff}
+header button{background:#3a3731;border-color:#4a463f;color:#fff}
+header button:hover:not(:disabled){background:#4a463f;border-color:#5a564e}
+#center{position:relative;overflow:hidden}
+#cv{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+#viewbar{position:absolute;top:10px;left:10px;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:3px}
+#viewbar button{border:0}
+#viewbar button.on{background:#22201c;color:#fff}
+#info{position:absolute;bottom:10px;left:10px;right:10px;display:flex;gap:14px;flex-wrap:wrap;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
+#info b{font-weight:600}
+#warns{color:var(--warn)}
+#drop{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(31,111,235,.12);border:3px dashed var(--acc);font-size:18px;color:var(--acc);pointer-events:none}
+.shapes{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+.shapes div{padding:3px 7px;cursor:pointer;display:flex;justify-content:space-between;gap:6px;border-bottom:1px solid #f0ede7}
+.shapes div:last-child{border-bottom:0}
+.shapes div.sel{background:#e8f0fe}
+.shapes small{color:var(--mut);white-space:nowrap}
+.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;background:#ddd}
+.tag.Idle{background:#d4f0dd;color:#1d6b3c}.tag.Run,.tag.Jog,.tag.Home{background:#dbe8ff;color:#1f4fb0}
+.tag.Hold,.tag.Door{background:#ffe9c7;color:#8a5200}.tag.Alarm{background:#ffd6d1;color:#a02a1c}
+.tag.off{background:#e6e3dd;color:#7a746a}
+.dro{display:grid;grid-template-columns:auto 1fr auto;gap:2px 8px;align-items:center;font-variant-numeric:tabular-nums}
+.dro .v{font:600 18px/1.2 ui-monospace,Menlo,Consolas,monospace;text-align:right}
+.dro button{padding:2px 7px;font-size:11px}
+.jog{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:6px}
+.jog button{padding:8px 0;font-weight:600}
+.steps{display:flex;gap:3px;margin-top:6px}
+.steps button{flex:1;padding:3px 0;font-size:11px}
+.steps button.on{background:#22201c;color:#fff;border-color:#22201c}
+#console{flex:1;min-height:120px;display:flex;flex-direction:column}
+#log{flex:1;overflow:auto;font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;background:#1d1b18;color:#d8d3c8;padding:6px;border-radius:6px;min-height:90px;white-space:pre-wrap;word-break:break-all}
+#log .tx{color:#8ab4f8}#log .err{color:#ff8a80}#log .msg{color:#ffd180}
+.prog{height:8px;background:#eee;border-radius:4px;overflow:hidden}
+.prog i{display:block;height:100%;width:0;background:var(--ok);transition:width .2s}
+dialog{border:0;border-radius:10px;padding:0;box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:520px;width:92vw}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+dialog .hd{padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;font-size:15px}
+dialog .bd{padding:12px 16px;max-height:65vh;overflow:auto}
+dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+.check{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #f0ede7}
+.check input{margin-top:2px}
+.note{color:var(--mut);font-size:12px}
+.banner{background:#fff3cd;color:#7a5a00;padding:8px 12px;border-bottom:1px solid #f0d78c;display:none}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>Atelier CNC</h1>
+  <button id="bImport">Importer un SVG</button>
+  <button id="bOpen">Ouvrir un projet</button>
+  <button id="bSave">Enregistrer le projet</button>
+  <span class="sp"></span>
+  <span id="designName" style="opacity:.75"></span>
+  <button id="bMachine" title="Réglages de la machine">⚙ Machine</button>
+  <input type="file" id="fSvg" accept=".svg,image/svg+xml" class="hide">
+  <input type="file" id="fProj" accept=".json,application/json" class="hide">
+</header>
+<main>
+<aside id="left">
+  <div class="banner" id="serialBanner">La connexion USB (Web Serial) n'est disponible que dans Chrome ou Edge, avec la page servie en <b>http://localhost</b>. La FAO et l'export du G-code fonctionnent partout.</div>
+  <section class="box">
+    <h2>Matériau</h2>
+    <div class="grid3">
+      <div><label>Largeur X</label><input type="number" id="stW" step="1" min="1"></div>
+      <div><label>Hauteur Y</label><input type="number" id="stH" step="1" min="1"></div>
+      <div><label>Épaisseur</label><input type="number" id="stT" step="0.1" min="0.1"></div>
+    </div>
+    <div class="row" style="margin-top:6px"><label>Origine X0 Y0</label>
+      <select id="origin" style="width:150px"><option value="corner">Coin avant-gauche</option><option value="center">Centre du brut</option></select></div>
+    <div class="note">mm — Z0 sur le dessus du brut.</div>
+  </section>
+  <section class="box">
+    <h2>Fraise <span><button id="bToolAdd" title="Dupliquer la fraise">+</button> <button id="bToolDel" title="Supprimer la fraise">−</button></span></h2>
+    <select id="toolSel"></select>
+    <div class="row"><label>Nom</label><input type="text" id="tName" style="width:150px"></div>
+    <div class="row"><label>Type</label><select id="tType" style="width:150px"><option value="flat">Plate</option><option value="v">En V (pointue)</option></select></div>
+    <div class="row"><label id="lD">Diamètre (mm)</label><input type="number" id="tD" step="0.05" min="0.1"></div>
+    <div class="row vonly"><label>Angle (°)</label><input type="number" id="tAng" step="5" min="5" max="170"></div>
+    <div class="row vonly"><label>Diamètre de pointe (mm)</label><input type="number" id="tTip" step="0.05" min="0"></div>
+    <div class="row"><label>Avance (mm/min)</label><input type="number" id="tF" step="10" min="1"></div>
+    <div class="row"><label>Plongée (mm/min)</label><input type="number" id="tP" step="10" min="1"></div>
+    <div class="row"><label>Prof. par passe (mm)</label><input type="number" id="tDoc" step="0.1" min="0.05"></div>
+    <div class="row flatonly"><label>Recouvrement poche (%)</label><input type="number" id="tSo" step="5" min="5" max="95"></div>
+    <div class="note vonly" id="vNote"></div>
+  </section>
+  <section class="box">
+    <h2>Placement du dessin</h2>
+    <div class="grid3">
+      <div><label>X (mm)</label><input type="number" id="pX" step="0.5"></div>
+      <div><label>Y (mm)</label><input type="number" id="pY" step="0.5"></div>
+      <div><label>Échelle %</label><input type="number" id="pS" step="1" min="1"></div>
+    </div>
+    <div class="row" style="margin-top:6px"><button id="bCenter">Centrer sur le brut</button><span id="dSize" class="note"></span></div>
+  </section>
+  <section class="box">
+    <h2>Formes <button id="bSelAll">Tout sélectionner</button></h2>
+    <div class="shapes" id="shapeList"><div class="note" style="cursor:default">Importe un SVG (ou glisse-le sur la zone de travail).</div></div>
+    <div id="selEdit" class="hide" style="margin-top:8px">
+      <div class="note" id="selCount"></div>
+      <div class="row"><label>Usinage</label>
+        <select id="sOp" style="width:160px">
+          <option value="outside">Contour extérieur</option>
+          <option value="inside">Contour intérieur</option>
+          <option value="on">Sur la ligne</option>
+          <option value="pocket">Poche (remplissage)</option>
+          <option value="none">Ne pas usiner</option>
+        </select></div>
+      <div class="row"><label>Profondeur (mm)</label><input type="number" id="sDepth" step="0.1" min="0"></div>
+      <div class="row"><button id="bThrough">= épaisseur (découpe traversante)</button></div>
+    </div>
+  </section>
+  <section class="box">
+    <h2>Attaches</h2>
+    <div class="row"><label><input type="checkbox" id="tabOn"> Ajouter des attaches aux découpes traversantes</label></div>
+    <div class="grid3">
+      <div><label>Nombre</label><input type="number" id="tabN" step="1" min="1"></div>
+      <div><label>Largeur</label><input type="number" id="tabW" step="0.5" min="0.5"></div>
+      <div><label>Hauteur</label><input type="number" id="tabH" step="0.1" min="0.1"></div>
+    </div>
+  </section>
+  <section class="box">
+    <div class="row"><label>Sens de fraisage</label>
+      <select id="climb" style="width:150px"><option value="0">Conventionnel</option><option value="1">En avalant</option></select></div>
+    <div class="note">Conventionnel : plus sûr sur une machine légère comme la TTC450.</div>
+  </section>
+</aside>
+
+<section id="center">
+  <canvas id="cv"></canvas>
+  <div id="viewbar">
+    <button data-v="design" class="on">Dessin</button>
+    <button data-v="carve">Aperçu fraisage</button>
+    <button data-v="paths">Trajectoires</button>
+    <button id="bFit" title="Recadrer">⤢</button>
+  </div>
+  <div id="info">
+    <span>Temps estimé : <b id="iTime">—</b></span>
+    <span>Lignes G-code : <b id="iLines">—</b></span>
+    <span>Prof. max : <b id="iDepth">—</b></span>
+    <span id="warns"></span>
+  </div>
+  <div id="drop">Dépose ton fichier SVG</div>
+</section>
+
+<aside id="right">
+  <section class="box">
+    <h2>Machine <span class="tag off" id="state">déconnectée</span></h2>
+    <div class="row">
+      <button id="bConnect" class="pri" style="flex:1">Connecter (USB)</button>
+      <button id="bUnlock" title="$X">Déverrouiller</button>
+      <button id="bHome" title="$H — nécessite les fins de course">Origine</button>
+    </div>
+    <div class="dro" style="margin-top:8px">
+      <span>X</span><span class="v" id="wx">—</span><button data-zero="X">X=0</button>
+      <span>Y</span><span class="v" id="wy">—</span><button data-zero="Y">Y=0</button>
+      <span>Z</span><span class="v" id="wz">—</span><button data-zero="Z">Z=0</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <button id="bZeroXY" style="flex:1">Zéro XY ici</button>
+      <button id="bGoZero" style="flex:1">Aller à X0 Y0</button>
+    </div>
+    <div class="row"><button id="bProbe" style="flex:1">Sonde Z (plaque de contact)</button></div>
+    <div class="jog">
+      <span></span><button data-jog="Y+">Y+</button><span></span><button data-jog="Z+">Z+</button>
+      <button data-jog="X-">X−</button><button data-jog="Y-">Y−</button><button data-jog="X+">X+</button><button data-jog="Z-">Z−</button>
+    </div>
+    <div class="steps" id="steps">
+      <button data-s="0.1">0,1</button><button data-s="1" class="on">1</button><button data-s="5">5</button><button data-s="10">10</button><button data-s="50">50</button>
+    </div>
+    <div class="note" style="margin-top:4px">Pas de déplacement (mm). Clavier : flèches = XY, PgUp/PgDn = Z.</div>
+  </section>
+  <section class="box">
+    <h2>Gravure</h2>
+    <button id="bCarve" class="pri big" disabled>Graver</button>
+    <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button></div>
+    <div id="job" class="hide">
+      <div class="prog"><i id="pBar"></i></div>
+      <div class="row note"><span id="pTxt" style="flex:1"></span><span id="pTime"></span></div>
+      <div class="row">
+        <button id="bPause" style="flex:1">Pause</button>
+        <button id="bStop" class="danger" style="flex:1">Arrêter</button>
+      </div>
+      <div class="row note">Avance <button data-ov="dec">−10%</button><button data-ov="reset">100%</button><button data-ov="inc">+10%</button><span id="ovF"></span></div>
+    </div>
+  </section>
+  <section class="box" id="console">
+    <h2>Console</h2>
+    <div id="log"></div>
+    <div class="row"><input type="text" id="cmd" placeholder="Commande GRBL ($$, $I, G0 X10…)"><button id="bSend">Envoyer</button></div>
+  </section>
+</aside>
+</main>
+
+<dialog id="dlgMachine">
+  <div class="hd">Réglages de la machine</div>
+  <div class="bd">
+    <div class="row"><label>Nom</label><input type="text" id="mName" style="width:220px"></div>
+    <div class="row"><label>Course X / Y / Z (mm)</label><input type="number" id="mW"><input type="number" id="mH"><input type="number" id="mZ"></div>
+    <div class="row"><label>Vitesse série (bauds)</label><select id="mBaud" style="width:120px"><option>115200</option><option>250000</option><option>57600</option><option>9600</option></select></div>
+    <div class="row"><label>Hauteur de dégagement Z (mm)</label><input type="number" id="mSafe" step="0.5"></div>
+    <div class="row"><label>Broche : valeur S (= $30)</label><input type="number" id="mS" step="100"></div>
+    <div class="row"><label>Temporisation démarrage broche (s)</label><input type="number" id="mDwell" step="0.5" min="0"></div>
+    <div class="row"><label>Vitesse rapide pour l'estimation (mm/min)</label><input type="number" id="mRapid" step="100"></div>
+    <div class="row"><label>Vitesse de jog (mm/min)</label><input type="number" id="mJog" step="100"></div>
+    <div class="row"><label>Épaisseur de la plaque de sonde (mm)</label><input type="number" id="mProbe" step="0.05"></div>
+    <div class="row"><label>Course max de la sonde (mm)</label><input type="number" id="mProbeDist" step="1"></div>
+    <p class="note">Mesure l'épaisseur de ta plaque au pied à coulisse. Avec 0, le zéro Z sera placé au contact de la plaque.</p>
+  </div>
+  <div class="ft"><button id="mCancel">Annuler</button><button id="mOk" class="pri">Enregistrer</button></div>
+</dialog>
+
+<dialog id="dlgCarve">
+  <div class="hd">Avant de lancer la gravure</div>
+  <div class="bd">
+    <div id="cSummary" class="note" style="margin-bottom:8px"></div>
+    <div id="cWarn" style="color:var(--warn);margin-bottom:8px"></div>
+    <label class="check"><input type="checkbox"> <span>Le matériau est fixé solidement sur la table.</span></label>
+    <label class="check"><input type="checkbox"> <span id="cTool">La bonne fraise est installée.</span></label>
+    <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
+    <label class="check"><input type="checkbox"> <span>Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).</span></label>
+    <label class="check"><input type="checkbox"> <span>Lunettes, protection auditive et aspiration en place.</span></label>
+  </div>
+  <div class="ft"><button id="cCancel">Annuler</button><button id="cGo" class="pri" disabled>Lancer la gravure</button></div>
+</dialog>
+
+<script>/*CLIPPER*/</script>
+<script>
+'use strict';
+/* ====================== Utilitaires ====================== */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const f3 = v => { let s = (Math.abs(v) < 5e-4 ? 0 : v).toFixed(3); s = s.replace(/0+$/, '').replace(/\.$/, ''); return s === '-0' ? '0' : s; };
+const num = (el, def) => { const v = parseFloat(el.value); return isFinite(v) ? v : def; };
+const fmtTime = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60; return (h ? h + ' h ' : '') + (h || m ? m + ' min ' : '') + (h ? '' : ss + ' s'); };
+const clone = o => JSON.parse(JSON.stringify(o));
+
+/* ====================== Réglages persistants ====================== */
+const STORE = 'atelier-cnc-v1';
+const V_TOOLS = [
+  { name: 'Fraise en V 30° (pointe 0,1)', type: 'v', d: 3.175, angle: 30, tip: 0.1, feed: 400, plunge: 100, doc: 0.5, so: 40 },
+  { name: 'Fraise en V 60°', type: 'v', d: 6, angle: 60, tip: 0.2, feed: 500, plunge: 120, doc: 0.8, so: 40 },
+  { name: 'Fraise en V 90°', type: 'v', d: 6, angle: 90, tip: 0.2, feed: 500, plunge: 120, doc: 0.8, so: 40 }
+];
+const DEFAULTS = {
+  machine: { name: 'TwoTrees TTC450 Pro', w: 460, h: 460, z: 80, baud: 115200, safeZ: 5, spindleS: 1000, dwell: 2, rapid: 2000, jogFeed: 1000, probeT: 0, probeDist: 25 },
+  stock: { w: 200, h: 150, t: 6 },
+  tools: [
+    { name: 'Fraise plate 3,175 mm (1/8")', d: 3.175, feed: 600, plunge: 150, doc: 0.8, so: 40 },
+    { name: 'Fraise plate 2 mm', d: 2, feed: 500, plunge: 120, doc: 0.5, so: 40 },
+    { name: 'Fraise plate 1 mm', d: 1, feed: 300, plunge: 80, doc: 0.3, so: 40 },
+    { name: 'Fraise plate 6 mm', d: 6, feed: 800, plunge: 200, doc: 1, so: 40 },
+    ...V_TOOLS
+  ],
+  toolIdx: 0,
+  tabs: { on: true, n: 4, w: 5, h: 1.5 },
+  climb: false,
+  origin: 'corner'
+};
+let S = clone(DEFAULTS);
+try { const raw = localStorage.getItem(STORE); if (raw) { const o = JSON.parse(raw); S = Object.assign(clone(DEFAULTS), o); S.machine = Object.assign(clone(DEFAULTS.machine), o.machine || {}); } } catch (e) {}
+if (!S.tools.some(t => t.type === 'v')) S.tools.push(...clone(V_TOOLS));
+function saveSettings() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} }
+const tool = () => S.tools[Math.min(S.toolIdx, S.tools.length - 1)];
+const isV = (T = tool()) => T.type === 'v';
+// largeur de coupe d'une fraise à une profondeur z (<0)
+function cutWidth(z, T = tool()) {
+  if (!isV(T)) return T.d;
+  return Math.min(T.d, (T.tip || 0) + 2 * Math.max(0, -z) * Math.tan((T.angle || 60) * Math.PI / 360));
+}
+const originOff = () => S.origin === 'center' ? [S.stock.w / 2, S.stock.h / 2] : [0, 0];
+
+/* ====================== Import SVG ====================== */
+const UNIT = { mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6, px: 25.4 / 96, q: 0.25 };
+function parseLength(v) {
+  if (v == null) return null;
+  const m = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*(mm|cm|in|pt|pc|px|q)?\s*$/i.exec(v);
+  if (!m) return null;
+  return parseFloat(m[1]) * UNIT[(m[2] || 'px').toLowerCase()];
+}
+function matMul(A, B) {
+  return [A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1], A[0] * B[2] + A[2] * B[3], A[1] * B[2] + A[3] * B[3],
+    A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]];
+}
+function cubicPts(p0, p1, p2, p3, tol, out) {
+  const M = Math.max(Math.hypot(p0[0] - 2 * p1[0] + p2[0], p0[1] - 2 * p1[1] + p2[1]), Math.hypot(p1[0] - 2 * p2[0] + p3[0], p1[1] - 2 * p2[1] + p3[1]));
+  const n = Math.max(1, Math.min(500, Math.ceil(Math.sqrt(0.75 * M / tol))));
+  for (let k = 1; k <= n; k++) {
+    const t = k / n, u = 1 - t;
+    out.push([u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+      u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]]);
+  }
+}
+function quadPts(p0, p1, p2, tol, out) {
+  const M = Math.hypot(p0[0] - 2 * p1[0] + p2[0], p0[1] - 2 * p1[1] + p2[1]);
+  const n = Math.max(1, Math.min(500, Math.ceil(Math.sqrt(M / (4 * tol)))));
+  for (let k = 1; k <= n; k++) {
+    const t = k / n, u = 1 - t;
+    out.push([u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0], u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]]);
+  }
+}
+function arcPts(x1, y1, rx, ry, phi, fa, fs, x2, y2, tol, out) {
+  if (x1 === x2 && y1 === y2) return;
+  rx = Math.abs(rx); ry = Math.abs(ry);
+  if (!rx || !ry) { out.push([x2, y2]); return; }
+  const cp = Math.cos(phi * Math.PI / 180), sp = Math.sin(phi * Math.PI / 180);
+  const dx = (x1 - x2) / 2, dy = (y1 - y2) / 2;
+  const x1p = cp * dx + sp * dy, y1p = -sp * dx + cp * dy;
+  const lam = x1p * x1p / (rx * rx) + y1p * y1p / (ry * ry);
+  if (lam > 1) { const s = Math.sqrt(lam); rx *= s; ry *= s; }
+  const nu = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p, de = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
+  let co = Math.sqrt(Math.max(0, nu / de)); if (fa === fs) co = -co;
+  const cxp = co * rx * y1p / ry, cyp = -co * ry * x1p / rx;
+  const cx = cp * cxp - sp * cyp + (x1 + x2) / 2, cy = sp * cxp + cp * cyp + (y1 + y2) / 2;
+  const ang = (ux, uy, vx, vy) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+  const t1 = ang(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
+  let dt = ang((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
+  if (!fs && dt > 0) dt -= 2 * Math.PI; else if (fs && dt < 0) dt += 2 * Math.PI;
+  const r = Math.max(rx, ry), step = 2 * Math.acos(1 - Math.min(tol, r * 0.5) / r) || 0.2;
+  const n = Math.max(2, Math.min(720, Math.ceil(Math.abs(dt) / step)));
+  for (let k = 1; k < n; k++) {
+    const t = t1 + dt * k / n, ex = rx * Math.cos(t), ey = ry * Math.sin(t);
+    out.push([cp * ex - sp * ey + cx, sp * ex + cp * ey + cy]);
+  }
+  out.push([x2, y2]);
+}
+function parsePathD(d, tol) {
+  let i = 0; const n = d.length;
+  const ws = () => { while (i < n && /[\s,]/.test(d[i])) i++; };
+  const re = /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/y;
+  const rd = () => { ws(); re.lastIndex = i; const m = re.exec(d); if (!m) throw new Error('chemin SVG illisible près de « ' + d.slice(i, i + 12) + ' »'); i = re.lastIndex; return parseFloat(m[0]); };
+  const flag = () => { ws(); const c = d[i]; if (c !== '0' && c !== '1') throw new Error('drapeau d\'arc invalide'); i++; return c === '1'; };
+  const subs = []; let cur = null, x = 0, y = 0, x0 = 0, y0 = 0, cmd = null, prev = null, lc = null, lq = null;
+  const begin = () => { if (!cur || cur.closed) { cur = { pts: [[x, y]], closed: false }; subs.push(cur); } };
+  while (true) {
+    ws(); if (i >= n) break;
+    const c = d[i];
+    if (/[A-Za-z]/.test(c)) { cmd = c; i++; } else if (!cmd) throw new Error('chemin SVG invalide');
+    const rel = cmd === cmd.toLowerCase(), C = cmd.toUpperCase();
+    const ox = rel ? x : 0, oy = rel ? y : 0;
+    switch (C) {
+      case 'M': x = ox + rd(); y = oy + rd(); cur = { pts: [[x, y]], closed: false }; subs.push(cur); x0 = x; y0 = y; cmd = rel ? 'l' : 'L'; break;
+      case 'L': { const nx = ox + rd(), ny = oy + rd(); begin(); x = nx; y = ny; cur.pts.push([x, y]); break; }
+      case 'H': { const nx = ox + rd(); begin(); x = nx; cur.pts.push([x, y]); break; }
+      case 'V': { const ny = oy + rd(); begin(); y = ny; cur.pts.push([x, y]); break; }
+      case 'C': { const a = [ox + rd(), oy + rd()], b = [ox + rd(), oy + rd()], e = [ox + rd(), oy + rd()]; begin(); cubicPts([x, y], a, b, e, tol, cur.pts); lc = b; x = e[0]; y = e[1]; break; }
+      case 'S': { const b = [ox + rd(), oy + rd()], e = [ox + rd(), oy + rd()]; const a = (prev && 'CS'.includes(prev)) ? [2 * x - lc[0], 2 * y - lc[1]] : [x, y]; begin(); cubicPts([x, y], a, b, e, tol, cur.pts); lc = b; x = e[0]; y = e[1]; break; }
+      case 'Q': { const a = [ox + rd(), oy + rd()], e = [ox + rd(), oy + rd()]; begin(); quadPts([x, y], a, e, tol, cur.pts); lq = a; x = e[0]; y = e[1]; break; }
+      case 'T': { const e = [ox + rd(), oy + rd()]; const a = (prev && 'QT'.includes(prev)) ? [2 * x - lq[0], 2 * y - lq[1]] : [x, y]; begin(); quadPts([x, y], a, e, tol, cur.pts); lq = a; x = e[0]; y = e[1]; break; }
+      case 'A': { const rx = rd(), ry = rd(), ph = rd(), fa = flag(), fs = flag(), ex = ox + rd(), ey = oy + rd(); begin(); arcPts(x, y, rx, ry, ph, fa, fs, ex, ey, tol, cur.pts); x = ex; y = ey; break; }
+      case 'Z': if (cur) cur.closed = true; x = x0; y = y0; break;
+      default: throw new Error('commande de chemin inconnue : ' + cmd);
+    }
+    prev = C;
+  }
+  return subs;
+}
+function elementSubpaths(el, tol) {
+  const tag = el.tagName.toLowerCase(), g = a => { const v = el[a]; return v && v.baseVal ? v.baseVal.value : parseFloat(el.getAttribute(a)) || 0; };
+  if (tag === 'path') return parsePathD(el.getAttribute('d') || '', tol);
+  if (tag === 'rect') {
+    const x = g('x'), y = g('y'), w = g('width'), h = g('height');
+    if (w <= 0 || h <= 0) return [];
+    let rx = parseFloat(el.getAttribute('rx')), ry = parseFloat(el.getAttribute('ry'));
+    if (!isFinite(rx) && isFinite(ry)) rx = ry; if (!isFinite(ry) && isFinite(rx)) ry = rx;
+    rx = Math.min(rx || 0, w / 2); ry = Math.min(ry || 0, h / 2);
+    if (!rx || !ry) return [{ pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], closed: true }];
+    return parsePathD(`M${x + rx},${y}H${x + w - rx}A${rx},${ry} 0 0 1 ${x + w},${y + ry}V${y + h - ry}A${rx},${ry} 0 0 1 ${x + w - rx},${y + h}H${x + rx}A${rx},${ry} 0 0 1 ${x},${y + h - ry}V${y + ry}A${rx},${ry} 0 0 1 ${x + rx},${y}Z`, tol);
+  }
+  if (tag === 'circle' || tag === 'ellipse') {
+    const cx = g('cx'), cy = g('cy'); let rx, ry;
+    if (tag === 'circle') rx = ry = g('r'); else { rx = g('rx'); ry = g('ry'); }
+    if (rx <= 0 || ry <= 0) return [];
+    return parsePathD(`M${cx + rx},${cy}A${rx},${ry} 0 1 1 ${cx - rx},${cy}A${rx},${ry} 0 1 1 ${cx + rx},${cy}Z`, tol);
+  }
+  if (tag === 'line') return [{ pts: [[g('x1'), g('y1')], [g('x2'), g('y2')]], closed: false }];
+  if (tag === 'polyline' || tag === 'polygon') {
+    const v = (el.getAttribute('points') || '').trim().split(/[\s,]+/).map(Number), pts = [];
+    for (let k = 0; k + 1 < v.length; k += 2) pts.push([v[k], v[k + 1]]);
+    return [{ pts, closed: tag === 'polygon' }];
+  }
+  return [];
+}
+function importSVG(text, name) {
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+  const root = doc.documentElement;
+  if (doc.querySelector('parsererror') || root.nodeName.toLowerCase() !== 'svg') throw new Error('Ce fichier n\'est pas un SVG valide.');
+  const host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:-20000px;top:0;width:10px;height:10px;overflow:hidden;visibility:hidden';
+  const svg = document.importNode(root, true); host.appendChild(svg); document.body.appendChild(host);
+  const warns = [];
+  try {
+    let vb = null; const va = svg.getAttribute('viewBox');
+    if (va) { const a = va.trim().split(/[\s,]+/).map(Number); if (a.length === 4 && a.every(isFinite) && a[2] > 0 && a[3] > 0) vb = a; }
+    const wmm = parseLength(svg.getAttribute('width')), hmm = parseLength(svg.getAttribute('height'));
+    let sx = 25.4 / 96, sy = sx, vx = 0, vy = 0;
+    if (vb) { vx = vb[0]; vy = vb[1]; if (wmm) sx = wmm / vb[2]; if (hmm) sy = hmm / vb[3]; else if (wmm) sy = sx; if (!wmm && hmm) sx = sy; }
+    const skip = 'defs,clipPath,mask,symbol,marker,pattern,metadata';
+    const els = [...svg.querySelectorAll('path,rect,circle,ellipse,line,polyline,polygon')].filter(el => !el.closest(skip));
+    if (svg.querySelectorAll('text').length) warns.push('Les textes sont ignorés : dans Inkscape, convertis-les en chemins (Chemin › Objet en chemin).');
+    if (svg.querySelectorAll('use').length) warns.push('Les clones (<use>) sont ignorés : dans Inkscape, utilise Édition › Cloner › Délier le clone.');
+    const shapes = [];
+    els.forEach((el, idx) => {
+      for (let p = el; p && p !== svg; p = p.parentElement) if (getComputedStyle(p).display === 'none') return;
+      let M = [1, 0, 0, 1, 0, 0];
+      for (let p = el; p && p !== svg; p = p.parentElement) {
+        const t = p.transform && p.transform.baseVal;
+        if (t && t.numberOfItems) { const m = t.consolidate().matrix; M = matMul([m.a, m.b, m.c, m.d, m.e, m.f], M); }
+      }
+      const scale = Math.sqrt(Math.abs(M[0] * M[3] - M[1] * M[2])) * Math.sqrt(sx * sy) || 1;
+      let subs;
+      try { subs = elementSubpaths(el, 0.02 / scale); } catch (e) { warns.push((el.id || el.tagName) + ' : ' + e.message); return; }
+      const out = [];
+      for (const s of subs) {
+        let pts = s.pts.map(([x, y]) => [((M[0] * x + M[2] * y + M[4]) - vx) * sx, ((M[1] * x + M[3] * y + M[5]) - vy) * sy]);
+        pts = pts.filter((p, k) => k === 0 || Math.hypot(p[0] - pts[k - 1][0], p[1] - pts[k - 1][1]) > 1e-4);
+        let closed = s.closed;
+        if (pts.length > 2 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.01) { closed = true; pts.pop(); }
+        if (pts.length >= 2 && !(closed && pts.length < 3)) out.push({ pts, closed });
+      }
+      if (!out.length) return;
+      const closed = out.every(s => s.closed);
+      shapes.push({ id: shapes.length, name: el.getAttribute('inkscape:label') || el.id || (el.tagName.toLowerCase() + ' ' + (idx + 1)), subpaths: out, closed, op: closed ? 'outside' : 'on', depth: 1 });
+    });
+    if (!shapes.length) throw new Error('Aucune forme exploitable dans ce SVG.' + (warns.length ? ' ' + warns.join(' ') : ''));
+    return { shapes, warns };
+  } finally { host.remove(); }
+}
+
+/* ====================== Projet ====================== */
+let D = null; // { name, svgText, shapes, bb, place:{x,y,s} }
+let sel = new Set();
+function bboxOf(shapes) {
+  const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  for (const sh of shapes) for (const s of sh.subpaths) for (const [x, y] of s.pts) { if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y; }
+  return b;
+}
+function loadDesign(text, name, saved) {
+  const { shapes, warns } = importSVG(text, name);
+  D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
+  if (saved) {
+    if (saved.place) D.place = saved.place;
+    (saved.ops || []).forEach((o, k) => { if (D.shapes[k] && o) { D.shapes[k].op = o.op; D.shapes[k].depth = o.depth; } });
+  } else centerDesign();
+  sel = new Set();
+  warns.forEach(w => log(w, 'msg'));
+  $('#designName').textContent = name;
+  refreshAll(); fitView();
+}
+function centerDesign() {
+  if (!D) return;
+  const s = D.place.s / 100, w = (D.bb.x1 - D.bb.x0) * s, h = (D.bb.y1 - D.bb.y0) * s;
+  D.place.x = +((S.stock.w - w) / 2).toFixed(2); D.place.y = +((S.stock.h - h) / 2).toFixed(2);
+}
+function toStockFn() {
+  const s = D.place.s / 100, b = D.bb, px = D.place.x, py = D.place.y;
+  return p => [(p[0] - b.x0) * s + px, (b.y1 - p[1]) * s + py];
+}
+
+/* ====================== FAO ====================== */
+const CL = window.ClipperLib, SC = 1000;
+const toC = pts => pts.map(p => ({ X: Math.round(p[0] * SC), Y: Math.round(p[1] * SC) }));
+const fromC = path => path.map(p => [p.X / SC, p.Y / SC]);
+function unionEO(paths) {
+  const c = new CL.Clipper(); c.AddPaths(paths, CL.PolyType.ptSubject, true);
+  const sol = new CL.Paths(); c.Execute(CL.ClipType.ctUnion, sol, CL.PolyFillType.pftEvenOdd, CL.PolyFillType.pftEvenOdd); return sol;
+}
+function offsetPaths(paths, delta) {
+  if (!paths.length) return [];
+  const co = new CL.ClipperOffset(2, 0.01 * SC); co.AddPaths(paths, CL.JoinType.jtRound, CL.EndType.etClosedPolygon);
+  const sol = new CL.Paths(); co.Execute(sol, delta * SC);
+  return sol.filter(p => p.length > 2 && Math.abs(CL.Clipper.Area(p)) > (0.01 * SC) ** 2);
+}
+function depthPasses(depth, doc) {
+  const n = Math.max(1, Math.ceil(depth / doc - 1e-9)), r = [];
+  for (let k = 1; k <= n; k++) r.push(-depth * k / n);
+  return r;
+}
+function loopWithTabs(pts, z, tab) {
+  const P = pts.concat([pts[0]]);
+  if (!tab || z >= tab.z - 1e-9) return P.map(p => [p[0], p[1], z]);
+  const segL = []; let L = 0;
+  for (let k = 1; k < P.length; k++) { const l = Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]); segL.push(l); L += l; }
+  let n = tab.n; if (L < n * tab.w * 3) n = Math.floor(L / (tab.w * 3));
+  if (n < 1) return P.map(p => [p[0], p[1], z]);
+  const iv = []; for (let k = 0; k < n; k++) { const c = (k + 0.5) * L / n; iv.push([c - tab.w / 2, c + tab.w / 2]); }
+  const inTab = s => iv.some(([a, b]) => s > a && s < b);
+  const bps = iv.flat().sort((a, b) => a - b);
+  const out = [[P[0][0], P[0][1], z]]; let s = 0;
+  for (let k = 1; k < P.length; k++) {
+    const l = segL[k - 1], a = P[k - 1], b = P[k];
+    for (const bp of bps) if (bp > s + 1e-9 && bp < s + l - 1e-9) {
+      const t = (bp - s) / l, q = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      out.push([q[0], q[1], inTab(bp - 1e-6) ? tab.z : z]); out.push([q[0], q[1], inTab(bp + 1e-6) ? tab.z : z]);
+    }
+    s += l; out.push([b[0], b[1], inTab(s - 1e-6) ? tab.z : z]);
+  }
+  return out;
+}
+function computeCAM() {
+  const res = { groups: [], warns: [] };
+  if (!D) return res;
+  const T = tool(), r = T.d / 2, th = S.stock.t, tf = toStockFn();
+  const doc = Math.max(0.05, T.doc), step = T.d * Math.min(0.95, Math.max(0.05, T.so / 100));
+  const order = { on: 0, pocket: 1, inside: 2, outside: 3 };
+  for (const sh of D.shapes) {
+    if (sh.op === 'none' || !(sh.depth > 0)) continue;
+    const depth = sh.depth;
+    if (depth > th + 1e-6) res.warns.push(`« ${sh.name} » : profondeur ${depth} mm > épaisseur du brut`);
+    const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
+    const passes = depthPasses(depth, doc), cuts = [];
+    if (isV(T) && sh.op !== 'on') { res.warns.push(`« ${sh.name} » : avec une fraise en V, seul « Sur la ligne » est usiné`); continue; }
+    if (isV(T) && 2 * depth * Math.tan((T.angle || 60) * Math.PI / 360) + (T.tip || 0) > T.d) res.warns.push(`« ${sh.name} » : profondeur plus grande que la partie conique de la fraise`);
+    if (sh.op === 'on') {
+      for (const s of subs) {
+        let zPrev = 0;
+        for (const z of passes) {
+          const pts = s.closed ? s.pts.concat([s.pts[0]]) : s.pts;
+          cuts.push({ pts: pts.map(p => [p[0], p[1], z]), zTop: zPrev }); zPrev = z;
+        }
+      }
+    } else {
+      const closedSubs = subs.filter(s => s.closed);
+      if (!closedSubs.length) { res.warns.push(`« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`); continue; }
+      const region = unionEO(closedSubs.map(s => toC(s.pts)));
+      const reverse = sh.op === 'outside' ? S.climb : !S.climb;
+      const orient = p => { const q = fromC(p); return reverse ? q.reverse() : q; };
+      if (sh.op === 'pocket') {
+        const rings = []; let cur = offsetPaths(region, -r), guard = 0;
+        while (cur.length && guard++ < 2000) { rings.push(...cur); cur = offsetPaths(cur, -step); }
+        if (!rings.length) { res.warns.push(`« ${sh.name} » : trop étroite pour la fraise de ${T.d} mm`); continue; }
+        const loops = rings.reverse().map(orient);
+        let zPrev = 0;
+        for (const z of passes) { for (const lp of loops) cuts.push({ pts: loopWithTabs(lp, z, null), zTop: zPrev }); zPrev = z; }
+      } else {
+        const loops = offsetPaths(region, sh.op === 'outside' ? r : -r).map(orient);
+        if (!loops.length) { res.warns.push(`« ${sh.name} » : trop petite pour la fraise de ${T.d} mm`); continue; }
+        const through = depth >= th - 1e-6;
+        const tab = (through && S.tabs.on) ? { z: -(th - S.tabs.h), n: Math.max(1, Math.round(S.tabs.n)), w: S.tabs.w + T.d } : null;
+        for (const lp of loops) { let zPrev = 0; for (const z of passes) { cuts.push({ pts: loopWithTabs(lp, z, tab), zTop: zPrev }); zPrev = z; } }
+      }
+    }
+    if (cuts.length) res.groups.push({ shape: sh, rank: order[sh.op], cuts });
+  }
+  // Ordre : gravures, poches, intérieurs, puis extérieurs ; plus proche voisin dans chaque catégorie
+  const sorted = []; let at = [0, 0];
+  for (let rank = 0; rank <= 3; rank++) {
+    const pool = res.groups.filter(g => g.rank === rank);
+    while (pool.length) {
+      let bi = 0, bd = Infinity;
+      pool.forEach((g, k) => { const p = g.cuts[0].pts[0], dd = Math.hypot(p[0] - at[0], p[1] - at[1]); if (dd < bd) { bd = dd; bi = k; } });
+      const g = pool.splice(bi, 1)[0]; sorted.push(g);
+      const lc = g.cuts[g.cuts.length - 1].pts; at = lc[lc.length - 1];
+    }
+  }
+  res.groups = sorted;
+  return res;
+}
+function buildGcode(cam) {
+  const T = tool(), m = S.machine, safe = m.safeZ, L = [], moves = [], lineMove = [];
+  const [gx, gy] = originOff();
+  let x = gx, y = gy, z = safe, F = null, time = 0, zMin = 0;
+  const push = s => { L.push(s); lineMove.push(moves.length); };
+  const mv = (g, nx, ny, nz, feed) => {
+    const parts = [g === 0 ? 'G0' : 'G1'];
+    if (Math.abs(nx - x) > 5e-4) parts.push('X' + f3(nx - gx));
+    if (Math.abs(ny - y) > 5e-4) parts.push('Y' + f3(ny - gy));
+    if (Math.abs(nz - z) > 5e-4) parts.push('Z' + f3(nz));
+    if (parts.length === 1) return;
+    const dist = Math.hypot(nx - x, ny - y, nz - z);
+    if (g === 1) { if (feed !== F) { parts.push('F' + Math.round(feed)); F = feed; } time += dist / feed * 60; }
+    else time += dist / m.rapid * 60;
+    moves.push({ g, x0: x, y0: y, z0: z, x: nx, y: ny, z: nz });
+    x = nx; y = ny; z = nz; if (z < zMin) zMin = z;
+    push(parts.join(' '));
+  };
+  push(`; Atelier CNC — ${D ? D.name : ''} — ${T.name} (Ø${T.d} mm)`);
+  push(`; Brut ${S.stock.w} x ${S.stock.h} x ${S.stock.t} mm — origine X0 Y0 ${S.origin === 'center' ? 'au centre du brut' : 'au coin avant-gauche'}, Z0 dessus du brut`);
+  if (isV(T)) push(`; Fraise en V ${T.angle}°, pointe ${T.tip} mm`);
+  push('G21 G90 G17 G94');
+  push(`G0 Z${f3(safe)}`);
+  push(`M3 S${Math.round(m.spindleS)}`);
+  if (m.dwell > 0) { push(`G4 P${m.dwell}`); time += m.dwell; }
+  for (const g of cam.groups) {
+    push(`; ${g.shape.name}`);
+    for (const c of g.cuts) {
+      const p0 = c.pts[0];
+      const here = Math.hypot(p0[0] - x, p0[1] - y) < 1e-3 && z <= c.zTop + 1e-6 && z < safe;
+      if (!here) {
+        if (z < safe) mv(0, x, y, safe);
+        mv(0, p0[0], p0[1], safe);
+        const app = c.zTop + 0.5; if (app < safe) mv(0, p0[0], p0[1], app);
+      }
+      mv(1, p0[0], p0[1], p0[2], T.plunge);
+      for (let k = 1; k < c.pts.length; k++) {
+        const p = c.pts[k], vert = Math.abs(p[0] - x) < 5e-4 && Math.abs(p[1] - y) < 5e-4;
+        mv(1, p[0], p[1], p[2], vert && p[2] < z ? T.plunge : T.feed);
+      }
+    }
+  }
+  if (z < safe) mv(0, x, y, safe);
+  push('M5');
+  mv(0, gx, gy, safe);
+  push('M2');
+  return { lines: L, moves, lineMove, time, zMin };
+}
+
+/* ====================== Vue ====================== */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let view = { s: 1, ox: 0, oy: 0 }, viewMode = 'design', job = null, G = null, CAM = null;
+const W2S = (x, y) => [view.ox + x * view.s, view.oy - y * view.s];
+const S2W = (sx, sy) => [(sx - view.ox) / view.s, (view.oy - sy) / view.s];
+function resize() { const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1; cv.width = r.width * d; cv.height = r.height * d; ctx.setTransform(d, 0, 0, d, 0, 0); draw(); }
+function fitView() {
+  const r = cv.getBoundingClientRect(); let x0 = 0, y0 = 0, x1 = S.stock.w, y1 = S.stock.h;
+  if (D) { const s = D.place.s / 100; x0 = Math.min(x0, D.place.x); y0 = Math.min(y0, D.place.y); x1 = Math.max(x1, D.place.x + (D.bb.x1 - D.bb.x0) * s); y1 = Math.max(y1, D.place.y + (D.bb.y1 - D.bb.y0) * s); }
+  const m = 50; view.s = Math.min((r.width - 2 * m) / (x1 - x0), (r.height - 2 * m - 40) / (y1 - y0));
+  view.ox = m + (r.width - 2 * m - (x1 - x0) * view.s) / 2 - x0 * view.s;
+  view.oy = r.height - m - 40 - ((r.height - 2 * m - 40) - (y1 - y0) * view.s) / 2 + y0 * view.s;
+  draw();
+}
+const OPCOL = { outside: '#1f6feb', inside: '#8e44ad', on: '#16a085', pocket: '#d35400', none: '#999' };
+function depthColor(z) {
+  const t = Math.min(1, Math.max(0, -z / Math.max(0.1, S.stock.t)));
+  const a = [214, 180, 128], b = [92, 54, 24];
+  return `rgb(${a.map((v, k) => Math.round(v + (b[k] - v) * t)).join(',')})`;
+}
+function draw() {
+  const r = cv.getBoundingClientRect();
+  ctx.clearRect(0, 0, r.width, r.height);
+  ctx.fillStyle = '#ebe7df'; ctx.fillRect(0, 0, r.width, r.height);
+  // zone machine
+  const [mx0, my0] = W2S(0, S.machine.h), [mx1, my1] = W2S(S.machine.w, 0);
+  ctx.strokeStyle = '#cfc8bb'; ctx.setLineDash([6, 4]); ctx.strokeRect(mx0, my0, mx1 - mx0, my1 - my0); ctx.setLineDash([]);
+  // brut
+  const [sx0, sy0] = W2S(0, S.stock.h), [sx1, sy1] = W2S(S.stock.w, 0);
+  ctx.fillStyle = '#f3e4c4'; ctx.fillRect(sx0, sy0, sx1 - sx0, sy1 - sy0);
+  ctx.strokeStyle = 'rgba(0,0,0,.06)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let gx = 10; gx < S.stock.w; gx += 10) { const [a] = W2S(gx, 0); ctx.moveTo(a, sy0); ctx.lineTo(a, sy1); }
+  for (let gy = 10; gy < S.stock.h; gy += 10) { const [, b] = W2S(0, gy); ctx.moveTo(sx0, b); ctx.lineTo(sx1, b); }
+  ctx.stroke();
+  ctx.strokeStyle = '#b89a66'; ctx.strokeRect(sx0, sy0, sx1 - sx0, sy1 - sy0);
+  // origine
+  const [ox, oy] = W2S(...originOff());
+  ctx.lineWidth = 2; ctx.strokeStyle = '#c0392b'; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + 30, oy); ctx.stroke();
+  ctx.strokeStyle = '#27ae60'; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, oy - 30); ctx.stroke();
+  ctx.fillStyle = '#22201c'; ctx.font = '11px system-ui'; ctx.fillText('X0 Y0', ox + 4, oy + 14);
+  if (G && (viewMode === 'carve' || viewMode === 'paths')) drawMoves();
+  if (D && viewMode !== 'carve') drawShapes(viewMode === 'paths' ? 0.35 : 1);
+  if (job && G) drawProgress();
+  if (machine.wpos) {
+    const [tx, ty] = W2S(machine.wpos[0] + originOff()[0], machine.wpos[1] + originOff()[1]);
+    ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(tx, ty, 7, 0, 7); ctx.moveTo(tx - 11, ty); ctx.lineTo(tx + 11, ty); ctx.moveTo(tx, ty - 11); ctx.lineTo(tx, ty + 11); ctx.stroke();
+  }
+}
+function drawShapes(alpha) {
+  const tf = toStockFn(); ctx.globalAlpha = alpha; ctx.lineJoin = 'round';
+  for (const sh of D.shapes) {
+    const isSel = sel.has(sh.id);
+    ctx.beginPath();
+    for (const s of sh.subpaths) { s.pts.forEach((p, k) => { const [a, b] = W2S(...tf(p)); k ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); if (s.closed) ctx.closePath(); }
+    if (sh.op === 'pocket') { ctx.fillStyle = 'rgba(211,84,0,.18)'; ctx.fill('evenodd'); }
+    ctx.lineWidth = isSel ? 2.5 : 1.3; ctx.strokeStyle = isSel ? '#e74c3c' : OPCOL[sh.op]; ctx.setLineDash(sh.op === 'none' ? [4, 3] : []); ctx.stroke();
+  }
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+}
+function drawMoves() {
+  const T = tool();
+  if (viewMode === 'carve') {
+    const buckets = new Map();
+    for (const m of G.moves) if (m.g === 1 && (m.z < 0 || m.z0 < 0)) { const zz = Math.round(Math.min(m.z, m.z0) * 100) / 100; if (!buckets.has(zz)) buckets.set(zz, []); buckets.get(zz).push(m); }
+    const keys = [...buckets.keys()].sort((a, b) => b - a);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const k of keys) {
+      ctx.lineWidth = Math.max(1, cutWidth(k, T) * view.s);
+      ctx.strokeStyle = depthColor(k); ctx.beginPath();
+      for (const m of buckets.get(k)) { const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c + 0.01, d); }
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  } else {
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(120,120,120,.6)'; ctx.beginPath();
+    for (const m of G.moves) if (m.g === 0) { const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d); }
+    ctx.stroke(); ctx.setLineDash([]);
+    let last = null;
+    for (const m of G.moves) if (m.g === 1) {
+      const col = depthColor(Math.min(m.z, m.z0)); if (col !== last) { if (last) ctx.stroke(); ctx.strokeStyle = col; ctx.beginPath(); last = col; }
+      const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d);
+    }
+    if (last) ctx.stroke();
+  }
+}
+function drawProgress() {
+  const upto = G.lineMove[Math.min(job.acked, G.lineMove.length - 1)] || 0;
+  ctx.strokeStyle = 'rgba(46,139,87,.9)'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let k = 0; k < upto; k++) { const m = G.moves[k]; if (m.g !== 1) continue; const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d); }
+  ctx.stroke();
+}
+// interactions
+let drag = null;
+cv.addEventListener('mousedown', e => { drag = { x: e.offsetX, y: e.offsetY, ox: view.ox, oy: view.oy, moved: false }; });
+window.addEventListener('mousemove', e => {
+  if (!drag) return; const r = cv.getBoundingClientRect(), dx = e.clientX - r.left - drag.x, dy = e.clientY - r.top - drag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+  if (drag.moved) { view.ox = drag.ox + dx; view.oy = drag.oy + dy; cv.style.cursor = 'grabbing'; draw(); }
+});
+window.addEventListener('mouseup', e => {
+  if (!drag) return; const d = drag; drag = null; cv.style.cursor = 'crosshair';
+  if (!d.moved && e.target === cv) pick(e.offsetX, e.offsetY, e.shiftKey || e.ctrlKey || e.metaKey);
+});
+cv.addEventListener('wheel', e => {
+  e.preventDefault(); const k = Math.exp(-e.deltaY * 0.0015), [wx, wy] = S2W(e.offsetX, e.offsetY);
+  view.s *= k; view.ox = e.offsetX - wx * view.s; view.oy = e.offsetY + wy * view.s; draw();
+}, { passive: false });
+function pointInPoly(x, y, pts) { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function segDist(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy; let t = l ? ((px - a[0]) * dx + (py - a[1]) * dy) / l : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
+function pick(sx, sy, add) {
+  if (!D) return;
+  const [x, y] = S2W(sx, sy), tf = toStockFn(), tolW = 6 / view.s; let hit = null, best = Infinity;
+  for (const sh of D.shapes) {
+    const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
+    let dmin = Infinity;
+    for (const s of subs) { const n = s.pts.length; for (let k = 1; k < n + (s.closed ? 1 : 0); k++) dmin = Math.min(dmin, segDist(x, y, s.pts[k - 1], s.pts[k % n])); }
+    let inside = false; for (const s of subs) if (s.closed && pointInPoly(x, y, s.pts)) inside = !inside;
+    const score = dmin < tolW ? dmin : (inside ? tolW + 1 : Infinity);
+    if (score < best) { best = score; hit = sh; }
+  }
+  if (!add) sel.clear();
+  if (hit) { if (add && sel.has(hit.id)) sel.delete(hit.id); else sel.add(hit.id); }
+  refreshShapes(); draw();
+}
+
+/* ====================== Panneaux ====================== */
+function bindNum(id, get, set) { const el = $(id); el.value = get(); el.addEventListener('change', () => { set(num(el, get())); saveSettings(); invalidate(); }); return el; }
+function refreshTools() {
+  const s = $('#toolSel'); s.innerHTML = '';
+  S.tools.forEach((t, k) => { const o = document.createElement('option'); o.value = k; o.textContent = t.name; s.appendChild(o); });
+  s.value = S.toolIdx; const T = tool();
+  $('#tType').value = isV(T) ? 'v' : 'flat'; $('#tAng').value = T.angle || 60; $('#tTip').value = T.tip || 0;
+  $$('.vonly').forEach(e => e.classList.toggle('hide', !isV(T))); $$('.flatonly').forEach(e => e.classList.toggle('hide', isV(T)));
+  $('#lD').textContent = isV(T) ? 'Diamètre du corps (mm)' : 'Diamètre (mm)';
+  if (isV(T)) $('#vNote').textContent = `Largeur de trait : ${f3(cutWidth(-0.5, T))} mm à 0,5 mm de profondeur, ${f3(cutWidth(-1, T))} mm à 1 mm, ${f3(cutWidth(-2, T))} mm à 2 mm. Utilisable en « Sur la ligne ».`;
+  $('#tName').value = T.name; $('#tD').value = T.d; $('#tF').value = T.feed; $('#tP').value = T.plunge; $('#tDoc').value = T.doc; $('#tSo').value = T.so;
+}
+function refreshShapes() {
+  const box = $('#shapeList');
+  if (!D) return;
+  const label = { outside: 'ext.', inside: 'int.', on: 'ligne', pocket: 'poche', none: '—' };
+  // mise à jour en place (reconstruire la liste ferait perdre le clic en cours)
+  if (box.dataset.design !== String(D.uid)) {
+    box.innerHTML = ''; box.dataset.design = String(D.uid);
+    for (const sh of D.shapes) {
+      const d = document.createElement('div'); d.innerHTML = '<span></span><small></small>'; d.firstChild.textContent = sh.name;
+      d.onclick = e => { const mod = e.shiftKey || e.ctrlKey || e.metaKey; if (!mod) sel.clear(); if (mod && sel.has(sh.id)) sel.delete(sh.id); else sel.add(sh.id); refreshShapes(); draw(); };
+      box.appendChild(d);
+    }
+  }
+  D.shapes.forEach((sh, k) => {
+    const d = box.children[k]; d.className = sel.has(sh.id) ? 'sel' : '';
+    const sm = d.lastChild; sm.style.color = OPCOL[sh.op]; sm.textContent = label[sh.op] + (sh.op !== 'none' ? ' · ' + sh.depth + ' mm' : '');
+  });
+  const ed = $('#selEdit');
+  if (!sel.size) { ed.classList.add('hide'); return; }
+  ed.classList.remove('hide');
+  const ss = D.shapes.filter(s => sel.has(s.id));
+  $('#selCount').textContent = ss.length === 1 ? ss[0].name : ss.length + ' formes sélectionnées';
+  const ops = new Set(ss.map(s => s.op)), deps = new Set(ss.map(s => s.depth));
+  $('#sOp').value = ops.size === 1 ? [...ops][0] : ''; $('#sDepth').value = deps.size === 1 ? [...deps][0] : '';
+}
+function refreshPlace() {
+  if (!D) { $('#dSize').textContent = ''; return; }
+  $('#pX').value = D.place.x; $('#pY').value = D.place.y; $('#pS').value = D.place.s;
+  const s = D.place.s / 100; $('#dSize').textContent = `${f3((D.bb.x1 - D.bb.x0) * s)} × ${f3((D.bb.y1 - D.bb.y0) * s)} mm`;
+}
+let camTimer = null;
+function invalidate() { clearTimeout(camTimer); camTimer = setTimeout(recompute, 120); refreshPlace(); draw(); }
+function recompute() {
+  if (job) return;
+  const warns = [];
+  try {
+    CAM = computeCAM(); warns.push(...CAM.warns);
+    G = CAM.groups.length ? buildGcode(CAM) : null;
+  } catch (e) { G = null; warns.push('Erreur de calcul : ' + e.message); console.error(e); }
+  if (D) {
+    const s = D.place.s / 100, x1 = D.place.x + (D.bb.x1 - D.bb.x0) * s, y1 = D.place.y + (D.bb.y1 - D.bb.y0) * s;
+    if (D.place.x < -1e-6 || D.place.y < -1e-6 || x1 > S.stock.w + 1e-6 || y1 > S.stock.h + 1e-6) warns.push('Le dessin dépasse du brut');
+  }
+  if (S.stock.w > S.machine.w || S.stock.h > S.machine.h) warns.push('Le brut dépasse la course de la machine');
+  $('#iTime').textContent = G ? fmtTime(G.time) : '—';
+  $('#iLines').textContent = G ? G.lines.length.toLocaleString('fr') : '—';
+  $('#iDepth').textContent = G ? f3(-G.zMin) + ' mm' : '—';
+  $('#warns').textContent = warns.length ? '⚠ ' + [...new Set(warns)].join(' · ') : '';
+  updateButtons(); draw();
+}
+function refreshAll() {
+  $('#stW').value = S.stock.w; $('#stH').value = S.stock.h; $('#stT').value = S.stock.t;
+  $('#tabOn').checked = S.tabs.on; $('#tabN').value = S.tabs.n; $('#tabW').value = S.tabs.w; $('#tabH').value = S.tabs.h;
+  $('#climb').value = S.climb ? '1' : '0'; $('#origin').value = S.origin;
+  refreshTools(); refreshShapes(); refreshPlace(); invalidate();
+}
+// matériau
+[['#stW', 'w'], ['#stH', 'h'], ['#stT', 't']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.stock[k]); if (v > 0) S.stock[k] = v; saveSettings(); invalidate(); }));
+// fraise
+$('#toolSel').addEventListener('change', e => { S.toolIdx = +e.target.value; saveSettings(); refreshTools(); invalidate(); });
+[['#tD', 'd'], ['#tF', 'feed'], ['#tP', 'plunge'], ['#tDoc', 'doc'], ['#tSo', 'so']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, tool()[k]); if (v > 0) tool()[k] = v; saveSettings(); invalidate(); }));
+$('#tType').addEventListener('change', e => { const T = tool(); T.type = e.target.value; if (T.type === 'v') { T.angle = T.angle || 60; T.tip = T.tip ?? 0.2; } saveSettings(); refreshTools(); invalidate(); });
+$('#tAng').addEventListener('change', e => { const v = num(e.target, tool().angle); if (v > 0 && v < 180) tool().angle = v; saveSettings(); refreshTools(); invalidate(); });
+$('#tTip').addEventListener('change', e => { const v = num(e.target, tool().tip); if (v >= 0) tool().tip = v; saveSettings(); refreshTools(); invalidate(); });
+$('#origin').addEventListener('change', e => { S.origin = e.target.value; saveSettings(); invalidate(); });
+$('#tName').addEventListener('change', e => { tool().name = e.target.value || 'Fraise'; saveSettings(); refreshTools(); });
+$('#bToolAdd').onclick = () => { const t = clone(tool()); t.name += ' (copie)'; S.tools.push(t); S.toolIdx = S.tools.length - 1; saveSettings(); refreshTools(); };
+$('#bToolDel').onclick = () => { if (S.tools.length < 2) return; S.tools.splice(S.toolIdx, 1); S.toolIdx = 0; saveSettings(); refreshTools(); invalidate(); };
+// placement
+[['#pX', 'x'], ['#pY', 'y'], ['#pS', 's']].forEach(([id, k]) => $(id).addEventListener('change', e => { if (!D) return; const v = num(e.target, D.place[k]); if (k !== 's' || v > 0) D.place[k] = v; invalidate(); }));
+$('#bCenter').onclick = () => { centerDesign(); invalidate(); };
+// formes
+$('#bSelAll').onclick = () => { if (!D) return; sel = new Set(D.shapes.map(s => s.id)); refreshShapes(); draw(); };
+$('#sOp').addEventListener('change', e => { if (!D || !e.target.value) return; for (const sh of D.shapes) if (sel.has(sh.id)) { if (!sh.closed && e.target.value !== 'on' && e.target.value !== 'none') continue; sh.op = e.target.value; } refreshShapes(); invalidate(); });
+$('#sDepth').addEventListener('change', e => { if (!D) return; const v = num(e.target, NaN); if (!(v >= 0)) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.depth = v; refreshShapes(); invalidate(); });
+$('#bThrough').onclick = () => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.depth = S.stock.t; refreshShapes(); invalidate(); };
+// attaches & sens
+$('#tabOn').addEventListener('change', e => { S.tabs.on = e.target.checked; saveSettings(); invalidate(); });
+[['#tabN', 'n'], ['#tabW', 'w'], ['#tabH', 'h']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.tabs[k]); if (v > 0) S.tabs[k] = v; saveSettings(); invalidate(); }));
+$('#climb').addEventListener('change', e => { S.climb = e.target.value === '1'; saveSettings(); invalidate(); });
+// vue
+$$('#viewbar [data-v]').forEach(b => b.onclick = () => { viewMode = b.dataset.v; $$('#viewbar [data-v]').forEach(x => x.classList.toggle('on', x === b)); draw(); });
+$('#bFit').onclick = fitView;
+// fichiers
+$('#bImport').onclick = () => $('#fSvg').click();
+$('#fSvg').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) openSvgFile(f); });
+async function openSvgFile(f) { try { loadDesign(await f.text(), f.name); } catch (err) { alert(err.message); } }
+$('#bSave').onclick = () => {
+  if (!D) return alert('Rien à enregistrer : importe d\'abord un SVG.');
+  const data = { app: 'atelier-cnc', v: 1, name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth })), stock: S.stock, tool: tool(), tabs: S.tabs, climb: S.climb, origin: S.origin };
+  download(D.name.replace(/\.svg$/i, '') + '.cnc.json', JSON.stringify(data), 'application/json');
+};
+$('#bOpen').onclick = () => $('#fProj').click();
+$('#fProj').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const p = JSON.parse(await f.text()); if (p.app !== 'atelier-cnc') throw new Error('Ce fichier n\'est pas un projet Atelier CNC.');
+    if (p.stock) S.stock = p.stock; if (p.origin) S.origin = p.origin; if (p.tabs) S.tabs = p.tabs; S.climb = !!p.climb;
+    if (p.tool) { let k = S.tools.findIndex(t => t.name === p.tool.name); if (k < 0) { S.tools.push(p.tool); k = S.tools.length - 1; } else S.tools[k] = p.tool; S.toolIdx = k; }
+    saveSettings(); loadDesign(p.svg, p.name, p);
+  } catch (err) { alert(err.message); }
+});
+function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+$('#bExport').onclick = () => { if (G) download((D ? D.name.replace(/\.svg$/i, '') : 'projet') + '.nc', G.lines.join('\n') + '\n', 'text/plain'); };
+// glisser-déposer
+const center = $('#center');
+center.addEventListener('dragover', e => { e.preventDefault(); $('#drop').style.display = 'flex'; });
+center.addEventListener('dragleave', e => { if (e.target === center || e.target === cv) $('#drop').style.display = 'none'; });
+center.addEventListener('drop', e => { e.preventDefault(); $('#drop').style.display = 'none'; const f = e.dataTransfer.files[0]; if (f) openSvgFile(f); });
+// réglages machine
+const MF = [['#mName', 'name', 's'], ['#mW', 'w'], ['#mH', 'h'], ['#mZ', 'z'], ['#mBaud', 'baud'], ['#mSafe', 'safeZ'], ['#mS', 'spindleS'], ['#mDwell', 'dwell'], ['#mRapid', 'rapid'], ['#mJog', 'jogFeed'], ['#mProbe', 'probeT'], ['#mProbeDist', 'probeDist']];
+$('#bMachine').onclick = () => { MF.forEach(([id, k]) => $(id).value = S.machine[k]); $('#dlgMachine').showModal(); };
+$('#mCancel').onclick = () => $('#dlgMachine').close();
+$('#mOk').onclick = () => { MF.forEach(([id, k, t]) => { if (t === 's') S.machine[k] = $(id).value; else { const v = parseFloat($(id).value); if (isFinite(v) && v >= 0) S.machine[k] = v; } }); saveSettings(); $('#dlgMachine').close(); invalidate(); };
+
+/* ====================== GRBL / Web Serial ====================== */
+const RX_BUF = 127;
+const ALARMS = { 1: 'fin de course matériel déclenché', 2: 'déplacement hors limites logicielles', 3: 'reset pendant un mouvement : position perdue, refais l\'origine', 4: 'sonde déjà en contact au départ', 5: 'la sonde n\'a pas touché la plaque', 6: 'homing interrompu', 7: 'porte ouverte pendant le homing', 8: 'homing : impossible de dégager le fin de course', 9: 'homing : fin de course introuvable' };
+const ERRORS = { 1: 'lettre de commande attendue', 2: 'valeur numérique invalide', 3: 'commande $ inconnue', 5: 'homing non activé ($22)', 8: 'commande refusée hors état Idle', 9: 'G-code verrouillé : alarme active (déverrouiller)', 10: 'limites logicielles sans homing', 15: 'jog hors limites', 16: 'commande de jog invalide', 20: 'commande G-code non supportée', 22: 'avance F non définie', 33: 'cible de mouvement invalide', 36: 'mots G-code inutilisés' };
+const machine = { port: null, writer: null, reader: null, state: null, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
+function log(text, cls) { const el = $('#log'), d = document.createElement('div'); if (cls) d.className = cls; d.textContent = text; el.appendChild(d); while (el.childNodes.length > 400) el.firstChild.remove(); el.scrollTop = el.scrollHeight; }
+const enc = new TextEncoder();
+function writeRaw(data) { if (!machine.writer) return; const bytes = typeof data === 'string' ? enc.encode(data) : data; machine.wchain = machine.wchain.then(() => machine.writer.write(bytes)).catch(e => log('Écriture impossible : ' + e.message, 'err')); }
+function rt(byte) { writeRaw(new Uint8Array([byte])); }
+function cleanLine(l) { return l.replace(/\(.*?\)/g, '').replace(/;.*$/, '').trim().toUpperCase(); }
+function sendLines(lines, meta) { for (const l of lines) { const c = cleanLine(l); if (c) machine.queue.push({ line: c, meta, echo: !meta }); } pump(); }
+function pump() {
+  while (machine.queue.length) {
+    const q = machine.queue[0], len = q.line.length + 1;
+    if (machine.used + len > RX_BUF && machine.inflight.length) break;
+    machine.queue.shift(); machine.inflight.push({ len, q }); machine.used += len;
+    if (q.echo) log('> ' + q.line, 'tx');
+    writeRaw(q.line + '\n');
+  }
+}
+function onAck(err) {
+  const it = machine.inflight.shift(); if (it) machine.used -= it.len;
+  if (err) {
+    const code = +err; log(`error:${err} — ${ERRORS[code] || 'erreur GRBL'}${it ? ' (' + it.q.line + ')' : ''}`, 'err');
+    if (job && it && it.q.meta === 'job') { abortJob('Erreur GRBL ' + err + ' sur la ligne « ' + it.q.line + ' »'); return; }
+    machine.queue = machine.queue.filter(q => q.meta === 'job');
+  }
+  if (job && it && it.q.meta === 'job') { job.acked++; feedJob(); }
+  pump();
+}
+function feedJob() {
+  if (!job) return;
+  const inQ = machine.queue.length;
+  while (job.next < job.lines.length && machine.queue.length - inQ < 200 && machine.queue.length < 400) { const c = cleanLine(job.lines[job.next++]); if (c) machine.queue.push({ line: c, meta: 'job' }); else job.acked++; }
+  updateJobUI();
+}
+function parseStatus(s) {
+  const parts = s.slice(1, -1).split('|'); machine.state = parts[0].split(':')[0];
+  for (const p of parts.slice(1)) {
+    const [k, v] = p.split(':'); const a = (v || '').split(',').map(Number);
+    if (k === 'MPos') machine.mpos = a; else if (k === 'WPos') machine.wpos = a; else if (k === 'WCO') machine.wco = a; else if (k === 'Ov') machine.ov = a;
+  }
+  if (parts.some(p => p.startsWith('MPos'))) machine.wpos = machine.mpos.map((v, k) => v - (machine.wco[k] || 0));
+  else if (machine.wpos) machine.mpos = machine.wpos.map((v, k) => v + (machine.wco[k] || 0));
+  const st = $('#state'); st.textContent = { Idle: 'Prête', Run: 'En cours', Hold: 'Pause', Jog: 'Jog', Alarm: 'Alarme', Door: 'Porte', Check: 'Test', Home: 'Homing', Sleep: 'Veille' }[machine.state] || machine.state; st.className = 'tag ' + machine.state;
+  if (machine.wpos) { $('#wx').textContent = machine.wpos[0].toFixed(2); $('#wy').textContent = machine.wpos[1].toFixed(2); $('#wz').textContent = machine.wpos[2].toFixed(2); }
+  $('#ovF').textContent = ' ' + machine.ov[0] + ' %';
+  if (machine.state === 'Idle') { const cbs = machine.onIdle.splice(0); cbs.forEach(f => f()); }
+  if (job && job.acked >= job.total && machine.state === 'Idle' && !machine.inflight.length) finishJob();
+  updateButtons(); if (machine.port) draw();
+}
+function handleLine(l) {
+  if (!l) return;
+  if (l[0] === '<') return parseStatus(l);
+  if (l === 'ok') return onAck(null);
+  if (l.startsWith('error:')) return onAck(l.slice(6));
+  if (l.startsWith('ALARM:')) { const c = +l.slice(6); log(`ALARME ${c} — ${ALARMS[c] || ''}`, 'err'); if (job) abortJob('Alarme ' + c + ' : ' + (ALARMS[c] || '')); return; }
+  if (/^Grbl/i.test(l)) { machine.queue = []; machine.inflight = []; machine.used = 0; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); return; }
+  if (l.startsWith('[PRB:')) { log(l, 'msg'); return; }
+  log(l, l.startsWith('[MSG') ? 'msg' : '');
+}
+async function readLoop() {
+  const dec = new TextDecoder(); let buf = '';
+  try {
+    while (machine.port && machine.port.readable) {
+      machine.reader = machine.port.readable.getReader();
+      try {
+        while (true) {
+          const { value, done } = await machine.reader.read(); if (done) break;
+          buf += dec.decode(value, { stream: true }); let k;
+          while ((k = buf.indexOf('\n')) >= 0) { handleLine(buf.slice(0, k).trim()); buf = buf.slice(k + 1); }
+        }
+      } finally { machine.reader.releaseLock(); }
+      if (!machine.port) break;
+    }
+  } catch (e) { if (machine.port) log('Lecture interrompue : ' + e.message, 'err'); }
+}
+async function connect() {
+  if (machine.port) return disconnect();
+  if (!('serial' in navigator)) return alert('Web Serial indisponible : ouvre la page dans Chrome ou Edge, via http://localhost.');
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: +S.machine.baud || 115200 });
+    machine.port = port; machine.writer = port.writable.getWriter(); machine.queue = []; machine.inflight = []; machine.used = 0;
+    log('Port ouvert à ' + S.machine.baud + ' bauds.', 'msg');
+    readLoop();
+    setTimeout(() => { writeRaw('\r\n\r\n'); rt(0x3f); }, 1500);
+    machine.poll = setInterval(() => rt(0x3f), 250);
+    $('#bConnect').textContent = 'Déconnecter'; $('#bConnect').classList.remove('pri');
+  } catch (e) { if (e.name !== 'NotFoundError') { log('Connexion impossible : ' + e.message, 'err'); alert('Connexion impossible : ' + e.message); } }
+}
+async function disconnect() {
+  if (job) { if (!confirm('Une gravure est en cours. Arrêter et déconnecter ?')) return; stopJob(); }
+  clearInterval(machine.poll); const port = machine.port; machine.port = null;
+  try { await machine.wchain; } catch (e) {}
+  try { await machine.reader?.cancel(); } catch (e) {}
+  try { machine.writer?.releaseLock(); } catch (e) {}
+  try { await port?.close(); } catch (e) {}
+  Object.assign(machine, { writer: null, reader: null, state: null, wpos: null, queue: [], inflight: [], used: 0 });
+  $('#state').textContent = 'déconnectée'; $('#state').className = 'tag off';
+  ['#wx', '#wy', '#wz'].forEach(id => $(id).textContent = '—');
+  $('#bConnect').textContent = 'Connecter (USB)'; $('#bConnect').classList.add('pri');
+  updateButtons(); draw();
+}
+if ('serial' in navigator) navigator.serial.addEventListener('disconnect', e => { if (machine.port && e.target === machine.port) { log('La machine a été débranchée.', 'err'); disconnect(); } });
+else $('#serialBanner').style.display = 'block';
+$('#bConnect').onclick = connect;
+$('#bUnlock').onclick = () => sendLines(['$X']);
+$('#bHome').onclick = () => sendLines(['$H']);
+let jogStep = 1;
+$$('#steps button').forEach(b => b.onclick = () => { jogStep = +b.dataset.s; $$('#steps button').forEach(x => x.classList.toggle('on', x === b)); });
+function jog(axis, dir) { if (!machine.port || job) return; const f = axis === 'Z' ? Math.min(S.machine.jogFeed, 500) : S.machine.jogFeed; sendLines([`$J=G91 G21 ${axis}${f3(dir * jogStep)} F${Math.round(f)}`], 'jog'); }
+$$('[data-jog]').forEach(b => b.onclick = () => jog(b.dataset.jog[0], b.dataset.jog[1] === '+' ? 1 : -1));
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,select,textarea') || !machine.port || job || document.querySelector('dialog[open]')) return;
+  const map = { ArrowLeft: ['X', -1], ArrowRight: ['X', 1], ArrowUp: ['Y', 1], ArrowDown: ['Y', -1], PageUp: ['Z', 1], PageDown: ['Z', -1] };
+  if (map[e.key]) { e.preventDefault(); jog(...map[e.key]); }
+});
+$$('[data-zero]').forEach(b => b.onclick = () => sendLines([`G10 L20 P1 ${b.dataset.zero}0`]));
+$('#bZeroXY').onclick = () => sendLines(['G10 L20 P1 X0 Y0']);
+$('#bGoZero').onclick = () => { const z = machine.wpos && machine.wpos[2] < S.machine.safeZ ? [`G90 G0 Z${f3(S.machine.safeZ)}`] : []; sendLines([...z, 'G90 G0 X0 Y0']); };
+$('#bProbe').onclick = () => {
+  if (!confirm(`Place la plaque de sonde sous la fraise et connecte la pince.\nLa fraise va descendre lentement jusqu'à ${S.machine.probeDist} mm.\n\nÉpaisseur de plaque utilisée : ${S.machine.probeT} mm.`)) return;
+  sendLines(['G91', `G38.2 Z-${f3(S.machine.probeDist)} F80`, 'G90', `G10 L20 P1 Z${f3(S.machine.probeT)}`, 'G91', 'G0 Z5', 'G90']);
+  log('Sonde lancée. Pense à retirer la plaque une fois terminé.', 'msg');
+};
+$('#bSend').onclick = () => { const v = $('#cmd').value.trim(); if (!v || !machine.port) return; if (v === '?') rt(0x3f); else sendLines([v]); $('#cmd').value = ''; };
+$('#cmd').addEventListener('keydown', e => { if (e.key === 'Enter') $('#bSend').click(); });
+$$('[data-ov]').forEach(b => b.onclick = () => rt({ reset: 0x90, inc: 0x91, dec: 0x92 }[b.dataset.ov]));
+
+/* ====================== Gravure ====================== */
+function updateButtons() {
+  const ready = machine.port && machine.state === 'Idle' && !job;
+  $('#bCarve').disabled = !(G && ready);
+  $('#bExport').disabled = !G;
+  ['#bUnlock', '#bHome', '#bZeroXY', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
+  $('#bUnlock').disabled = !machine.port || (!!job && machine.state !== 'Alarm');
+  $$('[data-jog],[data-zero]').forEach(b => b.disabled = !machine.port || !!job);
+  $('#bCarve').title = !G ? 'Rien à graver' : !machine.port ? 'Connecte la machine' : machine.state !== 'Idle' ? 'La machine doit être prête (Idle)' : '';
+}
+$('#bCarve').onclick = () => {
+  if (!G) return;
+  const T = tool(), warns = $('#warns').textContent;
+  $('#cSummary').innerHTML = `Durée estimée <b>${fmtTime(G.time)}</b> · profondeur max <b>${f3(-G.zMin)} mm</b> · ${G.lines.length.toLocaleString('fr')} lignes`;
+  $('#cWarn').textContent = warns; $('#cTool').textContent = `La fraise « ${T.name} » (${isV(T) ? 'en V ' + T.angle + '°' : 'Ø ' + T.d + ' mm'}) est installée.`;
+  $('#cOrigin').textContent = S.origin === 'center' ? 'Le zéro X/Y est placé au centre du brut.' : 'Le zéro X/Y est placé au coin avant-gauche du brut.';
+  $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').disabled = true;
+  $('#dlgCarve').showModal();
+};
+$$('#dlgCarve input[type=checkbox]').forEach(c => c.addEventListener('change', () => { $('#cGo').disabled = !$$('#dlgCarve input[type=checkbox]').every(x => x.checked); }));
+$('#cCancel').onclick = () => $('#dlgCarve').close();
+$('#cGo').onclick = () => { $('#dlgCarve').close(); startJob(); };
+function startJob() {
+  if (!G || !machine.port || machine.state !== 'Idle') return;
+  job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), paused: false };
+  $('#job').classList.remove('hide'); $('#bPause').textContent = 'Pause';
+  log('Gravure lancée (' + job.total + ' lignes).', 'msg');
+  feedJob(); pump(); updateButtons();
+}
+function updateJobUI() {
+  if (!job) return;
+  const p = job.total ? job.acked / job.total : 0;
+  $('#pBar').style.width = (p * 100).toFixed(1) + '%';
+  $('#pTxt').textContent = `${job.acked.toLocaleString('fr')} / ${job.total.toLocaleString('fr')} lignes (${(p * 100).toFixed(0)} %)`;
+  const el = (Date.now() - job.t0) / 1000; $('#pTime').textContent = fmtTime(el) + (p > 0.03 ? ' · reste ~' + fmtTime(el / p * (1 - p)) : '');
+}
+setInterval(() => { if (job) { updateJobUI(); } }, 1000);
+$('#bPause').onclick = () => { if (!job) return; job.paused = !job.paused; rt(job.paused ? 0x21 : 0x7e); $('#bPause').textContent = job.paused ? 'Reprendre' : 'Pause'; };
+$('#bStop').onclick = () => { if (job && confirm('Arrêter la gravure maintenant ?')) stopJob(); };
+function stopJob() {
+  machine.queue = []; rt(0x21);
+  setTimeout(() => { rt(0x18); machine.inflight = []; machine.used = 0; }, 300);
+  endJob('Gravure arrêtée. Si la machine passe en alarme, clique « Déverrouiller » puis vérifie les zéros avant de relancer.');
+}
+function abortJob(why) { machine.queue = []; rt(0x21); endJob('Gravure interrompue : ' + why + ' La machine est en pause ; utilise « Arrêter » ou un reset si besoin.', true); }
+function finishJob() { endJob('Gravure terminée en ' + fmtTime((Date.now() - job.t0) / 1000) + '.'); }
+function endJob(msg, keepHold) {
+  if (!job) return; job = null; log(msg, 'msg');
+  $('#job').classList.add('hide'); updateButtons(); recompute();
+  if (keepHold) alert(msg);
+}
+window.addEventListener('beforeunload', e => { if (job) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ====================== Démarrage ====================== */
+new ResizeObserver(resize).observe(cv);
+refreshAll(); updateButtons();
+setTimeout(fitView, 0);
+log('Atelier CNC prêt. Importe un SVG, choisis les usinages, puis connecte la machine.', 'msg');
+window.__atelier = { get G() { return G; }, get D() { return D; }, get job() { return job; }, machine, S, loadDesign, recompute };
+</script>
+</body>
+</html>

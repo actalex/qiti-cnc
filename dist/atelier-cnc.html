@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier CNC</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#f4f2ee;--panel:#fff;--line:#e2ded6;--txt:#22201c;--mut:#7a746a;--acc:#1f6feb;--ok:#2e8b57;--warn:#c77700;--err:#c0392b;--wood:#e8d2a8}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font:13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--txt);background:var(--bg)}
+header{height:46px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#22201c;color:#fff}
+header h1{font-size:15px;margin:0 12px 0 0;font-weight:600;letter-spacing:.3px}
+header .sp{flex:1}
+main{display:grid;grid-template-columns:290px 1fr 300px;height:calc(100% - 46px)}
+aside{background:var(--panel);overflow:auto;border-right:1px solid var(--line)}
+aside#right{border-right:0;border-left:1px solid var(--line);display:flex;flex-direction:column}
+section.box{padding:10px 12px;border-bottom:1px solid var(--line)}
+section.box h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 8px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.row{display:flex;gap:6px;align-items:center;margin:4px 0}
+.row label{flex:1;color:var(--mut)}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.grid3 label{display:block;color:var(--mut);font-size:11px}
+input[type=number],input[type=text],select{width:100%;padding:4px 6px;border:1px solid var(--line);border-radius:5px;font:inherit;background:#fff}
+.row input[type=number]{width:84px}
+button{font:inherit;padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;color:var(--txt)}
+button:hover:not(:disabled){border-color:#bbb;background:#faf9f7}
+button:disabled{opacity:.45;cursor:default}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.pri:hover:not(:disabled){background:#1a5fd0}
+button.big{width:100%;padding:10px;font-size:15px;font-weight:600}
+button.danger{background:var(--err);border-color:var(--err);color:#fff}
+header button{background:#3a3731;border-color:#4a463f;color:#fff}
+header button:hover:not(:disabled){background:#4a463f;border-color:#5a564e}
+#center{position:relative;overflow:hidden}
+#cv{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+#viewbar{position:absolute;top:10px;left:10px;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:3px}
+#viewbar button{border:0}
+#viewbar button.on{background:#22201c;color:#fff}
+#info{position:absolute;bottom:10px;left:10px;right:10px;display:flex;gap:14px;flex-wrap:wrap;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
+#info b{font-weight:600}
+#warns{color:var(--warn)}
+#drop{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(31,111,235,.12);border:3px dashed var(--acc);font-size:18px;color:var(--acc);pointer-events:none}
+.shapes{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+.shapes div{padding:3px 7px;cursor:pointer;display:flex;justify-content:space-between;gap:6px;border-bottom:1px solid #f0ede7}
+.shapes div:last-child{border-bottom:0}
+.shapes div.sel{background:#e8f0fe}
+.shapes small{color:var(--mut);white-space:nowrap}
+.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;background:#ddd}
+.tag.Idle{background:#d4f0dd;color:#1d6b3c}.tag.Run,.tag.Jog,.tag.Home{background:#dbe8ff;color:#1f4fb0}
+.tag.Hold,.tag.Door{background:#ffe9c7;color:#8a5200}.tag.Alarm{background:#ffd6d1;color:#a02a1c}
+.tag.off{background:#e6e3dd;color:#7a746a}
+.dro{display:grid;grid-template-columns:auto 1fr auto;gap:2px 8px;align-items:center;font-variant-numeric:tabular-nums}
+.dro .v{font:600 18px/1.2 ui-monospace,Menlo,Consolas,monospace;text-align:right}
+.dro button{padding:2px 7px;font-size:11px}
+.jog{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:6px}
+.jog button{padding:8px 0;font-weight:600}
+.steps{display:flex;gap:3px;margin-top:6px}
+.steps button{flex:1;padding:3px 0;font-size:11px}
+.steps button.on{background:#22201c;color:#fff;border-color:#22201c}
+#console{flex:1;min-height:120px;display:flex;flex-direction:column}
+#log{flex:1;overflow:auto;font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;background:#1d1b18;color:#d8d3c8;padding:6px;border-radius:6px;min-height:90px;white-space:pre-wrap;word-break:break-all}
+#log .tx{color:#8ab4f8}#log .err{color:#ff8a80}#log .msg{color:#ffd180}
+.prog{height:8px;background:#eee;border-radius:4px;overflow:hidden}
+.prog i{display:block;height:100%;width:0;background:var(--ok);transition:width .2s}
+dialog{border:0;border-radius:10px;padding:0;box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:520px;width:92vw}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+dialog .hd{padding:12px 16px;border-bottom:1px solid var(--line);font-weight:600;font-size:15px}
+dialog .bd{padding:12px 16px;max-height:65vh;overflow:auto}
+dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+.check{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #f0ede7}
+.check input{margin-top:2px}
+.note{color:var(--mut);font-size:12px}
+.banner{background:#fff3cd;color:#7a5a00;padding:8px 12px;border-bottom:1px solid #f0d78c;display:none}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>Atelier CNC</h1>
+  <button id="bImport">Importer un SVG</button>
+  <button id="bOpen">Ouvrir un projet</button>
+  <button id="bSave">Enregistrer le projet</button>
+  <span class="sp"></span>
+  <span id="designName" style="opacity:.75"></span>
+  <button id="bMachine" title="Réglages de la machine">⚙ Machine</button>
+  <input type="file" id="fSvg" accept=".svg,image/svg+xml" class="hide">
+  <input type="file" id="fProj" accept=".json,application/json" class="hide">
+</header>
+<main>
+<aside id="left">
+  <div class="banner" id="serialBanner">La connexion USB (Web Serial) n'est disponible que dans Chrome ou Edge, avec la page servie en <b>http://localhost</b>. La FAO et l'export du G-code fonctionnent partout.</div>
+  <section class="box">
+    <h2>Matériau</h2>
+    <div class="grid3">
+      <div><label>Largeur X</label><input type="number" id="stW" step="1" min="1"></div>
+      <div><label>Hauteur Y</label><input type="number" id="stH" step="1" min="1"></div>
+      <div><label>Épaisseur</label><input type="number" id="stT" step="0.1" min="0.1"></div>
+    </div>
+    <div class="row" style="margin-top:6px"><label>Origine X0 Y0</label>
+      <select id="origin" style="width:150px"><option value="corner">Coin avant-gauche</option><option value="center">Centre du brut</option></select></div>
+    <div class="note">mm — Z0 sur le dessus du brut.</div>
+  </section>
+  <section class="box">
+    <h2>Fraise <span><button id="bToolAdd" title="Dupliquer la fraise">+</button> <button id="bToolDel" title="Supprimer la fraise">−</button></span></h2>
+    <select id="toolSel"></select>
+    <div class="row"><label>Nom</label><input type="text" id="tName" style="width:150px"></div>
+    <div class="row"><label>Type</label><select id="tType" style="width:150px"><option value="flat">Plate</option><option value="v">En V (pointue)</option></select></div>
+    <div class="row"><label id="lD">Diamètre (mm)</label><input type="number" id="tD" step="0.05" min="0.1"></div>
+    <div class="row vonly"><label>Angle (°)</label><input type="number" id="tAng" step="5" min="5" max="170"></div>
+    <div class="row vonly"><label>Diamètre de pointe (mm)</label><input type="number" id="tTip" step="0.05" min="0"></div>
+    <div class="row"><label>Avance (mm/min)</label><input type="number" id="tF" step="10" min="1"></div>
+    <div class="row"><label>Plongée (mm/min)</label><input type="number" id="tP" step="10" min="1"></div>
+    <div class="row"><label>Prof. par passe (mm)</label><input type="number" id="tDoc" step="0.1" min="0.05"></div>
+    <div class="row flatonly"><label>Recouvrement poche (%)</label><input type="number" id="tSo" step="5" min="5" max="95"></div>
+    <div class="note vonly" id="vNote"></div>
+  </section>
+  <section class="box">
+    <h2>Placement du dessin</h2>
+    <div class="grid3">
+      <div><label>X (mm)</label><input type="number" id="pX" step="0.5"></div>
+      <div><label>Y (mm)</label><input type="number" id="pY" step="0.5"></div>
+      <div><label>Échelle %</label><input type="number" id="pS" step="1" min="1"></div>
+    </div>
+    <div class="row" style="margin-top:6px"><button id="bCenter">Centrer sur le brut</button><span id="dSize" class="note"></span></div>
+  </section>
+  <section class="box">
+    <h2>Formes <button id="bSelAll">Tout sélectionner</button></h2>
+    <div class="shapes" id="shapeList"><div class="note" style="cursor:default">Importe un SVG (ou glisse-le sur la zone de travail).</div></div>
+    <div id="selEdit" class="hide" style="margin-top:8px">
+      <div class="note" id="selCount"></div>
+      <div class="row"><label>Usinage</label>
+        <select id="sOp" style="width:160px">
+          <option value="outside">Contour extérieur</option>
+          <option value="inside">Contour intérieur</option>
+          <option value="on">Sur la ligne</option>
+          <option value="pocket">Poche (remplissage)</option>
+          <option value="none">Ne pas usiner</option>
+        </select></div>
+      <div class="row"><label>Profondeur (mm)</label><input type="number" id="sDepth" step="0.1" min="0"></div>
+      <div class="row"><button id="bThrough">= épaisseur (découpe traversante)</button></div>
+    </div>
+  </section>
+  <section class="box">
+    <h2>Attaches</h2>
+    <div class="row"><label><input type="checkbox" id="tabOn"> Ajouter des attaches aux découpes traversantes</label></div>
+    <div class="grid3">
+      <div><label>Nombre</label><input type="number" id="tabN" step="1" min="1"></div>
+      <div><label>Largeur</label><input type="number" id="tabW" step="0.5" min="0.5"></div>
+      <div><label>Hauteur</label><input type="number" id="tabH" step="0.1" min="0.1"></div>
+    </div>
+  </section>
+  <section class="box">
+    <div class="row"><label>Sens de fraisage</label>
+      <select id="climb" style="width:150px"><option value="0">Conventionnel</option><option value="1">En avalant</option></select></div>
+    <div class="note">Conventionnel : plus sûr sur une machine légère comme la TTC450.</div>
+  </section>
+</aside>
+
+<section id="center">
+  <canvas id="cv"></canvas>
+  <div id="viewbar">
+    <button data-v="design" class="on">Dessin</button>
+    <button data-v="carve">Aperçu fraisage</button>
+    <button data-v="paths">Trajectoires</button>
+    <button id="bFit" title="Recadrer">⤢</button>
+  </div>
+  <div id="info">
+    <span>Temps estimé : <b id="iTime">—</b></span>
+    <span>Lignes G-code : <b id="iLines">—</b></span>
+    <span>Prof. max : <b id="iDepth">—</b></span>
+    <span id="warns"></span>
+  </div>
+  <div id="drop">Dépose ton fichier SVG</div>
+</section>
+
+<aside id="right">
+  <section class="box">
+    <h2>Machine <span class="tag off" id="state">déconnectée</span></h2>
+    <div class="row">
+      <button id="bConnect" class="pri" style="flex:1">Connecter (USB)</button>
+      <button id="bUnlock" title="$X">Déverrouiller</button>
+      <button id="bHome" title="$H — nécessite les fins de course">Origine</button>
+    </div>
+    <div class="dro" style="margin-top:8px">
+      <span>X</span><span class="v" id="wx">—</span><button data-zero="X">X=0</button>
+      <span>Y</span><span class="v" id="wy">—</span><button data-zero="Y">Y=0</button>
+      <span>Z</span><span class="v" id="wz">—</span><button data-zero="Z">Z=0</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <button id="bZeroXY" style="flex:1">Zéro XY ici</button>
+      <button id="bGoZero" style="flex:1">Aller à X0 Y0</button>
+    </div>
+    <div class="row"><button id="bProbe" style="flex:1">Sonde Z (plaque de contact)</button></div>
+    <div class="jog">
+      <span></span><button data-jog="Y+">Y+</button><span></span><button data-jog="Z+">Z+</button>
+      <button data-jog="X-">X−</button><button data-jog="Y-">Y−</button><button data-jog="X+">X+</button><button data-jog="Z-">Z−</button>
+    </div>
+    <div class="steps" id="steps">
+      <button data-s="0.1">0,1</button><button data-s="1" class="on">1</button><button data-s="5">5</button><button data-s="10">10</button><button data-s="50">50</button>
+    </div>
+    <div class="note" style="margin-top:4px">Pas de déplacement (mm). Clavier : flèches = XY, PgUp/PgDn = Z.</div>
+  </section>
+  <section class="box">
+    <h2>Gravure</h2>
+    <button id="bCarve" class="pri big" disabled>Graver</button>
+    <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button></div>
+    <div id="job" class="hide">
+      <div class="prog"><i id="pBar"></i></div>
+      <div class="row note"><span id="pTxt" style="flex:1"></span><span id="pTime"></span></div>
+      <div class="row">
+        <button id="bPause" style="flex:1">Pause</button>
+        <button id="bStop" class="danger" style="flex:1">Arrêter</button>
+      </div>
+      <div class="row note">Avance <button data-ov="dec">−10%</button><button data-ov="reset">100%</button><button data-ov="inc">+10%</button><span id="ovF"></span></div>
+    </div>
+  </section>
+  <section class="box" id="console">
+    <h2>Console</h2>
+    <div id="log"></div>
+    <div class="row"><input type="text" id="cmd" placeholder="Commande GRBL ($$, $I, G0 X10…)"><button id="bSend">Envoyer</button></div>
+  </section>
+</aside>
+</main>
+
+<dialog id="dlgMachine">
+  <div class="hd">Réglages de la machine</div>
+  <div class="bd">
+    <div class="row"><label>Nom</label><input type="text" id="mName" style="width:220px"></div>
+    <div class="row"><label>Course X / Y / Z (mm)</label><input type="number" id="mW"><input type="number" id="mH"><input type="number" id="mZ"></div>
+    <div class="row"><label>Vitesse série (bauds)</label><select id="mBaud" style="width:120px"><option>115200</option><option>250000</option><option>57600</option><option>9600</option></select></div>
+    <div class="row"><label>Hauteur de dégagement Z (mm)</label><input type="number" id="mSafe" step="0.5"></div>
+    <div class="row"><label>Broche : valeur S (= $30)</label><input type="number" id="mS" step="100"></div>
+    <div class="row"><label>Temporisation démarrage broche (s)</label><input type="number" id="mDwell" step="0.5" min="0"></div>
+    <div class="row"><label>Vitesse rapide pour l'estimation (mm/min)</label><input type="number" id="mRapid" step="100"></div>
+    <div class="row"><label>Vitesse de jog (mm/min)</label><input type="number" id="mJog" step="100"></div>
+    <div class="row"><label>Épaisseur de la plaque de sonde (mm)</label><input type="number" id="mProbe" step="0.05"></div>
+    <div class="row"><label>Course max de la sonde (mm)</label><input type="number" id="mProbeDist" step="1"></div>
+    <p class="note">Mesure l'épaisseur de ta plaque au pied à coulisse. Avec 0, le zéro Z sera placé au contact de la plaque.</p>
+  </div>
+  <div class="ft"><button id="mCancel">Annuler</button><button id="mOk" class="pri">Enregistrer</button></div>
+</dialog>
+
+<dialog id="dlgCarve">
+  <div class="hd">Avant de lancer la gravure</div>
+  <div class="bd">
+    <div id="cSummary" class="note" style="margin-bottom:8px"></div>
+    <div id="cWarn" style="color:var(--warn);margin-bottom:8px"></div>
+    <label class="check"><input type="checkbox"> <span>Le matériau est fixé solidement sur la table.</span></label>
+    <label class="check"><input type="checkbox"> <span id="cTool">La bonne fraise est installée.</span></label>
+    <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
+    <label class="check"><input type="checkbox"> <span>Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).</span></label>
+    <label class="check"><input type="checkbox"> <span>Lunettes, protection auditive et aspiration en place.</span></label>
+  </div>
+  <div class="ft"><button id="cCancel">Annuler</button><button id="cGo" class="pri" disabled>Lancer la gravure</button></div>
+</dialog>
+
+<script>/* Clipper 6.4.2 — (c) Angus Johnson 2010-2017 — Boost Software License 1.0 — http://www.angusj.com */
+!function(){"use strict";var t,e={version:"6.4.2.2",use_lines:!0,use_xyz:!1},i=!1;if("undefined"!=typeof module&&module.exports?(module.exports=e,i=!0):("function"==typeof define&&define.amd&&define(e),"undefined"!=typeof document?window.ClipperLib=e:self.ClipperLib=e),i){n="chrome";t="Netscape"}else{var n=navigator.userAgent.toString().toLowerCase();t=navigator.appName}var o,r={};-1!=n.indexOf("chrome")&&-1==n.indexOf("chromium")?r.chrome=1:r.chrome=0,-1!=n.indexOf("chromium")?r.chromium=1:r.chromium=0,-1!=n.indexOf("safari")&&-1==n.indexOf("chrome")&&-1==n.indexOf("chromium")?r.safari=1:r.safari=0,-1!=n.indexOf("firefox")?r.firefox=1:r.firefox=0,-1!=n.indexOf("firefox/17")?r.firefox17=1:r.firefox17=0,-1!=n.indexOf("firefox/15")?r.firefox15=1:r.firefox15=0,-1!=n.indexOf("firefox/3")?r.firefox3=1:r.firefox3=0,-1!=n.indexOf("opera")?r.opera=1:r.opera=0,-1!=n.indexOf("msie 10")?r.msie10=1:r.msie10=0,-1!=n.indexOf("msie 9")?r.msie9=1:r.msie9=0,-1!=n.indexOf("msie 8")?r.msie8=1:r.msie8=0,-1!=n.indexOf("msie 7")?r.msie7=1:r.msie7=0,-1!=n.indexOf("msie ")?r.msie=1:r.msie=0,e.biginteger_used=null;function s(t,i,n){e.biginteger_used=1,null!=t&&("number"==typeof t&&void 0===i?this.fromInt(t):"number"==typeof t?this.fromNumber(t,i,n):null==i&&"string"!=typeof t?this.fromString(t,256):this.fromString(t,i))}function l(){return new s(null,void 0,void 0)}"Microsoft Internet Explorer"==t?(s.prototype.am=function(t,e,i,n,o,r){for(var s=32767&e,l=e>>15;--r>=0;){var p=32767&this[t],u=this[t++]>>15,h=l*p+u*s;o=((p=s*p+((32767&h)<<15)+i[n]+(1073741823&o))>>>30)+(h>>>15)+l*u+(o>>>30),i[n++]=1073741823&p}return o},o=30):"Netscape"!=t?(s.prototype.am=function(t,e,i,n,o,r){for(;--r>=0;){var s=e*this[t++]+i[n]+o;o=Math.floor(s/67108864),i[n++]=67108863&s}return o},o=26):(s.prototype.am=function(t,e,i,n,o,r){for(var s=16383&e,l=e>>14;--r>=0;){var p=16383&this[t],u=this[t++]>>14,h=l*p+u*s;o=((p=s*p+((16383&h)<<14)+i[n]+o)>>28)+(h>>14)+l*u,i[n++]=268435455&p}return o},o=28),s.prototype.DB=o,s.prototype.DM=(1<<o)-1,s.prototype.DV=1<<o;s.prototype.FV=Math.pow(2,52),s.prototype.F1=52-o,s.prototype.F2=2*o-52;var p,u,h=new Array;for(p="0".charCodeAt(0),u=0;u<=9;++u)h[p++]=u;for(p="a".charCodeAt(0),u=10;u<36;++u)h[p++]=u;for(p="A".charCodeAt(0),u=10;u<36;++u)h[p++]=u;function a(t){return"0123456789abcdefghijklmnopqrstuvwxyz".charAt(t)}function f(t,e){var i=h[t.charCodeAt(e)];return null==i?-1:i}function d(t){var e=l();return e.fromInt(t),e}function P(t){var e,i=1;return 0!=(e=t>>>16)&&(t=e,i+=16),0!=(e=t>>8)&&(t=e,i+=8),0!=(e=t>>4)&&(t=e,i+=4),0!=(e=t>>2)&&(t=e,i+=2),0!=(e=t>>1)&&(t=e,i+=1),i}function m(t){this.m=t}function y(t){this.m=t,this.mp=t.invDigit(),this.mpl=32767&this.mp,this.mph=this.mp>>15,this.um=(1<<t.DB-15)-1,this.mt2=2*t.t}function c(t,e){return t&e}function v(t,e){return t|e}function C(t,e){return t^e}function I(t,e){return t&~e}function x(t){if(0==t)return-1;var e=0;return 65535&t||(t>>=16,e+=16),255&t||(t>>=8,e+=8),15&t||(t>>=4,e+=4),3&t||(t>>=2,e+=2),1&t||++e,e}function _(t){for(var e=0;0!=t;)t&=t-1,++e;return e}function L(){}function E(t){return t}function T(t){this.r2=l(),this.q3=l(),s.ONE.dlShiftTo(2*t.t,this.r2),this.mu=this.r2.divide(t),this.m=t}m.prototype.convert=function(t){return t.s<0||t.compareTo(this.m)>=0?t.mod(this.m):t},m.prototype.revert=function(t){return t},m.prototype.reduce=function(t){t.divRemTo(this.m,null,t)},m.prototype.mulTo=function(t,e,i){t.multiplyTo(e,i),this.reduce(i)},m.prototype.sqrTo=function(t,e){t.squareTo(e),this.reduce(e)},y.prototype.convert=function(t){var e=l();return t.abs().dlShiftTo(this.m.t,e),e.divRemTo(this.m,null,e),t.s<0&&e.compareTo(s.ZERO)>0&&this.m.subTo(e,e),e},y.prototype.revert=function(t){var e=l();return t.copyTo(e),this.reduce(e),e},y.prototype.reduce=function(t){for(;t.t<=this.mt2;)t[t.t++]=0;for(var e=0;e<this.m.t;++e){var i=32767&t[e],n=i*this.mpl+((i*this.mph+(t[e]>>15)*this.mpl&this.um)<<15)&t.DM;for(t[i=e+this.m.t]+=this.m.am(0,n,t,e,0,this.m.t);t[i]>=t.DV;)t[i]-=t.DV,t[++i]++}t.clamp(),t.drShiftTo(this.m.t,t),t.compareTo(this.m)>=0&&t.subTo(this.m,t)},y.prototype.mulTo=function(t,e,i){t.multiplyTo(e,i),this.reduce(i)},y.prototype.sqrTo=function(t,e){t.squareTo(e),this.reduce(e)},s.prototype.copyTo=function(t){for(var e=this.t-1;e>=0;--e)t[e]=this[e];t.t=this.t,t.s=this.s},s.prototype.fromInt=function(t){this.t=1,this.s=t<0?-1:0,t>0?this[0]=t:t<-1?this[0]=t+this.DV:this.t=0},s.prototype.fromString=function(t,e){var i;if(16==e)i=4;else if(8==e)i=3;else if(256==e)i=8;else if(2==e)i=1;else if(32==e)i=5;else{if(4!=e)return void this.fromRadix(t,e);i=2}this.t=0,this.s=0;for(var n=t.length,o=!1,r=0;--n>=0;){var l=8==i?255&t[n]:f(t,n);l<0?"-"==t.charAt(n)&&(o=!0):(o=!1,0==r?this[this.t++]=l:r+i>this.DB?(this[this.t-1]|=(l&(1<<this.DB-r)-1)<<r,this[this.t++]=l>>this.DB-r):this[this.t-1]|=l<<r,(r+=i)>=this.DB&&(r-=this.DB))}8==i&&128&t[0]&&(this.s=-1,r>0&&(this[this.t-1]|=(1<<this.DB-r)-1<<r)),this.clamp(),o&&s.ZERO.subTo(this,this)},s.prototype.clamp=function(){for(var t=this.s&this.DM;this.t>0&&this[this.t-1]==t;)--this.t},s.prototype.dlShiftTo=function(t,e){var i;for(i=this.t-1;i>=0;--i)e[i+t]=this[i];for(i=t-1;i>=0;--i)e[i]=0;e.t=this.t+t,e.s=this.s},s.prototype.drShiftTo=function(t,e){for(var i=t;i<this.t;++i)e[i-t]=this[i];e.t=Math.max(this.t-t,0),e.s=this.s},s.prototype.lShiftTo=function(t,e){var i,n=t%this.DB,o=this.DB-n,r=(1<<o)-1,s=Math.floor(t/this.DB),l=this.s<<n&this.DM;for(i=this.t-1;i>=0;--i)e[i+s+1]=this[i]>>o|l,l=(this[i]&r)<<n;for(i=s-1;i>=0;--i)e[i]=0;e[s]=l,e.t=this.t+s+1,e.s=this.s,e.clamp()},s.prototype.rShiftTo=function(t,e){e.s=this.s;var i=Math.floor(t/this.DB);if(i>=this.t)e.t=0;else{var n=t%this.DB,o=this.DB-n,r=(1<<n)-1;e[0]=this[i]>>n;for(var s=i+1;s<this.t;++s)e[s-i-1]|=(this[s]&r)<<o,e[s-i]=this[s]>>n;n>0&&(e[this.t-i-1]|=(this.s&r)<<o),e.t=this.t-i,e.clamp()}},s.prototype.subTo=function(t,e){for(var i=0,n=0,o=Math.min(t.t,this.t);i<o;)n+=this[i]-t[i],e[i++]=n&this.DM,n>>=this.DB;if(t.t<this.t){for(n-=t.s;i<this.t;)n+=this[i],e[i++]=n&this.DM,n>>=this.DB;n+=this.s}else{for(n+=this.s;i<t.t;)n-=t[i],e[i++]=n&this.DM,n>>=this.DB;n-=t.s}e.s=n<0?-1:0,n<-1?e[i++]=this.DV+n:n>0&&(e[i++]=n),e.t=i,e.clamp()},s.prototype.multiplyTo=function(t,e){var i=this.abs(),n=t.abs(),o=i.t;for(e.t=o+n.t;--o>=0;)e[o]=0;for(o=0;o<n.t;++o)e[o+i.t]=i.am(0,n[o],e,o,0,i.t);e.s=0,e.clamp(),this.s!=t.s&&s.ZERO.subTo(e,e)},s.prototype.squareTo=function(t){for(var e=this.abs(),i=t.t=2*e.t;--i>=0;)t[i]=0;for(i=0;i<e.t-1;++i){var n=e.am(i,e[i],t,2*i,0,1);(t[i+e.t]+=e.am(i+1,2*e[i],t,2*i+1,n,e.t-i-1))>=e.DV&&(t[i+e.t]-=e.DV,t[i+e.t+1]=1)}t.t>0&&(t[t.t-1]+=e.am(i,e[i],t,2*i,0,1)),t.s=0,t.clamp()},s.prototype.divRemTo=function(t,e,i){var n=t.abs();if(!(n.t<=0)){var o=this.abs();if(o.t<n.t)return null!=e&&e.fromInt(0),void(null!=i&&this.copyTo(i));null==i&&(i=l());var r=l(),p=this.s,u=t.s,h=this.DB-P(n[n.t-1]);h>0?(n.lShiftTo(h,r),o.lShiftTo(h,i)):(n.copyTo(r),o.copyTo(i));var a=r.t,f=r[a-1];if(0!=f){var d=f*(1<<this.F1)+(a>1?r[a-2]>>this.F2:0),m=this.FV/d,y=(1<<this.F1)/d,c=1<<this.F2,v=i.t,C=v-a,I=null==e?l():e;for(r.dlShiftTo(C,I),i.compareTo(I)>=0&&(i[i.t++]=1,i.subTo(I,i)),s.ONE.dlShiftTo(a,I),I.subTo(r,r);r.t<a;)r[r.t++]=0;for(;--C>=0;){var x=i[--v]==f?this.DM:Math.floor(i[v]*m+(i[v-1]+c)*y);if((i[v]+=r.am(0,x,i,C,0,a))<x)for(r.dlShiftTo(C,I),i.subTo(I,i);i[v]<--x;)i.subTo(I,i)}null!=e&&(i.drShiftTo(a,e),p!=u&&s.ZERO.subTo(e,e)),i.t=a,i.clamp(),h>0&&i.rShiftTo(h,i),p<0&&s.ZERO.subTo(i,i)}}},s.prototype.invDigit=function(){if(this.t<1)return 0;var t=this[0];if(!(1&t))return 0;var e=3&t;return(e=(e=(e=(e=e*(2-(15&t)*e)&15)*(2-(255&t)*e)&255)*(2-((65535&t)*e&65535))&65535)*(2-t*e%this.DV)%this.DV)>0?this.DV-e:-e},s.prototype.isEven=function(){return 0==(this.t>0?1&this[0]:this.s)},s.prototype.exp=function(t,e){if(t>4294967295||t<1)return s.ONE;var i=l(),n=l(),o=e.convert(this),r=P(t)-1;for(o.copyTo(i);--r>=0;)if(e.sqrTo(i,n),(t&1<<r)>0)e.mulTo(n,o,i);else{var p=i;i=n,n=p}return e.revert(i)},s.prototype.toString=function(t){if(this.s<0)return"-"+this.negate().toString(t);var e;if(16==t)e=4;else if(8==t)e=3;else if(2==t)e=1;else if(32==t)e=5;else{if(4!=t)return this.toRadix(t);e=2}var i,n=(1<<e)-1,o=!1,r="",s=this.t,l=this.DB-s*this.DB%e;if(s-- >0)for(l<this.DB&&(i=this[s]>>l)>0&&(o=!0,r=a(i));s>=0;)l<e?(i=(this[s]&(1<<l)-1)<<e-l,i|=this[--s]>>(l+=this.DB-e)):(i=this[s]>>(l-=e)&n,l<=0&&(l+=this.DB,--s)),i>0&&(o=!0),o&&(r+=a(i));return o?r:"0"},s.prototype.negate=function(){var t=l();return s.ZERO.subTo(this,t),t},s.prototype.abs=function(){return this.s<0?this.negate():this},s.prototype.compareTo=function(t){var e=this.s-t.s;if(0!=e)return e;var i=this.t;if(0!=(e=i-t.t))return this.s<0?-e:e;for(;--i>=0;)if(0!=(e=this[i]-t[i]))return e;return 0},s.prototype.bitLength=function(){return this.t<=0?0:this.DB*(this.t-1)+P(this[this.t-1]^this.s&this.DM)},s.prototype.mod=function(t){var e=l();return this.abs().divRemTo(t,null,e),this.s<0&&e.compareTo(s.ZERO)>0&&t.subTo(e,e),e},s.prototype.modPowInt=function(t,e){var i;return i=t<256||e.isEven()?new m(e):new y(e),this.exp(t,i)},s.ZERO=d(0),s.ONE=d(1),L.prototype.convert=E,L.prototype.revert=E,L.prototype.mulTo=function(t,e,i){t.multiplyTo(e,i)},L.prototype.sqrTo=function(t,e){t.squareTo(e)},T.prototype.convert=function(t){if(t.s<0||t.t>2*this.m.t)return t.mod(this.m);if(t.compareTo(this.m)<0)return t;var e=l();return t.copyTo(e),this.reduce(e),e},T.prototype.revert=function(t){return t},T.prototype.reduce=function(t){for(t.drShiftTo(this.m.t-1,this.r2),t.t>this.m.t+1&&(t.t=this.m.t+1,t.clamp()),this.mu.multiplyUpperTo(this.r2,this.m.t+1,this.q3),this.m.multiplyLowerTo(this.q3,this.m.t+1,this.r2);t.compareTo(this.r2)<0;)t.dAddOffset(1,this.m.t+1);for(t.subTo(this.r2,t);t.compareTo(this.m)>=0;)t.subTo(this.m,t)},T.prototype.mulTo=function(t,e,i){t.multiplyTo(e,i),this.reduce(i)},T.prototype.sqrTo=function(t,e){t.squareTo(e),this.reduce(e)};var g=[2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,101,103,107,109,113,127,131,137,139,149,151,157,163,167,173,179,181,191,193,197,199,211,223,227,229,233,239,241,251,257,263,269,271,277,281,283,293,307,311,313,317,331,337,347,349,353,359,367,373,379,383,389,397,401,409,419,421,431,433,439,443,449,457,461,463,467,479,487,491,499,503,509,521,523,541,547,557,563,569,571,577,587,593,599,601,607,613,617,619,631,641,643,647,653,659,661,673,677,683,691,701,709,719,727,733,739,743,751,757,761,769,773,787,797,809,811,821,823,827,829,839,853,857,859,863,877,881,883,887,907,911,919,929,937,941,947,953,967,971,977,983,991,997],X=(1<<26)/g[g.length-1];s.prototype.chunkSize=function(t){return Math.floor(Math.LN2*this.DB/Math.log(t))},s.prototype.toRadix=function(t){if(null==t&&(t=10),0==this.signum()||t<2||t>36)return"0";var e=this.chunkSize(t),i=Math.pow(t,e),n=d(i),o=l(),r=l(),s="";for(this.divRemTo(n,o,r);o.signum()>0;)s=(i+r.intValue()).toString(t).substr(1)+s,o.divRemTo(n,o,r);return r.intValue().toString(t)+s},s.prototype.fromRadix=function(t,e){this.fromInt(0),null==e&&(e=10);for(var i=this.chunkSize(e),n=Math.pow(e,i),o=!1,r=0,l=0,p=0;p<t.length;++p){var u=f(t,p);u<0?"-"==t.charAt(p)&&0==this.signum()&&(o=!0):(l=e*l+u,++r>=i&&(this.dMultiply(n),this.dAddOffset(l,0),r=0,l=0))}r>0&&(this.dMultiply(Math.pow(e,r)),this.dAddOffset(l,0)),o&&s.ZERO.subTo(this,this)},s.prototype.fromNumber=function(t,e,i){if("number"==typeof e)if(t<2)this.fromInt(1);else for(this.fromNumber(t,i),this.testBit(t-1)||this.bitwiseTo(s.ONE.shiftLeft(t-1),v,this),this.isEven()&&this.dAddOffset(1,0);!this.isProbablePrime(e);)this.dAddOffset(2,0),this.bitLength()>t&&this.subTo(s.ONE.shiftLeft(t-1),this);else{var n=new Array,o=7&t;n.length=1+(t>>3),e.nextBytes(n),o>0?n[0]&=(1<<o)-1:n[0]=0,this.fromString(n,256)}},s.prototype.bitwiseTo=function(t,e,i){var n,o,r=Math.min(t.t,this.t);for(n=0;n<r;++n)i[n]=e(this[n],t[n]);if(t.t<this.t){for(o=t.s&this.DM,n=r;n<this.t;++n)i[n]=e(this[n],o);i.t=this.t}else{for(o=this.s&this.DM,n=r;n<t.t;++n)i[n]=e(o,t[n]);i.t=t.t}i.s=e(this.s,t.s),i.clamp()},s.prototype.changeBit=function(t,e){var i=s.ONE.shiftLeft(t);return this.bitwiseTo(i,e,i),i},s.prototype.addTo=function(t,e){for(var i=0,n=0,o=Math.min(t.t,this.t);i<o;)n+=this[i]+t[i],e[i++]=n&this.DM,n>>=this.DB;if(t.t<this.t){for(n+=t.s;i<this.t;)n+=this[i],e[i++]=n&this.DM,n>>=this.DB;n+=this.s}else{for(n+=this.s;i<t.t;)n+=t[i],e[i++]=n&this.DM,n>>=this.DB;n+=t.s}e.s=n<0?-1:0,n>0?e[i++]=n:n<-1&&(e[i++]=this.DV+n),e.t=i,e.clamp()},s.prototype.dMultiply=function(t){this[this.t]=this.am(0,t-1,this,0,0,this.t),++this.t,this.clamp()},s.prototype.dAddOffset=function(t,e){if(0!=t){for(;this.t<=e;)this[this.t++]=0;for(this[e]+=t;this[e]>=this.DV;)this[e]-=this.DV,++e>=this.t&&(this[this.t++]=0),++this[e]}},s.prototype.multiplyLowerTo=function(t,e,i){var n,o=Math.min(this.t+t.t,e);for(i.s=0,i.t=o;o>0;)i[--o]=0;for(n=i.t-this.t;o<n;++o)i[o+this.t]=this.am(0,t[o],i,o,0,this.t);for(n=Math.min(t.t,e);o<n;++o)this.am(0,t[o],i,o,0,e-o);i.clamp()},s.prototype.multiplyUpperTo=function(t,e,i){--e;var n=i.t=this.t+t.t-e;for(i.s=0;--n>=0;)i[n]=0;for(n=Math.max(e-this.t,0);n<t.t;++n)i[this.t+n-e]=this.am(e-n,t[n],i,0,0,this.t+n-e);i.clamp(),i.drShiftTo(1,i)},s.prototype.modInt=function(t){if(t<=0)return 0;var e=this.DV%t,i=this.s<0?t-1:0;if(this.t>0)if(0==e)i=this[0]%t;else for(var n=this.t-1;n>=0;--n)i=(e*i+this[n])%t;return i},s.prototype.millerRabin=function(t){var e=this.subtract(s.ONE),i=e.getLowestSetBit();if(i<=0)return!1;var n=e.shiftRight(i);(t=t+1>>1)>g.length&&(t=g.length);for(var o=l(),r=0;r<t;++r){o.fromInt(g[Math.floor(Math.random()*g.length)]);var p=o.modPow(n,this);if(0!=p.compareTo(s.ONE)&&0!=p.compareTo(e)){for(var u=1;u++<i&&0!=p.compareTo(e);)if(0==(p=p.modPowInt(2,this)).compareTo(s.ONE))return!1;if(0!=p.compareTo(e))return!1}}return!0},s.prototype.clone=function(){var t=l();return this.copyTo(t),t},s.prototype.intValue=function(){if(this.s<0){if(1==this.t)return this[0]-this.DV;if(0==this.t)return-1}else{if(1==this.t)return this[0];if(0==this.t)return 0}return(this[1]&(1<<32-this.DB)-1)<<this.DB|this[0]},s.prototype.byteValue=function(){return 0==this.t?this.s:this[0]<<24>>24},s.prototype.shortValue=function(){return 0==this.t?this.s:this[0]<<16>>16},s.prototype.signum=function(){return this.s<0?-1:this.t<=0||1==this.t&&this[0]<=0?0:1},s.prototype.toByteArray=function(){var t=this.t,e=new Array;e[0]=this.s;var i,n=this.DB-t*this.DB%8,o=0;if(t-- >0)for(n<this.DB&&(i=this[t]>>n)!=(this.s&this.DM)>>n&&(e[o++]=i|this.s<<this.DB-n);t>=0;)n<8?(i=(this[t]&(1<<n)-1)<<8-n,i|=this[--t]>>(n+=this.DB-8)):(i=this[t]>>(n-=8)&255,n<=0&&(n+=this.DB,--t)),128&i&&(i|=-256),0==o&&(128&this.s)!=(128&i)&&++o,(o>0||i!=this.s)&&(e[o++]=i);return e},s.prototype.equals=function(t){return 0==this.compareTo(t)},s.prototype.min=function(t){return this.compareTo(t)<0?this:t},s.prototype.max=function(t){return this.compareTo(t)>0?this:t},s.prototype.and=function(t){var e=l();return this.bitwiseTo(t,c,e),e},s.prototype.or=function(t){var e=l();return this.bitwiseTo(t,v,e),e},s.prototype.xor=function(t){var e=l();return this.bitwiseTo(t,C,e),e},s.prototype.andNot=function(t){var e=l();return this.bitwiseTo(t,I,e),e},s.prototype.not=function(){for(var t=l(),e=0;e<this.t;++e)t[e]=this.DM&~this[e];return t.t=this.t,t.s=~this.s,t},s.prototype.shiftLeft=function(t){var e=l();return t<0?this.rShiftTo(-t,e):this.lShiftTo(t,e),e},s.prototype.shiftRight=function(t){var e=l();return t<0?this.lShiftTo(-t,e):this.rShiftTo(t,e),e},s.prototype.getLowestSetBit=function(){for(var t=0;t<this.t;++t)if(0!=this[t])return t*this.DB+x(this[t]);return this.s<0?this.t*this.DB:-1},s.prototype.bitCount=function(){for(var t=0,e=this.s&this.DM,i=0;i<this.t;++i)t+=_(this[i]^e);return t},s.prototype.testBit=function(t){var e=Math.floor(t/this.DB);return e>=this.t?0!=this.s:!!(this[e]&1<<t%this.DB)},s.prototype.setBit=function(t){return this.changeBit(t,v)},s.prototype.clearBit=function(t){return this.changeBit(t,I)},s.prototype.flipBit=function(t){return this.changeBit(t,C)},s.prototype.add=function(t){var e=l();return this.addTo(t,e),e},s.prototype.subtract=function(t){var e=l();return this.subTo(t,e),e},s.prototype.multiply=function(t){var e=l();return this.multiplyTo(t,e),e},s.prototype.divide=function(t){var e=l();return this.divRemTo(t,e,null),e},s.prototype.remainder=function(t){var e=l();return this.divRemTo(t,null,e),e},s.prototype.divideAndRemainder=function(t){var e=l(),i=l();return this.divRemTo(t,e,i),new Array(e,i)},s.prototype.modPow=function(t,e){var i,n,o=t.bitLength(),r=d(1);if(o<=0)return r;i=o<18?1:o<48?3:o<144?4:o<768?5:6,n=o<8?new m(e):e.isEven()?new T(e):new y(e);var s=new Array,p=3,u=i-1,h=(1<<i)-1;if(s[1]=n.convert(this),i>1){var a=l();for(n.sqrTo(s[1],a);p<=h;)s[p]=l(),n.mulTo(a,s[p-2],s[p]),p+=2}var f,c,v=t.t-1,C=!0,I=l();for(o=P(t[v])-1;v>=0;){for(o>=u?f=t[v]>>o-u&h:(f=(t[v]&(1<<o+1)-1)<<u-o,v>0&&(f|=t[v-1]>>this.DB+o-u)),p=i;!(1&f);)f>>=1,--p;if((o-=p)<0&&(o+=this.DB,--v),C)s[f].copyTo(r),C=!1;else{for(;p>1;)n.sqrTo(r,I),n.sqrTo(I,r),p-=2;p>0?n.sqrTo(r,I):(c=r,r=I,I=c),n.mulTo(I,s[f],r)}for(;v>=0&&!(t[v]&1<<o);)n.sqrTo(r,I),c=r,r=I,I=c,--o<0&&(o=this.DB-1,--v)}return n.revert(r)},s.prototype.modInverse=function(t){var e=t.isEven();if(this.isEven()&&e||0==t.signum())return s.ZERO;for(var i=t.clone(),n=this.clone(),o=d(1),r=d(0),l=d(0),p=d(1);0!=i.signum();){for(;i.isEven();)i.rShiftTo(1,i),e?(o.isEven()&&r.isEven()||(o.addTo(this,o),r.subTo(t,r)),o.rShiftTo(1,o)):r.isEven()||r.subTo(t,r),r.rShiftTo(1,r);for(;n.isEven();)n.rShiftTo(1,n),e?(l.isEven()&&p.isEven()||(l.addTo(this,l),p.subTo(t,p)),l.rShiftTo(1,l)):p.isEven()||p.subTo(t,p),p.rShiftTo(1,p);i.compareTo(n)>=0?(i.subTo(n,i),e&&o.subTo(l,o),r.subTo(p,r)):(n.subTo(i,n),e&&l.subTo(o,l),p.subTo(r,p))}return 0!=n.compareTo(s.ONE)?s.ZERO:p.compareTo(t)>=0?p.subtract(t):p.signum()<0?(p.addTo(t,p),p.signum()<0?p.add(t):p):p},s.prototype.pow=function(t){return this.exp(t,new L)},s.prototype.gcd=function(t){var e=this.s<0?this.negate():this.clone(),i=t.s<0?t.negate():t.clone();if(e.compareTo(i)<0){var n=e;e=i,i=n}var o=e.getLowestSetBit(),r=i.getLowestSetBit();if(r<0)return e;for(o<r&&(r=o),r>0&&(e.rShiftTo(r,e),i.rShiftTo(r,i));e.signum()>0;)(o=e.getLowestSetBit())>0&&e.rShiftTo(o,e),(o=i.getLowestSetBit())>0&&i.rShiftTo(o,i),e.compareTo(i)>=0?(e.subTo(i,e),e.rShiftTo(1,e)):(i.subTo(e,i),i.rShiftTo(1,i));return r>0&&i.lShiftTo(r,i),i},s.prototype.isProbablePrime=function(t){var e,i=this.abs();if(1==i.t&&i[0]<=g[g.length-1]){for(e=0;e<g.length;++e)if(i[0]==g[e])return!0;return!1}if(i.isEven())return!1;for(e=1;e<g.length;){for(var n=g[e],o=e+1;o<g.length&&n<X;)n*=g[o++];for(n=i.modInt(n);e<o;)if(n%g[e++]==0)return!1}return i.millerRabin(t)},s.prototype.square=function(){var t=l();return this.squareTo(t),t};var O=s;O.prototype.IsNegative=function(){return-1==this.compareTo(O.ZERO)},O.op_Equality=function(t,e){return 0==t.compareTo(e)},O.op_Inequality=function(t,e){return 0!=t.compareTo(e)},O.op_GreaterThan=function(t,e){return t.compareTo(e)>0},O.op_LessThan=function(t,e){return t.compareTo(e)<0},O.op_Addition=function(t,e){return new O(t,void 0,void 0).add(new O(e,void 0,void 0))},O.op_Subtraction=function(t,e){return new O(t,void 0,void 0).subtract(new O(e,void 0,void 0))},O.Int128Mul=function(t,e){return new O(t,void 0,void 0).multiply(new O(e,void 0,void 0))},O.op_Division=function(t,e){return t.divide(e)},O.prototype.ToDouble=function(){return parseFloat(this.toString())};var N=function(t,e){var i;if(void 0===Object.getOwnPropertyNames){for(i in e.prototype)void 0!==t.prototype[i]&&t.prototype[i]!==Object.prototype[i]||(t.prototype[i]=e.prototype[i]);for(i in e)void 0===t[i]&&(t[i]=e[i]);t.$baseCtor=e}else{for(var n=Object.getOwnPropertyNames(e.prototype),o=0;o<n.length;o++)void 0===Object.getOwnPropertyDescriptor(t.prototype,n[o])&&Object.defineProperty(t.prototype,n[o],Object.getOwnPropertyDescriptor(e.prototype,n[o]));for(i in e)void 0===t[i]&&(t[i]=e[i]);t.$baseCtor=e}};e.Path=function(){return[]},e.Path.prototype.push=Array.prototype.push,e.Paths=function(){return[]},e.Paths.prototype.push=Array.prototype.push,e.DoublePoint=function(){var t=arguments;this.X=0,this.Y=0,1===t.length?(this.X=t[0].X,this.Y=t[0].Y):2===t.length&&(this.X=t[0],this.Y=t[1])},e.DoublePoint0=function(){this.X=0,this.Y=0},e.DoublePoint0.prototype=e.DoublePoint.prototype,e.DoublePoint1=function(t){this.X=t.X,this.Y=t.Y},e.DoublePoint1.prototype=e.DoublePoint.prototype,e.DoublePoint2=function(t,e){this.X=t,this.Y=e},e.DoublePoint2.prototype=e.DoublePoint.prototype,e.PolyNode=function(){this.m_Parent=null,this.m_polygon=new e.Path,this.m_Index=0,this.m_jointype=0,this.m_endtype=0,this.m_Childs=[],this.IsOpen=!1},e.PolyNode.prototype.IsHoleNode=function(){for(var t=!0,e=this.m_Parent;null!==e;)t=!t,e=e.m_Parent;return t},e.PolyNode.prototype.ChildCount=function(){return this.m_Childs.length},e.PolyNode.prototype.Contour=function(){return this.m_polygon},e.PolyNode.prototype.AddChild=function(t){var e=this.m_Childs.length;this.m_Childs.push(t),t.m_Parent=this,t.m_Index=e},e.PolyNode.prototype.GetNext=function(){return this.m_Childs.length>0?this.m_Childs[0]:this.GetNextSiblingUp()},e.PolyNode.prototype.GetNextSiblingUp=function(){return null===this.m_Parent?null:this.m_Index===this.m_Parent.m_Childs.length-1?this.m_Parent.GetNextSiblingUp():this.m_Parent.m_Childs[this.m_Index+1]},e.PolyNode.prototype.Childs=function(){return this.m_Childs},e.PolyNode.prototype.Parent=function(){return this.m_Parent},e.PolyNode.prototype.IsHole=function(){return this.IsHoleNode()},e.PolyTree=function(){this.m_AllPolys=[],e.PolyNode.call(this)},e.PolyTree.prototype.Clear=function(){for(var t=0,e=this.m_AllPolys.length;t<e;t++)this.m_AllPolys[t]=null;this.m_AllPolys.length=0,this.m_Childs.length=0},e.PolyTree.prototype.GetFirst=function(){return this.m_Childs.length>0?this.m_Childs[0]:null},e.PolyTree.prototype.Total=function(){var t=this.m_AllPolys.length;return t>0&&this.m_Childs[0]!==this.m_AllPolys[0]&&t--,t},N(e.PolyTree,e.PolyNode),e.Math_Abs_Int64=e.Math_Abs_Int32=e.Math_Abs_Double=function(t){return Math.abs(t)},e.Math_Max_Int32_Int32=function(t,e){return Math.max(t,e)},r.msie||r.opera||r.safari?e.Cast_Int32=function(t){return 0|t}:e.Cast_Int32=function(t){return~~t},void 0===Number.toInteger&&(Number.toInteger=null),r.chrome?e.Cast_Int64=function(t){return t<-2147483648||t>2147483647?t<0?Math.ceil(t):Math.floor(t):~~t}:r.firefox&&"function"==typeof Number.toInteger?e.Cast_Int64=function(t){return Number.toInteger(t)}:r.msie7||r.msie8?e.Cast_Int64=function(t){return parseInt(t,10)}:r.msie?e.Cast_Int64=function(t){return t<-2147483648||t>2147483647?t<0?Math.ceil(t):Math.floor(t):0|t}:e.Cast_Int64=function(t){return t<0?Math.ceil(t):Math.floor(t)},e.Clear=function(t){t.length=0},e.PI=3.141592653589793,e.PI2=6.283185307179586,e.IntPoint=function(){var t=arguments,i=t.length;if(this.X=0,this.Y=0,e.use_xyz)if(this.Z=0,3===i)this.X=t[0],this.Y=t[1],this.Z=t[2];else if(2===i)this.X=t[0],this.Y=t[1],this.Z=0;else if(1===i)if(t[0]instanceof e.DoublePoint){var n=t[0];this.X=e.Clipper.Round(n.X),this.Y=e.Clipper.Round(n.Y),this.Z=0}else{void 0===(o=t[0]).Z&&(o.Z=0),this.X=o.X,this.Y=o.Y,this.Z=o.Z}else this.X=0,this.Y=0,this.Z=0;else if(2===i)this.X=t[0],this.Y=t[1];else if(1===i)if(t[0]instanceof e.DoublePoint){n=t[0];this.X=e.Clipper.Round(n.X),this.Y=e.Clipper.Round(n.Y)}else{var o=t[0];this.X=o.X,this.Y=o.Y}else this.X=0,this.Y=0},e.IntPoint.op_Equality=function(t,e){return t.X===e.X&&t.Y===e.Y},e.IntPoint.op_Inequality=function(t,e){return t.X!==e.X||t.Y!==e.Y},e.IntPoint0=function(){this.X=0,this.Y=0,e.use_xyz&&(this.Z=0)},e.IntPoint0.prototype=e.IntPoint.prototype,e.IntPoint1=function(t){this.X=t.X,this.Y=t.Y,e.use_xyz&&(void 0===t.Z?this.Z=0:this.Z=t.Z)},e.IntPoint1.prototype=e.IntPoint.prototype,e.IntPoint1dp=function(t){this.X=e.Clipper.Round(t.X),this.Y=e.Clipper.Round(t.Y),e.use_xyz&&(this.Z=0)},e.IntPoint1dp.prototype=e.IntPoint.prototype,e.IntPoint2=function(t,i,n){this.X=t,this.Y=i,e.use_xyz&&(this.Z=void 0===n?0:n)},e.IntPoint2.prototype=e.IntPoint.prototype,e.IntRect=function(){var t=arguments,e=t.length;if(4===e)this.left=t[0],this.top=t[1],this.right=t[2],this.bottom=t[3];else if(1===e){var i=t[0];this.left=i.left,this.top=i.top,this.right=i.right,this.bottom=i.bottom}else this.left=0,this.top=0,this.right=0,this.bottom=0},e.IntRect0=function(){this.left=0,this.top=0,this.right=0,this.bottom=0},e.IntRect0.prototype=e.IntRect.prototype,e.IntRect1=function(t){this.left=t.left,this.top=t.top,this.right=t.right,this.bottom=t.bottom},e.IntRect1.prototype=e.IntRect.prototype,e.IntRect4=function(t,e,i,n){this.left=t,this.top=e,this.right=i,this.bottom=n},e.IntRect4.prototype=e.IntRect.prototype,e.ClipType={ctIntersection:0,ctUnion:1,ctDifference:2,ctXor:3},e.PolyType={ptSubject:0,ptClip:1},e.PolyFillType={pftEvenOdd:0,pftNonZero:1,pftPositive:2,pftNegative:3},e.JoinType={jtSquare:0,jtRound:1,jtMiter:2},e.EndType={etOpenSquare:0,etOpenRound:1,etOpenButt:2,etClosedLine:3,etClosedPolygon:4},e.EdgeSide={esLeft:0,esRight:1},e.Direction={dRightToLeft:0,dLeftToRight:1},e.TEdge=function(){this.Bot=new e.IntPoint0,this.Curr=new e.IntPoint0,this.Top=new e.IntPoint0,this.Delta=new e.IntPoint0,this.Dx=0,this.PolyTyp=e.PolyType.ptSubject,this.Side=e.EdgeSide.esLeft,this.WindDelta=0,this.WindCnt=0,this.WindCnt2=0,this.OutIdx=0,this.Next=null,this.Prev=null,this.NextInLML=null,this.NextInAEL=null,this.PrevInAEL=null,this.NextInSEL=null,this.PrevInSEL=null},e.IntersectNode=function(){this.Edge1=null,this.Edge2=null,this.Pt=new e.IntPoint0},e.MyIntersectNodeSort=function(){},e.MyIntersectNodeSort.Compare=function(t,e){var i=e.Pt.Y-t.Pt.Y;return i>0?1:i<0?-1:0},e.LocalMinima=function(){this.Y=0,this.LeftBound=null,this.RightBound=null,this.Next=null},e.Scanbeam=function(){this.Y=0,this.Next=null},e.Maxima=function(){this.X=0,this.Next=null,this.Prev=null},e.OutRec=function(){this.Idx=0,this.IsHole=!1,this.IsOpen=!1,this.FirstLeft=null,this.Pts=null,this.BottomPt=null,this.PolyNode=null},e.OutPt=function(){this.Idx=0,this.Pt=new e.IntPoint0,this.Next=null,this.Prev=null},e.Join=function(){this.OutPt1=null,this.OutPt2=null,this.OffPt=new e.IntPoint0},e.ClipperBase=function(){this.m_MinimaList=null,this.m_CurrentLM=null,this.m_edges=new Array,this.m_UseFullRange=!1,this.m_HasOpenPaths=!1,this.PreserveCollinear=!1,this.m_Scanbeam=null,this.m_PolyOuts=null,this.m_ActiveEdges=null},e.ClipperBase.horizontal=-9007199254740992,e.ClipperBase.Skip=-2,e.ClipperBase.Unassigned=-1,e.ClipperBase.tolerance=1e-20,e.ClipperBase.loRange=47453132,e.ClipperBase.hiRange=0xfffffffffffff,e.ClipperBase.near_zero=function(t){return t>-e.ClipperBase.tolerance&&t<e.ClipperBase.tolerance},e.ClipperBase.IsHorizontal=function(t){return 0===t.Delta.Y},e.ClipperBase.prototype.PointIsVertex=function(t,i){var n=i;do{if(e.IntPoint.op_Equality(n.Pt,t))return!0;n=n.Next}while(n!==i);return!1},e.ClipperBase.prototype.PointOnLineSegment=function(t,e,i,n){return n?t.X===e.X&&t.Y===e.Y||t.X===i.X&&t.Y===i.Y||t.X>e.X==t.X<i.X&&t.Y>e.Y==t.Y<i.Y&&O.op_Equality(O.Int128Mul(t.X-e.X,i.Y-e.Y),O.Int128Mul(i.X-e.X,t.Y-e.Y)):t.X===e.X&&t.Y===e.Y||t.X===i.X&&t.Y===i.Y||t.X>e.X==t.X<i.X&&t.Y>e.Y==t.Y<i.Y&&(t.X-e.X)*(i.Y-e.Y)===(i.X-e.X)*(t.Y-e.Y)},e.ClipperBase.prototype.PointOnPolygon=function(t,e,i){for(var n=e;;){if(this.PointOnLineSegment(t,n.Pt,n.Next.Pt,i))return!0;if((n=n.Next)===e)break}return!1},e.ClipperBase.prototype.SlopesEqual=e.ClipperBase.SlopesEqual=function(){var t,i,n,o,r,s,l=arguments,p=l.length;return 3===p?(t=l[0],i=l[1],l[2]?O.op_Equality(O.Int128Mul(t.Delta.Y,i.Delta.X),O.Int128Mul(t.Delta.X,i.Delta.Y)):e.Cast_Int64(t.Delta.Y*i.Delta.X)===e.Cast_Int64(t.Delta.X*i.Delta.Y)):4===p?(n=l[0],o=l[1],r=l[2],l[3]?O.op_Equality(O.Int128Mul(n.Y-o.Y,o.X-r.X),O.Int128Mul(n.X-o.X,o.Y-r.Y)):e.Cast_Int64((n.Y-o.Y)*(o.X-r.X))-e.Cast_Int64((n.X-o.X)*(o.Y-r.Y))===0):(n=l[0],o=l[1],r=l[2],s=l[3],l[4]?O.op_Equality(O.Int128Mul(n.Y-o.Y,r.X-s.X),O.Int128Mul(n.X-o.X,r.Y-s.Y)):e.Cast_Int64((n.Y-o.Y)*(r.X-s.X))-e.Cast_Int64((n.X-o.X)*(r.Y-s.Y))===0)},e.ClipperBase.SlopesEqual3=function(t,i,n){return n?O.op_Equality(O.Int128Mul(t.Delta.Y,i.Delta.X),O.Int128Mul(t.Delta.X,i.Delta.Y)):e.Cast_Int64(t.Delta.Y*i.Delta.X)===e.Cast_Int64(t.Delta.X*i.Delta.Y)},e.ClipperBase.SlopesEqual4=function(t,i,n,o){return o?O.op_Equality(O.Int128Mul(t.Y-i.Y,i.X-n.X),O.Int128Mul(t.X-i.X,i.Y-n.Y)):e.Cast_Int64((t.Y-i.Y)*(i.X-n.X))-e.Cast_Int64((t.X-i.X)*(i.Y-n.Y))===0},e.ClipperBase.SlopesEqual5=function(t,i,n,o,r){return r?O.op_Equality(O.Int128Mul(t.Y-i.Y,n.X-o.X),O.Int128Mul(t.X-i.X,n.Y-o.Y)):e.Cast_Int64((t.Y-i.Y)*(n.X-o.X))-e.Cast_Int64((t.X-i.X)*(n.Y-o.Y))===0},e.ClipperBase.prototype.Clear=function(){this.DisposeLocalMinimaList();for(var t=0,i=this.m_edges.length;t<i;++t){for(var n=0,o=this.m_edges[t].length;n<o;++n)this.m_edges[t][n]=null;e.Clear(this.m_edges[t])}e.Clear(this.m_edges),this.m_UseFullRange=!1,this.m_HasOpenPaths=!1},e.ClipperBase.prototype.DisposeLocalMinimaList=function(){for(;null!==this.m_MinimaList;){var t=this.m_MinimaList.Next;this.m_MinimaList=null,this.m_MinimaList=t}this.m_CurrentLM=null},e.ClipperBase.prototype.RangeTest=function(t,i){i.Value?(t.X>e.ClipperBase.hiRange||t.Y>e.ClipperBase.hiRange||-t.X>e.ClipperBase.hiRange||-t.Y>e.ClipperBase.hiRange)&&e.Error("Coordinate outside allowed range in RangeTest()."):(t.X>e.ClipperBase.loRange||t.Y>e.ClipperBase.loRange||-t.X>e.ClipperBase.loRange||-t.Y>e.ClipperBase.loRange)&&(i.Value=!0,this.RangeTest(t,i))},e.ClipperBase.prototype.InitEdge=function(t,i,n,o){t.Next=i,t.Prev=n,t.Curr.X=o.X,t.Curr.Y=o.Y,e.use_xyz&&(t.Curr.Z=o.Z),t.OutIdx=-1},e.ClipperBase.prototype.InitEdge2=function(t,i){t.Curr.Y>=t.Next.Curr.Y?(t.Bot.X=t.Curr.X,t.Bot.Y=t.Curr.Y,e.use_xyz&&(t.Bot.Z=t.Curr.Z),t.Top.X=t.Next.Curr.X,t.Top.Y=t.Next.Curr.Y,e.use_xyz&&(t.Top.Z=t.Next.Curr.Z)):(t.Top.X=t.Curr.X,t.Top.Y=t.Curr.Y,e.use_xyz&&(t.Top.Z=t.Curr.Z),t.Bot.X=t.Next.Curr.X,t.Bot.Y=t.Next.Curr.Y,e.use_xyz&&(t.Bot.Z=t.Next.Curr.Z)),this.SetDx(t),t.PolyTyp=i},e.ClipperBase.prototype.FindNextLocMin=function(t){for(var i;;){for(;e.IntPoint.op_Inequality(t.Bot,t.Prev.Bot)||e.IntPoint.op_Equality(t.Curr,t.Top);)t=t.Next;if(t.Dx!==e.ClipperBase.horizontal&&t.Prev.Dx!==e.ClipperBase.horizontal)break;for(;t.Prev.Dx===e.ClipperBase.horizontal;)t=t.Prev;for(i=t;t.Dx===e.ClipperBase.horizontal;)t=t.Next;if(t.Top.Y!==t.Prev.Bot.Y){i.Prev.Bot.X<t.Bot.X&&(t=i);break}}return t},e.ClipperBase.prototype.ProcessBound=function(t,i){var n,o,r=t;if(r.OutIdx===e.ClipperBase.Skip){if(t=r,i){for(;t.Top.Y===t.Next.Bot.Y;)t=t.Next;for(;t!==r&&t.Dx===e.ClipperBase.horizontal;)t=t.Prev}else{for(;t.Top.Y===t.Prev.Bot.Y;)t=t.Prev;for(;t!==r&&t.Dx===e.ClipperBase.horizontal;)t=t.Next}if(t===r)r=i?t.Next:t.Prev;else{t=i?r.Next:r.Prev;var s=new e.LocalMinima;s.Next=null,s.Y=t.Bot.Y,s.LeftBound=null,s.RightBound=t,t.WindDelta=0,r=this.ProcessBound(t,i),this.InsertLocalMinima(s)}return r}if(t.Dx===e.ClipperBase.horizontal&&((n=i?t.Prev:t.Next).Dx===e.ClipperBase.horizontal?n.Bot.X!==t.Bot.X&&n.Top.X!==t.Bot.X&&this.ReverseHorizontal(t):n.Bot.X!==t.Bot.X&&this.ReverseHorizontal(t)),n=t,i){for(;r.Top.Y===r.Next.Bot.Y&&r.Next.OutIdx!==e.ClipperBase.Skip;)r=r.Next;if(r.Dx===e.ClipperBase.horizontal&&r.Next.OutIdx!==e.ClipperBase.Skip){for(o=r;o.Prev.Dx===e.ClipperBase.horizontal;)o=o.Prev;o.Prev.Top.X>r.Next.Top.X&&(r=o.Prev)}for(;t!==r;)t.NextInLML=t.Next,t.Dx===e.ClipperBase.horizontal&&t!==n&&t.Bot.X!==t.Prev.Top.X&&this.ReverseHorizontal(t),t=t.Next;t.Dx===e.ClipperBase.horizontal&&t!==n&&t.Bot.X!==t.Prev.Top.X&&this.ReverseHorizontal(t),r=r.Next}else{for(;r.Top.Y===r.Prev.Bot.Y&&r.Prev.OutIdx!==e.ClipperBase.Skip;)r=r.Prev;if(r.Dx===e.ClipperBase.horizontal&&r.Prev.OutIdx!==e.ClipperBase.Skip){for(o=r;o.Next.Dx===e.ClipperBase.horizontal;)o=o.Next;(o.Next.Top.X===r.Prev.Top.X||o.Next.Top.X>r.Prev.Top.X)&&(r=o.Next)}for(;t!==r;)t.NextInLML=t.Prev,t.Dx===e.ClipperBase.horizontal&&t!==n&&t.Bot.X!==t.Next.Top.X&&this.ReverseHorizontal(t),t=t.Prev;t.Dx===e.ClipperBase.horizontal&&t!==n&&t.Bot.X!==t.Next.Top.X&&this.ReverseHorizontal(t),r=r.Prev}return r},e.ClipperBase.prototype.AddPath=function(t,i,n){e.use_lines?n||i!==e.PolyType.ptClip||e.Error("AddPath: Open paths must be subject."):n||e.Error("AddPath: Open paths have been disabled.");var o=t.length-1;if(n)for(;o>0&&e.IntPoint.op_Equality(t[o],t[0]);)--o;for(;o>0&&e.IntPoint.op_Equality(t[o],t[o-1]);)--o;if(n&&o<2||!n&&o<1)return!1;for(var r=new Array,s=0;s<=o;s++)r.push(new e.TEdge);var l=!0;r[1].Curr.X=t[1].X,r[1].Curr.Y=t[1].Y,e.use_xyz&&(r[1].Curr.Z=t[1].Z);var p={Value:this.m_UseFullRange};this.RangeTest(t[0],p),this.m_UseFullRange=p.Value,p.Value=this.m_UseFullRange,this.RangeTest(t[o],p),this.m_UseFullRange=p.Value,this.InitEdge(r[0],r[1],r[o],t[0]),this.InitEdge(r[o],r[0],r[o-1],t[o]);for(s=o-1;s>=1;--s)p.Value=this.m_UseFullRange,this.RangeTest(t[s],p),this.m_UseFullRange=p.Value,this.InitEdge(r[s],r[s+1],r[s-1],t[s]);for(var u,h=r[0],a=h,f=h;;)if(a.Curr!==a.Next.Curr||!n&&a.Next===h){if(a.Prev===a.Next)break;if(!n||!e.ClipperBase.SlopesEqual4(a.Prev.Curr,a.Curr,a.Next.Curr,this.m_UseFullRange)||this.PreserveCollinear&&this.Pt2IsBetweenPt1AndPt3(a.Prev.Curr,a.Curr,a.Next.Curr)){if((a=a.Next)===f||!n&&a.Next===h)break}else a===h&&(h=a.Next),f=a=(a=this.RemoveEdge(a)).Prev}else{if(a===a.Next)break;a===h&&(h=a.Next),f=a=this.RemoveEdge(a)}if(!n&&a===a.Next||n&&a.Prev===a.Next)return!1;n||(this.m_HasOpenPaths=!0,h.Prev.OutIdx=e.ClipperBase.Skip),a=h;do{this.InitEdge2(a,i),a=a.Next,l&&a.Curr.Y!==h.Curr.Y&&(l=!1)}while(a!==h);if(l){if(n)return!1;for(a.Prev.OutIdx=e.ClipperBase.Skip,(P=new e.LocalMinima).Next=null,P.Y=a.Bot.Y,P.LeftBound=null,P.RightBound=a,P.RightBound.Side=e.EdgeSide.esRight,P.RightBound.WindDelta=0;a.Bot.X!==a.Prev.Top.X&&this.ReverseHorizontal(a),a.Next.OutIdx!==e.ClipperBase.Skip;)a.NextInLML=a.Next,a=a.Next;return this.InsertLocalMinima(P),this.m_edges.push(r),!0}this.m_edges.push(r);var d=null;for(e.IntPoint.op_Equality(a.Prev.Bot,a.Prev.Top)&&(a=a.Next);(a=this.FindNextLocMin(a))!==d;){var P;null===d&&(d=a),(P=new e.LocalMinima).Next=null,P.Y=a.Bot.Y,a.Dx<a.Prev.Dx?(P.LeftBound=a.Prev,P.RightBound=a,u=!1):(P.LeftBound=a,P.RightBound=a.Prev,u=!0),P.LeftBound.Side=e.EdgeSide.esLeft,P.RightBound.Side=e.EdgeSide.esRight,n?P.LeftBound.Next===P.RightBound?P.LeftBound.WindDelta=-1:P.LeftBound.WindDelta=1:P.LeftBound.WindDelta=0,P.RightBound.WindDelta=-P.LeftBound.WindDelta,(a=this.ProcessBound(P.LeftBound,u)).OutIdx===e.ClipperBase.Skip&&(a=this.ProcessBound(a,u));var m=this.ProcessBound(P.RightBound,!u);m.OutIdx===e.ClipperBase.Skip&&(m=this.ProcessBound(m,!u)),P.LeftBound.OutIdx===e.ClipperBase.Skip?P.LeftBound=null:P.RightBound.OutIdx===e.ClipperBase.Skip&&(P.RightBound=null),this.InsertLocalMinima(P),u||(a=m)}return!0},e.ClipperBase.prototype.AddPaths=function(t,e,i){for(var n=!1,o=0,r=t.length;o<r;++o)this.AddPath(t[o],e,i)&&(n=!0);return n},e.ClipperBase.prototype.Pt2IsBetweenPt1AndPt3=function(t,i,n){return!(e.IntPoint.op_Equality(t,n)||e.IntPoint.op_Equality(t,i)||e.IntPoint.op_Equality(n,i))&&(t.X!==n.X?i.X>t.X==i.X<n.X:i.Y>t.Y==i.Y<n.Y)},e.ClipperBase.prototype.RemoveEdge=function(t){t.Prev.Next=t.Next,t.Next.Prev=t.Prev;var e=t.Next;return t.Prev=null,e},e.ClipperBase.prototype.SetDx=function(t){t.Delta.X=t.Top.X-t.Bot.X,t.Delta.Y=t.Top.Y-t.Bot.Y,0===t.Delta.Y?t.Dx=e.ClipperBase.horizontal:t.Dx=t.Delta.X/t.Delta.Y},e.ClipperBase.prototype.InsertLocalMinima=function(t){if(null===this.m_MinimaList)this.m_MinimaList=t;else if(t.Y>=this.m_MinimaList.Y)t.Next=this.m_MinimaList,this.m_MinimaList=t;else{for(var e=this.m_MinimaList;null!==e.Next&&t.Y<e.Next.Y;)e=e.Next;t.Next=e.Next,e.Next=t}},e.ClipperBase.prototype.PopLocalMinima=function(t,e){return e.v=this.m_CurrentLM,null!==this.m_CurrentLM&&this.m_CurrentLM.Y===t&&(this.m_CurrentLM=this.m_CurrentLM.Next,!0)},e.ClipperBase.prototype.ReverseHorizontal=function(t){var i=t.Top.X;t.Top.X=t.Bot.X,t.Bot.X=i,e.use_xyz&&(i=t.Top.Z,t.Top.Z=t.Bot.Z,t.Bot.Z=i)},e.ClipperBase.prototype.Reset=function(){if(this.m_CurrentLM=this.m_MinimaList,null!==this.m_CurrentLM){this.m_Scanbeam=null;for(var t=this.m_MinimaList;null!==t;){this.InsertScanbeam(t.Y);var i=t.LeftBound;null!==i&&(i.Curr.X=i.Bot.X,i.Curr.Y=i.Bot.Y,e.use_xyz&&(i.Curr.Z=i.Bot.Z),i.OutIdx=e.ClipperBase.Unassigned),null!==(i=t.RightBound)&&(i.Curr.X=i.Bot.X,i.Curr.Y=i.Bot.Y,e.use_xyz&&(i.Curr.Z=i.Bot.Z),i.OutIdx=e.ClipperBase.Unassigned),t=t.Next}this.m_ActiveEdges=null}},e.ClipperBase.prototype.InsertScanbeam=function(t){if(null===this.m_Scanbeam)this.m_Scanbeam=new e.Scanbeam,this.m_Scanbeam.Next=null,this.m_Scanbeam.Y=t;else if(t>this.m_Scanbeam.Y){var i=new e.Scanbeam;i.Y=t,i.Next=this.m_Scanbeam,this.m_Scanbeam=i}else{for(var n=this.m_Scanbeam;null!==n.Next&&t<=n.Next.Y;)n=n.Next;if(t===n.Y)return;var o=new e.Scanbeam;o.Y=t,o.Next=n.Next,n.Next=o}},e.ClipperBase.prototype.PopScanbeam=function(t){return null===this.m_Scanbeam?(t.v=0,!1):(t.v=this.m_Scanbeam.Y,this.m_Scanbeam=this.m_Scanbeam.Next,!0)},e.ClipperBase.prototype.LocalMinimaPending=function(){return null!==this.m_CurrentLM},e.ClipperBase.prototype.CreateOutRec=function(){var t=new e.OutRec;return t.Idx=e.ClipperBase.Unassigned,t.IsHole=!1,t.IsOpen=!1,t.FirstLeft=null,t.Pts=null,t.BottomPt=null,t.PolyNode=null,this.m_PolyOuts.push(t),t.Idx=this.m_PolyOuts.length-1,t},e.ClipperBase.prototype.DisposeOutRec=function(t){var e=this.m_PolyOuts[t];e.Pts=null,e=null,this.m_PolyOuts[t]=null},e.ClipperBase.prototype.UpdateEdgeIntoAEL=function(t){null===t.NextInLML&&e.Error("UpdateEdgeIntoAEL: invalid call");var i=t.PrevInAEL,n=t.NextInAEL;return t.NextInLML.OutIdx=t.OutIdx,null!==i?i.NextInAEL=t.NextInLML:this.m_ActiveEdges=t.NextInLML,null!==n&&(n.PrevInAEL=t.NextInLML),t.NextInLML.Side=t.Side,t.NextInLML.WindDelta=t.WindDelta,t.NextInLML.WindCnt=t.WindCnt,t.NextInLML.WindCnt2=t.WindCnt2,(t=t.NextInLML).Curr.X=t.Bot.X,t.Curr.Y=t.Bot.Y,t.PrevInAEL=i,t.NextInAEL=n,e.ClipperBase.IsHorizontal(t)||this.InsertScanbeam(t.Top.Y),t},e.ClipperBase.prototype.SwapPositionsInAEL=function(t,e){if(t.NextInAEL!==t.PrevInAEL&&e.NextInAEL!==e.PrevInAEL){if(t.NextInAEL===e){var i=e.NextInAEL;null!==i&&(i.PrevInAEL=t);var n=t.PrevInAEL;null!==n&&(n.NextInAEL=e),e.PrevInAEL=n,e.NextInAEL=t,t.PrevInAEL=e,t.NextInAEL=i}else if(e.NextInAEL===t){var o=t.NextInAEL;null!==o&&(o.PrevInAEL=e);var r=e.PrevInAEL;null!==r&&(r.NextInAEL=t),t.PrevInAEL=r,t.NextInAEL=e,e.PrevInAEL=t,e.NextInAEL=o}else{var s=t.NextInAEL,l=t.PrevInAEL;t.NextInAEL=e.NextInAEL,null!==t.NextInAEL&&(t.NextInAEL.PrevInAEL=t),t.PrevInAEL=e.PrevInAEL,null!==t.PrevInAEL&&(t.PrevInAEL.NextInAEL=t),e.NextInAEL=s,null!==e.NextInAEL&&(e.NextInAEL.PrevInAEL=e),e.PrevInAEL=l,null!==e.PrevInAEL&&(e.PrevInAEL.NextInAEL=e)}null===t.PrevInAEL?this.m_ActiveEdges=t:null===e.PrevInAEL&&(this.m_ActiveEdges=e)}},e.ClipperBase.prototype.DeleteFromAEL=function(t){var e=t.PrevInAEL,i=t.NextInAEL;null===e&&null===i&&t!==this.m_ActiveEdges||(null!==e?e.NextInAEL=i:this.m_ActiveEdges=i,null!==i&&(i.PrevInAEL=e),t.NextInAEL=null,t.PrevInAEL=null)},e.Clipper=function(t){void 0===t&&(t=0),this.m_PolyOuts=null,this.m_ClipType=e.ClipType.ctIntersection,this.m_Scanbeam=null,this.m_Maxima=null,this.m_ActiveEdges=null,this.m_SortedEdges=null,this.m_IntersectList=null,this.m_IntersectNodeComparer=null,this.m_ExecuteLocked=!1,this.m_ClipFillType=e.PolyFillType.pftEvenOdd,this.m_SubjFillType=e.PolyFillType.pftEvenOdd,this.m_Joins=null,this.m_GhostJoins=null,this.m_UsingPolyTree=!1,this.ReverseSolution=!1,this.StrictlySimple=!1,e.ClipperBase.call(this),this.m_Scanbeam=null,this.m_Maxima=null,this.m_ActiveEdges=null,this.m_SortedEdges=null,this.m_IntersectList=new Array,this.m_IntersectNodeComparer=e.MyIntersectNodeSort.Compare,this.m_ExecuteLocked=!1,this.m_UsingPolyTree=!1,this.m_PolyOuts=new Array,this.m_Joins=new Array,this.m_GhostJoins=new Array,this.ReverseSolution=!!(1&t),this.StrictlySimple=!!(2&t),this.PreserveCollinear=!!(4&t),e.use_xyz&&(this.ZFillFunction=null)},e.Clipper.ioReverseSolution=1,e.Clipper.ioStrictlySimple=2,e.Clipper.ioPreserveCollinear=4,e.Clipper.prototype.Clear=function(){0!==this.m_edges.length&&(this.DisposeAllPolyPts(),e.ClipperBase.prototype.Clear.call(this))},e.Clipper.prototype.InsertMaxima=function(t){var i=new e.Maxima;if(i.X=t,null===this.m_Maxima)this.m_Maxima=i,this.m_Maxima.Next=null,this.m_Maxima.Prev=null;else if(t<this.m_Maxima.X)i.Next=this.m_Maxima,i.Prev=null,this.m_Maxima=i;else{for(var n=this.m_Maxima;null!==n.Next&&t>=n.Next.X;)n=n.Next;if(t===n.X)return;i.Next=n.Next,i.Prev=n,null!==n.Next&&(n.Next.Prev=i),n.Next=i}},e.Clipper.prototype.Execute=function(){var t=arguments,i=t.length,n=t[1]instanceof e.PolyTree;if(4===i&&!n){var o=t[0],r=t[1],s=t[2],l=t[3];if(this.m_ExecuteLocked)return!1;this.m_HasOpenPaths&&e.Error("Error: PolyTree struct is needed for open path clipping."),this.m_ExecuteLocked=!0,e.Clear(r),this.m_SubjFillType=s,this.m_ClipFillType=l,this.m_ClipType=o,this.m_UsingPolyTree=!1;try{(u=this.ExecuteInternal())&&this.BuildResult(r)}finally{this.DisposeAllPolyPts(),this.m_ExecuteLocked=!1}return u}if(4===i&&n){o=t[0];var p=t[1];s=t[2],l=t[3];if(this.m_ExecuteLocked)return!1;this.m_ExecuteLocked=!0,this.m_SubjFillType=s,this.m_ClipFillType=l,this.m_ClipType=o,this.m_UsingPolyTree=!0;try{var u;(u=this.ExecuteInternal())&&this.BuildResult2(p)}finally{this.DisposeAllPolyPts(),this.m_ExecuteLocked=!1}return u}if(2===i&&!n){o=t[0],r=t[1];return this.Execute(o,r,e.PolyFillType.pftEvenOdd,e.PolyFillType.pftEvenOdd)}if(2===i&&n){o=t[0],p=t[1];return this.Execute(o,p,e.PolyFillType.pftEvenOdd,e.PolyFillType.pftEvenOdd)}},e.Clipper.prototype.FixHoleLinkage=function(t){if(null!==t.FirstLeft&&(t.IsHole===t.FirstLeft.IsHole||null===t.FirstLeft.Pts)){for(var e=t.FirstLeft;null!==e&&(e.IsHole===t.IsHole||null===e.Pts);)e=e.FirstLeft;t.FirstLeft=e}},e.Clipper.prototype.ExecuteInternal=function(){try{this.Reset(),this.m_SortedEdges=null,this.m_Maxima=null;var t,e,i,n={},o={};if(!this.PopScanbeam(n))return!1;for(this.InsertLocalMinimaIntoAEL(n.v);this.PopScanbeam(o)||this.LocalMinimaPending();){if(this.ProcessHorizontals(),this.m_GhostJoins.length=0,!this.ProcessIntersections(o.v))return!1;this.ProcessEdgesAtTopOfScanbeam(o.v),n.v=o.v,this.InsertLocalMinimaIntoAEL(n.v)}for(e=0,i=this.m_PolyOuts.length;e<i;e++)null===(t=this.m_PolyOuts[e]).Pts||t.IsOpen||(t.IsHole^this.ReverseSolution)==this.Area$1(t)>0&&this.ReversePolyPtLinks(t.Pts);for(this.JoinCommonEdges(),e=0,i=this.m_PolyOuts.length;e<i;e++)null!==(t=this.m_PolyOuts[e]).Pts&&(t.IsOpen?this.FixupOutPolyline(t):this.FixupOutPolygon(t));return this.StrictlySimple&&this.DoSimplePolygons(),!0}finally{this.m_Joins.length=0,this.m_GhostJoins.length=0}},e.Clipper.prototype.DisposeAllPolyPts=function(){for(var t=0,i=this.m_PolyOuts.length;t<i;++t)this.DisposeOutRec(t);e.Clear(this.m_PolyOuts)},e.Clipper.prototype.AddJoin=function(t,i,n){var o=new e.Join;o.OutPt1=t,o.OutPt2=i,o.OffPt.X=n.X,o.OffPt.Y=n.Y,e.use_xyz&&(o.OffPt.Z=n.Z),this.m_Joins.push(o)},e.Clipper.prototype.AddGhostJoin=function(t,i){var n=new e.Join;n.OutPt1=t,n.OffPt.X=i.X,n.OffPt.Y=i.Y,e.use_xyz&&(n.OffPt.Z=i.Z),this.m_GhostJoins.push(n)},e.Clipper.prototype.SetZ=function(t,i,n){if(null!==this.ZFillFunction){if(0!==t.Z||null===this.ZFillFunction)return;e.IntPoint.op_Equality(t,i.Bot)?t.Z=i.Bot.Z:e.IntPoint.op_Equality(t,i.Top)?t.Z=i.Top.Z:e.IntPoint.op_Equality(t,n.Bot)?t.Z=n.Bot.Z:e.IntPoint.op_Equality(t,n.Top)?t.Z=n.Top.Z:this.ZFillFunction(i.Bot,i.Top,n.Bot,n.Top,t)}},e.Clipper.prototype.InsertLocalMinimaIntoAEL=function(t){for(var i,n,o={};this.PopLocalMinima(t,o);){i=o.v.LeftBound,n=o.v.RightBound;var r=null;if(null===i?(this.InsertEdgeIntoAEL(n,null),this.SetWindingCount(n),this.IsContributing(n)&&(r=this.AddOutPt(n,n.Bot))):null===n?(this.InsertEdgeIntoAEL(i,null),this.SetWindingCount(i),this.IsContributing(i)&&(r=this.AddOutPt(i,i.Bot)),this.InsertScanbeam(i.Top.Y)):(this.InsertEdgeIntoAEL(i,null),this.InsertEdgeIntoAEL(n,i),this.SetWindingCount(i),n.WindCnt=i.WindCnt,n.WindCnt2=i.WindCnt2,this.IsContributing(i)&&(r=this.AddLocalMinPoly(i,n,i.Bot)),this.InsertScanbeam(i.Top.Y)),null!==n&&(e.ClipperBase.IsHorizontal(n)?(null!==n.NextInLML&&this.InsertScanbeam(n.NextInLML.Top.Y),this.AddEdgeToSEL(n)):this.InsertScanbeam(n.Top.Y)),null!==i&&null!==n){if(null!==r&&e.ClipperBase.IsHorizontal(n)&&this.m_GhostJoins.length>0&&0!==n.WindDelta)for(var s=0,l=this.m_GhostJoins.length;s<l;s++){var p=this.m_GhostJoins[s];this.HorzSegmentsOverlap(p.OutPt1.Pt.X,p.OffPt.X,n.Bot.X,n.Top.X)&&this.AddJoin(p.OutPt1,r,p.OffPt)}if(i.OutIdx>=0&&null!==i.PrevInAEL&&i.PrevInAEL.Curr.X===i.Bot.X&&i.PrevInAEL.OutIdx>=0&&e.ClipperBase.SlopesEqual5(i.PrevInAEL.Curr,i.PrevInAEL.Top,i.Curr,i.Top,this.m_UseFullRange)&&0!==i.WindDelta&&0!==i.PrevInAEL.WindDelta){var u=this.AddOutPt(i.PrevInAEL,i.Bot);this.AddJoin(r,u,i.Top)}if(i.NextInAEL!==n){if(n.OutIdx>=0&&n.PrevInAEL.OutIdx>=0&&e.ClipperBase.SlopesEqual5(n.PrevInAEL.Curr,n.PrevInAEL.Top,n.Curr,n.Top,this.m_UseFullRange)&&0!==n.WindDelta&&0!==n.PrevInAEL.WindDelta){u=this.AddOutPt(n.PrevInAEL,n.Bot);this.AddJoin(r,u,n.Top)}var h=i.NextInAEL;if(null!==h)for(;h!==n;)this.IntersectEdges(n,h,i.Curr),h=h.NextInAEL}}}},e.Clipper.prototype.InsertEdgeIntoAEL=function(t,e){if(null===this.m_ActiveEdges)t.PrevInAEL=null,t.NextInAEL=null,this.m_ActiveEdges=t;else if(null===e&&this.E2InsertsBeforeE1(this.m_ActiveEdges,t))t.PrevInAEL=null,t.NextInAEL=this.m_ActiveEdges,this.m_ActiveEdges.PrevInAEL=t,this.m_ActiveEdges=t;else{for(null===e&&(e=this.m_ActiveEdges);null!==e.NextInAEL&&!this.E2InsertsBeforeE1(e.NextInAEL,t);)e=e.NextInAEL;t.NextInAEL=e.NextInAEL,null!==e.NextInAEL&&(e.NextInAEL.PrevInAEL=t),t.PrevInAEL=e,e.NextInAEL=t}},e.Clipper.prototype.E2InsertsBeforeE1=function(t,i){return i.Curr.X===t.Curr.X?i.Top.Y>t.Top.Y?i.Top.X<e.Clipper.TopX(t,i.Top.Y):t.Top.X>e.Clipper.TopX(i,t.Top.Y):i.Curr.X<t.Curr.X},e.Clipper.prototype.IsEvenOddFillType=function(t){return t.PolyTyp===e.PolyType.ptSubject?this.m_SubjFillType===e.PolyFillType.pftEvenOdd:this.m_ClipFillType===e.PolyFillType.pftEvenOdd},e.Clipper.prototype.IsEvenOddAltFillType=function(t){return t.PolyTyp===e.PolyType.ptSubject?this.m_ClipFillType===e.PolyFillType.pftEvenOdd:this.m_SubjFillType===e.PolyFillType.pftEvenOdd},e.Clipper.prototype.IsContributing=function(t){var i,n;switch(t.PolyTyp===e.PolyType.ptSubject?(i=this.m_SubjFillType,n=this.m_ClipFillType):(i=this.m_ClipFillType,n=this.m_SubjFillType),i){case e.PolyFillType.pftEvenOdd:if(0===t.WindDelta&&1!==t.WindCnt)return!1;break;case e.PolyFillType.pftNonZero:if(1!==Math.abs(t.WindCnt))return!1;break;case e.PolyFillType.pftPositive:if(1!==t.WindCnt)return!1;break;default:if(-1!==t.WindCnt)return!1}switch(this.m_ClipType){case e.ClipType.ctIntersection:switch(n){case e.PolyFillType.pftEvenOdd:case e.PolyFillType.pftNonZero:return 0!==t.WindCnt2;case e.PolyFillType.pftPositive:return t.WindCnt2>0;default:return t.WindCnt2<0}case e.ClipType.ctUnion:switch(n){case e.PolyFillType.pftEvenOdd:case e.PolyFillType.pftNonZero:return 0===t.WindCnt2;case e.PolyFillType.pftPositive:return t.WindCnt2<=0;default:return t.WindCnt2>=0}case e.ClipType.ctDifference:if(t.PolyTyp===e.PolyType.ptSubject)switch(n){case e.PolyFillType.pftEvenOdd:case e.PolyFillType.pftNonZero:return 0===t.WindCnt2;case e.PolyFillType.pftPositive:return t.WindCnt2<=0;default:return t.WindCnt2>=0}else switch(n){case e.PolyFillType.pftEvenOdd:case e.PolyFillType.pftNonZero:return 0!==t.WindCnt2;case e.PolyFillType.pftPositive:return t.WindCnt2>0;default:return t.WindCnt2<0}case e.ClipType.ctXor:if(0!==t.WindDelta)return!0;switch(n){case e.PolyFillType.pftEvenOdd:case e.PolyFillType.pftNonZero:return 0===t.WindCnt2;case e.PolyFillType.pftPositive:return t.WindCnt2<=0;default:return t.WindCnt2>=0}}return!0},e.Clipper.prototype.SetWindingCount=function(t){for(var i=t.PrevInAEL;null!==i&&(i.PolyTyp!==t.PolyTyp||0===i.WindDelta);)i=i.PrevInAEL;if(null===i){var n=t.PolyTyp===e.PolyType.ptSubject?this.m_SubjFillType:this.m_ClipFillType;0===t.WindDelta?t.WindCnt=n===e.PolyFillType.pftNegative?-1:1:t.WindCnt=t.WindDelta,t.WindCnt2=0,i=this.m_ActiveEdges}else if(0===t.WindDelta&&this.m_ClipType!==e.ClipType.ctUnion)t.WindCnt=1,t.WindCnt2=i.WindCnt2,i=i.NextInAEL;else if(this.IsEvenOddFillType(t)){if(0===t.WindDelta){for(var o=!0,r=i.PrevInAEL;null!==r;)r.PolyTyp===i.PolyTyp&&0!==r.WindDelta&&(o=!o),r=r.PrevInAEL;t.WindCnt=o?0:1}else t.WindCnt=t.WindDelta;t.WindCnt2=i.WindCnt2,i=i.NextInAEL}else i.WindCnt*i.WindDelta<0?Math.abs(i.WindCnt)>1?i.WindDelta*t.WindDelta<0?t.WindCnt=i.WindCnt:t.WindCnt=i.WindCnt+t.WindDelta:t.WindCnt=0===t.WindDelta?1:t.WindDelta:0===t.WindDelta?t.WindCnt=i.WindCnt<0?i.WindCnt-1:i.WindCnt+1:i.WindDelta*t.WindDelta<0?t.WindCnt=i.WindCnt:t.WindCnt=i.WindCnt+t.WindDelta,t.WindCnt2=i.WindCnt2,i=i.NextInAEL;if(this.IsEvenOddAltFillType(t))for(;i!==t;)0!==i.WindDelta&&(t.WindCnt2=0===t.WindCnt2?1:0),i=i.NextInAEL;else for(;i!==t;)t.WindCnt2+=i.WindDelta,i=i.NextInAEL},e.Clipper.prototype.AddEdgeToSEL=function(t){null===this.m_SortedEdges?(this.m_SortedEdges=t,t.PrevInSEL=null,t.NextInSEL=null):(t.NextInSEL=this.m_SortedEdges,t.PrevInSEL=null,this.m_SortedEdges.PrevInSEL=t,this.m_SortedEdges=t)},e.Clipper.prototype.PopEdgeFromSEL=function(t){if(t.v=this.m_SortedEdges,null===t.v)return!1;var e=t.v;return this.m_SortedEdges=t.v.NextInSEL,null!==this.m_SortedEdges&&(this.m_SortedEdges.PrevInSEL=null),e.NextInSEL=null,e.PrevInSEL=null,!0},e.Clipper.prototype.CopyAELToSEL=function(){var t=this.m_ActiveEdges;for(this.m_SortedEdges=t;null!==t;)t.PrevInSEL=t.PrevInAEL,t.NextInSEL=t.NextInAEL,t=t.NextInAEL},e.Clipper.prototype.SwapPositionsInSEL=function(t,e){if(!(null===t.NextInSEL&&null===t.PrevInSEL||null===e.NextInSEL&&null===e.PrevInSEL)){if(t.NextInSEL===e)null!==(i=e.NextInSEL)&&(i.PrevInSEL=t),null!==(n=t.PrevInSEL)&&(n.NextInSEL=e),e.PrevInSEL=n,e.NextInSEL=t,t.PrevInSEL=e,t.NextInSEL=i;else if(e.NextInSEL===t){null!==(i=t.NextInSEL)&&(i.PrevInSEL=e),null!==(n=e.PrevInSEL)&&(n.NextInSEL=t),t.PrevInSEL=n,t.NextInSEL=e,e.PrevInSEL=t,e.NextInSEL=i}else{var i=t.NextInSEL,n=t.PrevInSEL;t.NextInSEL=e.NextInSEL,null!==t.NextInSEL&&(t.NextInSEL.PrevInSEL=t),t.PrevInSEL=e.PrevInSEL,null!==t.PrevInSEL&&(t.PrevInSEL.NextInSEL=t),e.NextInSEL=i,null!==e.NextInSEL&&(e.NextInSEL.PrevInSEL=e),e.PrevInSEL=n,null!==e.PrevInSEL&&(e.PrevInSEL.NextInSEL=e)}null===t.PrevInSEL?this.m_SortedEdges=t:null===e.PrevInSEL&&(this.m_SortedEdges=e)}},e.Clipper.prototype.AddLocalMaxPoly=function(t,e,i){this.AddOutPt(t,i),0===e.WindDelta&&this.AddOutPt(e,i),t.OutIdx===e.OutIdx?(t.OutIdx=-1,e.OutIdx=-1):t.OutIdx<e.OutIdx?this.AppendPolygon(t,e):this.AppendPolygon(e,t)},e.Clipper.prototype.AddLocalMinPoly=function(t,i,n){var o,r,s;if(e.ClipperBase.IsHorizontal(i)||t.Dx>i.Dx?(o=this.AddOutPt(t,n),i.OutIdx=t.OutIdx,t.Side=e.EdgeSide.esLeft,i.Side=e.EdgeSide.esRight,s=(r=t).PrevInAEL===i?i.PrevInAEL:r.PrevInAEL):(o=this.AddOutPt(i,n),t.OutIdx=i.OutIdx,t.Side=e.EdgeSide.esRight,i.Side=e.EdgeSide.esLeft,s=(r=i).PrevInAEL===t?t.PrevInAEL:r.PrevInAEL),null!==s&&s.OutIdx>=0&&s.Top.Y<n.Y&&r.Top.Y<n.Y){var l=e.Clipper.TopX(s,n.Y),p=e.Clipper.TopX(r,n.Y);if(l===p&&0!==r.WindDelta&&0!==s.WindDelta&&e.ClipperBase.SlopesEqual5(new e.IntPoint2(l,n.Y),s.Top,new e.IntPoint2(p,n.Y),r.Top,this.m_UseFullRange)){var u=this.AddOutPt(s,n);this.AddJoin(o,u,r.Top)}}return o},e.Clipper.prototype.AddOutPt=function(t,i){if(t.OutIdx<0){(o=this.CreateOutRec()).IsOpen=0===t.WindDelta;var n=new e.OutPt;return o.Pts=n,n.Idx=o.Idx,n.Pt.X=i.X,n.Pt.Y=i.Y,e.use_xyz&&(n.Pt.Z=i.Z),n.Next=n,n.Prev=n,o.IsOpen||this.SetHoleState(t,o),t.OutIdx=o.Idx,n}var o,r=(o=this.m_PolyOuts[t.OutIdx]).Pts,s=t.Side===e.EdgeSide.esLeft;return s&&e.IntPoint.op_Equality(i,r.Pt)?r:!s&&e.IntPoint.op_Equality(i,r.Prev.Pt)?r.Prev:((n=new e.OutPt).Idx=o.Idx,n.Pt.X=i.X,n.Pt.Y=i.Y,e.use_xyz&&(n.Pt.Z=i.Z),n.Next=r,n.Prev=r.Prev,n.Prev.Next=n,r.Prev=n,s&&(o.Pts=n),n)},e.Clipper.prototype.GetLastOutPt=function(t){var i=this.m_PolyOuts[t.OutIdx];return t.Side===e.EdgeSide.esLeft?i.Pts:i.Pts.Prev},e.Clipper.prototype.SwapPoints=function(t,i){var n=new e.IntPoint1(t.Value);t.Value.X=i.Value.X,t.Value.Y=i.Value.Y,e.use_xyz&&(t.Value.Z=i.Value.Z),i.Value.X=n.X,i.Value.Y=n.Y,e.use_xyz&&(i.Value.Z=n.Z)},e.Clipper.prototype.HorzSegmentsOverlap=function(t,e,i,n){var o;return t>e&&(o=t,t=e,e=o),i>n&&(o=i,i=n,n=o),t<n&&i<e},e.Clipper.prototype.SetHoleState=function(t,e){for(var i=t.PrevInAEL,n=null;null!==i;)i.OutIdx>=0&&0!==i.WindDelta&&(null===n?n=i:n.OutIdx===i.OutIdx&&(n=null)),i=i.PrevInAEL;null===n?(e.FirstLeft=null,e.IsHole=!1):(e.FirstLeft=this.m_PolyOuts[n.OutIdx],e.IsHole=!e.FirstLeft.IsHole)},e.Clipper.prototype.GetDx=function(t,i){return t.Y===i.Y?e.ClipperBase.horizontal:(i.X-t.X)/(i.Y-t.Y)},e.Clipper.prototype.FirstIsBottomPt=function(t,i){for(var n=t.Prev;e.IntPoint.op_Equality(n.Pt,t.Pt)&&n!==t;)n=n.Prev;var o=Math.abs(this.GetDx(t.Pt,n.Pt));for(n=t.Next;e.IntPoint.op_Equality(n.Pt,t.Pt)&&n!==t;)n=n.Next;var r=Math.abs(this.GetDx(t.Pt,n.Pt));for(n=i.Prev;e.IntPoint.op_Equality(n.Pt,i.Pt)&&n!==i;)n=n.Prev;var s=Math.abs(this.GetDx(i.Pt,n.Pt));for(n=i.Next;e.IntPoint.op_Equality(n.Pt,i.Pt)&&n!==i;)n=n.Next;var l=Math.abs(this.GetDx(i.Pt,n.Pt));return Math.max(o,r)===Math.max(s,l)&&Math.min(o,r)===Math.min(s,l)?this.Area(t)>0:o>=s&&o>=l||r>=s&&r>=l},e.Clipper.prototype.GetBottomPt=function(t){for(var i=null,n=t.Next;n!==t;)n.Pt.Y>t.Pt.Y?(t=n,i=null):n.Pt.Y===t.Pt.Y&&n.Pt.X<=t.Pt.X&&(n.Pt.X<t.Pt.X?(i=null,t=n):n.Next!==t&&n.Prev!==t&&(i=n)),n=n.Next;if(null!==i)for(;i!==n;)for(this.FirstIsBottomPt(n,i)||(t=i),i=i.Next;e.IntPoint.op_Inequality(i.Pt,t.Pt);)i=i.Next;return t},e.Clipper.prototype.GetLowermostRec=function(t,e){null===t.BottomPt&&(t.BottomPt=this.GetBottomPt(t.Pts)),null===e.BottomPt&&(e.BottomPt=this.GetBottomPt(e.Pts));var i=t.BottomPt,n=e.BottomPt;return i.Pt.Y>n.Pt.Y?t:i.Pt.Y<n.Pt.Y?e:i.Pt.X<n.Pt.X?t:i.Pt.X>n.Pt.X||i.Next===i?e:n.Next===n||this.FirstIsBottomPt(i,n)?t:e},e.Clipper.prototype.OutRec1RightOfOutRec2=function(t,e){do{if((t=t.FirstLeft)===e)return!0}while(null!==t);return!1},e.Clipper.prototype.GetOutRec=function(t){for(var e=this.m_PolyOuts[t];e!==this.m_PolyOuts[e.Idx];)e=this.m_PolyOuts[e.Idx];return e},e.Clipper.prototype.AppendPolygon=function(t,i){var n,o=this.m_PolyOuts[t.OutIdx],r=this.m_PolyOuts[i.OutIdx];n=this.OutRec1RightOfOutRec2(o,r)?r:this.OutRec1RightOfOutRec2(r,o)?o:this.GetLowermostRec(o,r);var s=o.Pts,l=s.Prev,p=r.Pts,u=p.Prev;t.Side===e.EdgeSide.esLeft?i.Side===e.EdgeSide.esLeft?(this.ReversePolyPtLinks(p),p.Next=s,s.Prev=p,l.Next=u,u.Prev=l,o.Pts=u):(u.Next=s,s.Prev=u,p.Prev=l,l.Next=p,o.Pts=p):i.Side===e.EdgeSide.esRight?(this.ReversePolyPtLinks(p),l.Next=u,u.Prev=l,p.Next=s,s.Prev=p):(l.Next=p,p.Prev=l,s.Prev=u,u.Next=s),o.BottomPt=null,n===r&&(r.FirstLeft!==o&&(o.FirstLeft=r.FirstLeft),o.IsHole=r.IsHole),r.Pts=null,r.BottomPt=null,r.FirstLeft=o;var h=t.OutIdx,a=i.OutIdx;t.OutIdx=-1,i.OutIdx=-1;for(var f=this.m_ActiveEdges;null!==f;){if(f.OutIdx===a){f.OutIdx=h,f.Side=t.Side;break}f=f.NextInAEL}r.Idx=o.Idx},e.Clipper.prototype.ReversePolyPtLinks=function(t){if(null!==t){var e,i;e=t;do{i=e.Next,e.Next=e.Prev,e.Prev=i,e=i}while(e!==t)}},e.Clipper.SwapSides=function(t,e){var i=t.Side;t.Side=e.Side,e.Side=i},e.Clipper.SwapPolyIndexes=function(t,e){var i=t.OutIdx;t.OutIdx=e.OutIdx,e.OutIdx=i},e.Clipper.prototype.IntersectEdges=function(t,i,n){var o=t.OutIdx>=0,r=i.OutIdx>=0;if(e.use_xyz&&this.SetZ(n,t,i),!e.use_lines||0!==t.WindDelta&&0!==i.WindDelta){if(t.PolyTyp===i.PolyTyp)if(this.IsEvenOddFillType(t)){var s=t.WindCnt;t.WindCnt=i.WindCnt,i.WindCnt=s}else t.WindCnt+i.WindDelta===0?t.WindCnt=-t.WindCnt:t.WindCnt+=i.WindDelta,i.WindCnt-t.WindDelta===0?i.WindCnt=-i.WindCnt:i.WindCnt-=t.WindDelta;else this.IsEvenOddFillType(i)?t.WindCnt2=0===t.WindCnt2?1:0:t.WindCnt2+=i.WindDelta,this.IsEvenOddFillType(t)?i.WindCnt2=0===i.WindCnt2?1:0:i.WindCnt2-=t.WindDelta;var l,p,u,h,a,f;switch(t.PolyTyp===e.PolyType.ptSubject?(l=this.m_SubjFillType,u=this.m_ClipFillType):(l=this.m_ClipFillType,u=this.m_SubjFillType),i.PolyTyp===e.PolyType.ptSubject?(p=this.m_SubjFillType,h=this.m_ClipFillType):(p=this.m_ClipFillType,h=this.m_SubjFillType),l){case e.PolyFillType.pftPositive:a=t.WindCnt;break;case e.PolyFillType.pftNegative:a=-t.WindCnt;break;default:a=Math.abs(t.WindCnt)}switch(p){case e.PolyFillType.pftPositive:f=i.WindCnt;break;case e.PolyFillType.pftNegative:f=-i.WindCnt;break;default:f=Math.abs(i.WindCnt)}if(o&&r)0!==a&&1!==a||0!==f&&1!==f||t.PolyTyp!==i.PolyTyp&&this.m_ClipType!==e.ClipType.ctXor?this.AddLocalMaxPoly(t,i,n):(this.AddOutPt(t,n),this.AddOutPt(i,n),e.Clipper.SwapSides(t,i),e.Clipper.SwapPolyIndexes(t,i));else if(o)0!==f&&1!==f||(this.AddOutPt(t,n),e.Clipper.SwapSides(t,i),e.Clipper.SwapPolyIndexes(t,i));else if(r)0!==a&&1!==a||(this.AddOutPt(i,n),e.Clipper.SwapSides(t,i),e.Clipper.SwapPolyIndexes(t,i));else if(!(0!==a&&1!==a||0!==f&&1!==f)){var d,P;switch(u){case e.PolyFillType.pftPositive:d=t.WindCnt2;break;case e.PolyFillType.pftNegative:d=-t.WindCnt2;break;default:d=Math.abs(t.WindCnt2)}switch(h){case e.PolyFillType.pftPositive:P=i.WindCnt2;break;case e.PolyFillType.pftNegative:P=-i.WindCnt2;break;default:P=Math.abs(i.WindCnt2)}if(t.PolyTyp!==i.PolyTyp)this.AddLocalMinPoly(t,i,n);else if(1===a&&1===f)switch(this.m_ClipType){case e.ClipType.ctIntersection:d>0&&P>0&&this.AddLocalMinPoly(t,i,n);break;case e.ClipType.ctUnion:d<=0&&P<=0&&this.AddLocalMinPoly(t,i,n);break;case e.ClipType.ctDifference:(t.PolyTyp===e.PolyType.ptClip&&d>0&&P>0||t.PolyTyp===e.PolyType.ptSubject&&d<=0&&P<=0)&&this.AddLocalMinPoly(t,i,n);break;case e.ClipType.ctXor:this.AddLocalMinPoly(t,i,n)}else e.Clipper.SwapSides(t,i)}}else{if(0===t.WindDelta&&0===i.WindDelta)return;t.PolyTyp===i.PolyTyp&&t.WindDelta!==i.WindDelta&&this.m_ClipType===e.ClipType.ctUnion?0===t.WindDelta?r&&(this.AddOutPt(t,n),o&&(t.OutIdx=-1)):o&&(this.AddOutPt(i,n),r&&(i.OutIdx=-1)):t.PolyTyp!==i.PolyTyp&&(0!==t.WindDelta||1!==Math.abs(i.WindCnt)||this.m_ClipType===e.ClipType.ctUnion&&0!==i.WindCnt2?0!==i.WindDelta||1!==Math.abs(t.WindCnt)||this.m_ClipType===e.ClipType.ctUnion&&0!==t.WindCnt2||(this.AddOutPt(i,n),r&&(i.OutIdx=-1)):(this.AddOutPt(t,n),o&&(t.OutIdx=-1)))}},e.Clipper.prototype.DeleteFromSEL=function(t){var e=t.PrevInSEL,i=t.NextInSEL;null===e&&null===i&&t!==this.m_SortedEdges||(null!==e?e.NextInSEL=i:this.m_SortedEdges=i,null!==i&&(i.PrevInSEL=e),t.NextInSEL=null,t.PrevInSEL=null)},e.Clipper.prototype.ProcessHorizontals=function(){for(var t={};this.PopEdgeFromSEL(t);)this.ProcessHorizontal(t.v)},e.Clipper.prototype.GetHorzDirection=function(t,i){t.Bot.X<t.Top.X?(i.Left=t.Bot.X,i.Right=t.Top.X,i.Dir=e.Direction.dLeftToRight):(i.Left=t.Top.X,i.Right=t.Bot.X,i.Dir=e.Direction.dRightToLeft)},e.Clipper.prototype.ProcessHorizontal=function(t){var i={Dir:null,Left:null,Right:null};this.GetHorzDirection(t,i);for(var n=i.Dir,o=i.Left,r=i.Right,s=0===t.WindDelta,l=t,p=null;null!==l.NextInLML&&e.ClipperBase.IsHorizontal(l.NextInLML);)l=l.NextInLML;null===l.NextInLML&&(p=this.GetMaximaPair(l));var u=this.m_Maxima;if(null!==u)if(n===e.Direction.dLeftToRight){for(;null!==u&&u.X<=t.Bot.X;)u=u.Next;null!==u&&u.X>=l.Top.X&&(u=null)}else{for(;null!==u.Next&&u.Next.X<t.Bot.X;)u=u.Next;u.X<=l.Top.X&&(u=null)}for(var h=null;;){for(var a=t===l,f=this.GetNextInAEL(t,n);null!==f;){if(null!==u)if(n===e.Direction.dLeftToRight)for(;null!==u&&u.X<f.Curr.X;)t.OutIdx>=0&&!s&&this.AddOutPt(t,new e.IntPoint2(u.X,t.Bot.Y)),u=u.Next;else for(;null!==u&&u.X>f.Curr.X;)t.OutIdx>=0&&!s&&this.AddOutPt(t,new e.IntPoint2(u.X,t.Bot.Y)),u=u.Prev;if(n===e.Direction.dLeftToRight&&f.Curr.X>r||n===e.Direction.dRightToLeft&&f.Curr.X<o)break;if(f.Curr.X===t.Top.X&&null!==t.NextInLML&&f.Dx<t.NextInLML.Dx)break;if(t.OutIdx>=0&&!s){e.use_xyz&&(n===e.Direction.dLeftToRight?this.SetZ(f.Curr,t,f):this.SetZ(f.Curr,f,t)),h=this.AddOutPt(t,f.Curr);for(var d=this.m_SortedEdges;null!==d;){if(d.OutIdx>=0&&this.HorzSegmentsOverlap(t.Bot.X,t.Top.X,d.Bot.X,d.Top.X)){var P=this.GetLastOutPt(d);this.AddJoin(P,h,d.Top)}d=d.NextInSEL}this.AddGhostJoin(h,t.Bot)}if(f===p&&a)return t.OutIdx>=0&&this.AddLocalMaxPoly(t,p,t.Top),this.DeleteFromAEL(t),void this.DeleteFromAEL(p);if(n===e.Direction.dLeftToRight){var m=new e.IntPoint2(f.Curr.X,t.Curr.Y);this.IntersectEdges(t,f,m)}else{m=new e.IntPoint2(f.Curr.X,t.Curr.Y);this.IntersectEdges(f,t,m)}var y=this.GetNextInAEL(f,n);this.SwapPositionsInAEL(t,f),f=y}if(null===t.NextInLML||!e.ClipperBase.IsHorizontal(t.NextInLML))break;(t=this.UpdateEdgeIntoAEL(t)).OutIdx>=0&&this.AddOutPt(t,t.Bot),i={Dir:n,Left:o,Right:r},this.GetHorzDirection(t,i),n=i.Dir,o=i.Left,r=i.Right}if(t.OutIdx>=0&&null===h){h=this.GetLastOutPt(t);for(d=this.m_SortedEdges;null!==d;){if(d.OutIdx>=0&&this.HorzSegmentsOverlap(t.Bot.X,t.Top.X,d.Bot.X,d.Top.X)){P=this.GetLastOutPt(d);this.AddJoin(P,h,d.Top)}d=d.NextInSEL}this.AddGhostJoin(h,t.Top)}if(null!==t.NextInLML)if(t.OutIdx>=0){if(h=this.AddOutPt(t,t.Top),0===(t=this.UpdateEdgeIntoAEL(t)).WindDelta)return;var c=t.PrevInAEL;y=t.NextInAEL;if(null!==c&&c.Curr.X===t.Bot.X&&c.Curr.Y===t.Bot.Y&&0===c.WindDelta&&c.OutIdx>=0&&c.Curr.Y>c.Top.Y&&e.ClipperBase.SlopesEqual3(t,c,this.m_UseFullRange)){P=this.AddOutPt(c,t.Bot);this.AddJoin(h,P,t.Top)}else if(null!==y&&y.Curr.X===t.Bot.X&&y.Curr.Y===t.Bot.Y&&0!==y.WindDelta&&y.OutIdx>=0&&y.Curr.Y>y.Top.Y&&e.ClipperBase.SlopesEqual3(t,y,this.m_UseFullRange)){P=this.AddOutPt(y,t.Bot);this.AddJoin(h,P,t.Top)}}else t=this.UpdateEdgeIntoAEL(t);else t.OutIdx>=0&&this.AddOutPt(t,t.Top),this.DeleteFromAEL(t)},e.Clipper.prototype.GetNextInAEL=function(t,i){return i===e.Direction.dLeftToRight?t.NextInAEL:t.PrevInAEL},e.Clipper.prototype.IsMinima=function(t){return null!==t&&t.Prev.NextInLML!==t&&t.Next.NextInLML!==t},e.Clipper.prototype.IsMaxima=function(t,e){return null!==t&&t.Top.Y===e&&null===t.NextInLML},e.Clipper.prototype.IsIntermediate=function(t,e){return t.Top.Y===e&&null!==t.NextInLML},e.Clipper.prototype.GetMaximaPair=function(t){return e.IntPoint.op_Equality(t.Next.Top,t.Top)&&null===t.Next.NextInLML?t.Next:e.IntPoint.op_Equality(t.Prev.Top,t.Top)&&null===t.Prev.NextInLML?t.Prev:null},e.Clipper.prototype.GetMaximaPairEx=function(t){var i=this.GetMaximaPair(t);return null===i||i.OutIdx===e.ClipperBase.Skip||i.NextInAEL===i.PrevInAEL&&!e.ClipperBase.IsHorizontal(i)?null:i},e.Clipper.prototype.ProcessIntersections=function(t){if(null===this.m_ActiveEdges)return!0;try{if(this.BuildIntersectList(t),0===this.m_IntersectList.length)return!0;if(1!==this.m_IntersectList.length&&!this.FixupIntersectionOrder())return!1;this.ProcessIntersectList()}catch(t){this.m_SortedEdges=null,this.m_IntersectList.length=0,e.Error("ProcessIntersections error")}return this.m_SortedEdges=null,!0},e.Clipper.prototype.BuildIntersectList=function(t){if(null!==this.m_ActiveEdges){var i=this.m_ActiveEdges;for(this.m_SortedEdges=i;null!==i;)i.PrevInSEL=i.PrevInAEL,i.NextInSEL=i.NextInAEL,i.Curr.X=e.Clipper.TopX(i,t),i=i.NextInAEL;for(var n=!0;n&&null!==this.m_SortedEdges;){for(n=!1,i=this.m_SortedEdges;null!==i.NextInSEL;){var o=i.NextInSEL,r=new e.IntPoint0;if(i.Curr.X>o.Curr.X){this.IntersectPoint(i,o,r),r.Y<t&&(r=new e.IntPoint2(e.Clipper.TopX(i,t),t));var s=new e.IntersectNode;s.Edge1=i,s.Edge2=o,s.Pt.X=r.X,s.Pt.Y=r.Y,e.use_xyz&&(s.Pt.Z=r.Z),this.m_IntersectList.push(s),this.SwapPositionsInSEL(i,o),n=!0}else i=o}if(null===i.PrevInSEL)break;i.PrevInSEL.NextInSEL=null}this.m_SortedEdges=null}},e.Clipper.prototype.EdgesAdjacent=function(t){return t.Edge1.NextInSEL===t.Edge2||t.Edge1.PrevInSEL===t.Edge2},e.Clipper.IntersectNodeSort=function(t,e){return e.Pt.Y-t.Pt.Y},e.Clipper.prototype.FixupIntersectionOrder=function(){this.m_IntersectList.sort(this.m_IntersectNodeComparer),this.CopyAELToSEL();for(var t=this.m_IntersectList.length,e=0;e<t;e++){if(!this.EdgesAdjacent(this.m_IntersectList[e])){for(var i=e+1;i<t&&!this.EdgesAdjacent(this.m_IntersectList[i]);)i++;if(i===t)return!1;var n=this.m_IntersectList[e];this.m_IntersectList[e]=this.m_IntersectList[i],this.m_IntersectList[i]=n}this.SwapPositionsInSEL(this.m_IntersectList[e].Edge1,this.m_IntersectList[e].Edge2)}return!0},e.Clipper.prototype.ProcessIntersectList=function(){for(var t=0,e=this.m_IntersectList.length;t<e;t++){var i=this.m_IntersectList[t];this.IntersectEdges(i.Edge1,i.Edge2,i.Pt),this.SwapPositionsInAEL(i.Edge1,i.Edge2)}this.m_IntersectList.length=0};r.msie?e.Clipper.Round=function(t){return t<0?Math.ceil(t-.5):Math.round(t)}:r.chromium?e.Clipper.Round=function(t){return t<0?-Math.round(Math.abs(t)):Math.round(t)}:r.safari?e.Clipper.Round=function(t){return t<0?(t-=.5)<-2147483648?Math.ceil(t):0|t:(t+=.5)>2147483647?Math.floor(t):0|t}:e.Clipper.Round=function(t){return t<0?Math.ceil(t-.5):Math.floor(t+.5)},e.Clipper.TopX=function(t,i){return i===t.Top.Y?t.Top.X:t.Bot.X+e.Clipper.Round(t.Dx*(i-t.Bot.Y))},e.Clipper.prototype.IntersectPoint=function(t,i,n){var o,r;if(n.X=0,n.Y=0,t.Dx===i.Dx)return n.Y=t.Curr.Y,void(n.X=e.Clipper.TopX(t,n.Y));if(0===t.Delta.X)n.X=t.Bot.X,e.ClipperBase.IsHorizontal(i)?n.Y=i.Bot.Y:(r=i.Bot.Y-i.Bot.X/i.Dx,n.Y=e.Clipper.Round(n.X/i.Dx+r));else if(0===i.Delta.X)n.X=i.Bot.X,e.ClipperBase.IsHorizontal(t)?n.Y=t.Bot.Y:(o=t.Bot.Y-t.Bot.X/t.Dx,n.Y=e.Clipper.Round(n.X/t.Dx+o));else{o=t.Bot.X-t.Bot.Y*t.Dx;var s=((r=i.Bot.X-i.Bot.Y*i.Dx)-o)/(t.Dx-i.Dx);n.Y=e.Clipper.Round(s),Math.abs(t.Dx)<Math.abs(i.Dx)?n.X=e.Clipper.Round(t.Dx*s+o):n.X=e.Clipper.Round(i.Dx*s+r)}if(n.Y<t.Top.Y||n.Y<i.Top.Y){if(t.Top.Y>i.Top.Y)return n.Y=t.Top.Y,n.X=e.Clipper.TopX(i,t.Top.Y),n.X<t.Top.X;n.Y=i.Top.Y,Math.abs(t.Dx)<Math.abs(i.Dx)?n.X=e.Clipper.TopX(t,n.Y):n.X=e.Clipper.TopX(i,n.Y)}n.Y>t.Curr.Y&&(n.Y=t.Curr.Y,Math.abs(t.Dx)>Math.abs(i.Dx)?n.X=e.Clipper.TopX(i,n.Y):n.X=e.Clipper.TopX(t,n.Y))},e.Clipper.prototype.ProcessEdgesAtTopOfScanbeam=function(t){for(var i=this.m_ActiveEdges;null!==i;){var n=this.IsMaxima(i,t);if(n){var o=this.GetMaximaPairEx(i);n=null===o||!e.ClipperBase.IsHorizontal(o)}if(n){this.StrictlySimple&&this.InsertMaxima(i.Top.X);var r=i.PrevInAEL;this.DoMaxima(i),i=null===r?this.m_ActiveEdges:r.NextInAEL}else{if(this.IsIntermediate(i,t)&&e.ClipperBase.IsHorizontal(i.NextInLML)?((i=this.UpdateEdgeIntoAEL(i)).OutIdx>=0&&this.AddOutPt(i,i.Bot),this.AddEdgeToSEL(i)):(i.Curr.X=e.Clipper.TopX(i,t),i.Curr.Y=t),e.use_xyz&&(i.Top.Y===t?i.Curr.Z=i.Top.Z:i.Bot.Y===t?i.Curr.Z=i.Bot.Z:i.Curr.Z=0),this.StrictlySimple){r=i.PrevInAEL;if(i.OutIdx>=0&&0!==i.WindDelta&&null!==r&&r.OutIdx>=0&&r.Curr.X===i.Curr.X&&0!==r.WindDelta){var s=new e.IntPoint1(i.Curr);e.use_xyz&&this.SetZ(s,r,i);var l=this.AddOutPt(r,s),p=this.AddOutPt(i,s);this.AddJoin(l,p,s)}}i=i.NextInAEL}}for(this.ProcessHorizontals(),this.m_Maxima=null,i=this.m_ActiveEdges;null!==i;){if(this.IsIntermediate(i,t)){l=null;i.OutIdx>=0&&(l=this.AddOutPt(i,i.Top));r=(i=this.UpdateEdgeIntoAEL(i)).PrevInAEL;var u=i.NextInAEL;if(null!==r&&r.Curr.X===i.Bot.X&&r.Curr.Y===i.Bot.Y&&null!==l&&r.OutIdx>=0&&r.Curr.Y===r.Top.Y&&e.ClipperBase.SlopesEqual5(i.Curr,i.Top,r.Curr,r.Top,this.m_UseFullRange)&&0!==i.WindDelta&&0!==r.WindDelta){p=this.AddOutPt(ePrev2,i.Bot);this.AddJoin(l,p,i.Top)}else if(null!==u&&u.Curr.X===i.Bot.X&&u.Curr.Y===i.Bot.Y&&null!==l&&u.OutIdx>=0&&u.Curr.Y===u.Top.Y&&e.ClipperBase.SlopesEqual5(i.Curr,i.Top,u.Curr,u.Top,this.m_UseFullRange)&&0!==i.WindDelta&&0!==u.WindDelta){p=this.AddOutPt(u,i.Bot);this.AddJoin(l,p,i.Top)}}i=i.NextInAEL}},e.Clipper.prototype.DoMaxima=function(t){var i=this.GetMaximaPairEx(t);if(null===i)return t.OutIdx>=0&&this.AddOutPt(t,t.Top),void this.DeleteFromAEL(t);for(var n=t.NextInAEL;null!==n&&n!==i;)this.IntersectEdges(t,n,t.Top),this.SwapPositionsInAEL(t,n),n=t.NextInAEL;-1===t.OutIdx&&-1===i.OutIdx?(this.DeleteFromAEL(t),this.DeleteFromAEL(i)):t.OutIdx>=0&&i.OutIdx>=0?(t.OutIdx>=0&&this.AddLocalMaxPoly(t,i,t.Top),this.DeleteFromAEL(t),this.DeleteFromAEL(i)):e.use_lines&&0===t.WindDelta?(t.OutIdx>=0&&(this.AddOutPt(t,t.Top),t.OutIdx=e.ClipperBase.Unassigned),this.DeleteFromAEL(t),i.OutIdx>=0&&(this.AddOutPt(i,t.Top),i.OutIdx=e.ClipperBase.Unassigned),this.DeleteFromAEL(i)):e.Error("DoMaxima error")},e.Clipper.ReversePaths=function(t){for(var e=0,i=t.length;e<i;e++)t[e].reverse()},e.Clipper.Orientation=function(t){return e.Clipper.Area(t)>=0},e.Clipper.prototype.PointCount=function(t){if(null===t)return 0;var e=0,i=t;do{e++,i=i.Next}while(i!==t);return e},e.Clipper.prototype.BuildResult=function(t){e.Clear(t);for(var i=0,n=this.m_PolyOuts.length;i<n;i++){var o=this.m_PolyOuts[i];if(null!==o.Pts){var r=o.Pts.Prev,s=this.PointCount(r);if(!(s<2)){for(var l=new Array(s),p=0;p<s;p++)l[p]=r.Pt,r=r.Prev;t.push(l)}}}},e.Clipper.prototype.BuildResult2=function(t){t.Clear();for(var i=0,n=this.m_PolyOuts.length;i<n;i++){var o=this.m_PolyOuts[i],r=this.PointCount(o.Pts);if(!(o.IsOpen&&r<2||!o.IsOpen&&r<3)){this.FixHoleLinkage(o);var s=new e.PolyNode;t.m_AllPolys.push(s),o.PolyNode=s,s.m_polygon.length=r;for(var l=o.Pts.Prev,p=0;p<r;p++)s.m_polygon[p]=l.Pt,l=l.Prev}}for(i=0,n=this.m_PolyOuts.length;i<n;i++){null!==(o=this.m_PolyOuts[i]).PolyNode&&(o.IsOpen?(o.PolyNode.IsOpen=!0,t.AddChild(o.PolyNode)):null!==o.FirstLeft&&null!==o.FirstLeft.PolyNode?o.FirstLeft.PolyNode.AddChild(o.PolyNode):t.AddChild(o.PolyNode))}},e.Clipper.prototype.FixupOutPolyline=function(t){for(var i=t.Pts,n=i.Prev;i!==n;)if(i=i.Next,e.IntPoint.op_Equality(i.Pt,i.Prev.Pt)){i===n&&(n=i.Prev);var o=i.Prev;o.Next=i.Next,i.Next.Prev=o,i=o}i===i.Prev&&(t.Pts=null)},e.Clipper.prototype.FixupOutPolygon=function(t){var i=null;t.BottomPt=null;for(var n=t.Pts,o=this.PreserveCollinear||this.StrictlySimple;;){if(n.Prev===n||n.Prev===n.Next)return void(t.Pts=null);if(e.IntPoint.op_Equality(n.Pt,n.Next.Pt)||e.IntPoint.op_Equality(n.Pt,n.Prev.Pt)||e.ClipperBase.SlopesEqual4(n.Prev.Pt,n.Pt,n.Next.Pt,this.m_UseFullRange)&&(!o||!this.Pt2IsBetweenPt1AndPt3(n.Prev.Pt,n.Pt,n.Next.Pt)))i=null,n.Prev.Next=n.Next,n.Next.Prev=n.Prev,n=n.Prev;else{if(n===i)break;null===i&&(i=n),n=n.Next}}t.Pts=n},e.Clipper.prototype.DupOutPt=function(t,i){var n=new e.OutPt;return n.Pt.X=t.Pt.X,n.Pt.Y=t.Pt.Y,e.use_xyz&&(n.Pt.Z=t.Pt.Z),n.Idx=t.Idx,i?(n.Next=t.Next,n.Prev=t,t.Next.Prev=n,t.Next=n):(n.Prev=t.Prev,n.Next=t,t.Prev.Next=n,t.Prev=n),n},e.Clipper.prototype.GetOverlap=function(t,e,i,n,o){return t<e?i<n?(o.Left=Math.max(t,i),o.Right=Math.min(e,n)):(o.Left=Math.max(t,n),o.Right=Math.min(e,i)):i<n?(o.Left=Math.max(e,i),o.Right=Math.min(t,n)):(o.Left=Math.max(e,n),o.Right=Math.min(t,i)),o.Left<o.Right},e.Clipper.prototype.JoinHorz=function(t,i,n,o,r,s){var l=t.Pt.X>i.Pt.X?e.Direction.dRightToLeft:e.Direction.dLeftToRight,p=n.Pt.X>o.Pt.X?e.Direction.dRightToLeft:e.Direction.dLeftToRight;if(l===p)return!1;if(l===e.Direction.dLeftToRight){for(;t.Next.Pt.X<=r.X&&t.Next.Pt.X>=t.Pt.X&&t.Next.Pt.Y===r.Y;)t=t.Next;s&&t.Pt.X!==r.X&&(t=t.Next),i=this.DupOutPt(t,!s),e.IntPoint.op_Inequality(i.Pt,r)&&((t=i).Pt.X=r.X,t.Pt.Y=r.Y,e.use_xyz&&(t.Pt.Z=r.Z),i=this.DupOutPt(t,!s))}else{for(;t.Next.Pt.X>=r.X&&t.Next.Pt.X<=t.Pt.X&&t.Next.Pt.Y===r.Y;)t=t.Next;s||t.Pt.X===r.X||(t=t.Next),i=this.DupOutPt(t,s),e.IntPoint.op_Inequality(i.Pt,r)&&((t=i).Pt.X=r.X,t.Pt.Y=r.Y,e.use_xyz&&(t.Pt.Z=r.Z),i=this.DupOutPt(t,s))}if(p===e.Direction.dLeftToRight){for(;n.Next.Pt.X<=r.X&&n.Next.Pt.X>=n.Pt.X&&n.Next.Pt.Y===r.Y;)n=n.Next;s&&n.Pt.X!==r.X&&(n=n.Next),o=this.DupOutPt(n,!s),e.IntPoint.op_Inequality(o.Pt,r)&&((n=o).Pt.X=r.X,n.Pt.Y=r.Y,e.use_xyz&&(n.Pt.Z=r.Z),o=this.DupOutPt(n,!s))}else{for(;n.Next.Pt.X>=r.X&&n.Next.Pt.X<=n.Pt.X&&n.Next.Pt.Y===r.Y;)n=n.Next;s||n.Pt.X===r.X||(n=n.Next),o=this.DupOutPt(n,s),e.IntPoint.op_Inequality(o.Pt,r)&&((n=o).Pt.X=r.X,n.Pt.Y=r.Y,e.use_xyz&&(n.Pt.Z=r.Z),o=this.DupOutPt(n,s))}return l===e.Direction.dLeftToRight===s?(t.Prev=n,n.Next=t,i.Next=o,o.Prev=i):(t.Next=n,n.Prev=t,i.Prev=o,o.Next=i),!0},e.Clipper.prototype.JoinPoints=function(t,i,n){var o=t.OutPt1,r=new e.OutPt,s=t.OutPt2,l=new e.OutPt,p=t.OutPt1.Pt.Y===t.OffPt.Y;if(p&&e.IntPoint.op_Equality(t.OffPt,t.OutPt1.Pt)&&e.IntPoint.op_Equality(t.OffPt,t.OutPt2.Pt)){if(i!==n)return!1;for(r=t.OutPt1.Next;r!==o&&e.IntPoint.op_Equality(r.Pt,t.OffPt);)r=r.Next;var u=r.Pt.Y>t.OffPt.Y;for(l=t.OutPt2.Next;l!==s&&e.IntPoint.op_Equality(l.Pt,t.OffPt);)l=l.Next;return u!==l.Pt.Y>t.OffPt.Y&&(u?(r=this.DupOutPt(o,!1),l=this.DupOutPt(s,!0),o.Prev=s,s.Next=o,r.Next=l,l.Prev=r,t.OutPt1=o,t.OutPt2=r,!0):(r=this.DupOutPt(o,!0),l=this.DupOutPt(s,!1),o.Next=s,s.Prev=o,r.Prev=l,l.Next=r,t.OutPt1=o,t.OutPt2=r,!0))}if(p){for(r=o;o.Prev.Pt.Y===o.Pt.Y&&o.Prev!==r&&o.Prev!==s;)o=o.Prev;for(;r.Next.Pt.Y===r.Pt.Y&&r.Next!==o&&r.Next!==s;)r=r.Next;if(r.Next===o||r.Next===s)return!1;for(l=s;s.Prev.Pt.Y===s.Pt.Y&&s.Prev!==l&&s.Prev!==r;)s=s.Prev;for(;l.Next.Pt.Y===l.Pt.Y&&l.Next!==s&&l.Next!==o;)l=l.Next;if(l.Next===s||l.Next===o)return!1;var h={Left:null,Right:null};if(!this.GetOverlap(o.Pt.X,r.Pt.X,s.Pt.X,l.Pt.X,h))return!1;var a,f=h.Left,d=h.Right,P=new e.IntPoint0;return o.Pt.X>=f&&o.Pt.X<=d?(P.X=o.Pt.X,P.Y=o.Pt.Y,e.use_xyz&&(P.Z=o.Pt.Z),a=o.Pt.X>r.Pt.X):s.Pt.X>=f&&s.Pt.X<=d?(P.X=s.Pt.X,P.Y=s.Pt.Y,e.use_xyz&&(P.Z=s.Pt.Z),a=s.Pt.X>l.Pt.X):r.Pt.X>=f&&r.Pt.X<=d?(P.X=r.Pt.X,P.Y=r.Pt.Y,e.use_xyz&&(P.Z=r.Pt.Z),a=r.Pt.X>o.Pt.X):(P.X=l.Pt.X,P.Y=l.Pt.Y,e.use_xyz&&(P.Z=l.Pt.Z),a=l.Pt.X>s.Pt.X),t.OutPt1=o,t.OutPt2=s,this.JoinHorz(o,r,s,l,P,a)}for(r=o.Next;e.IntPoint.op_Equality(r.Pt,o.Pt)&&r!==o;)r=r.Next;var m=r.Pt.Y>o.Pt.Y||!e.ClipperBase.SlopesEqual4(o.Pt,r.Pt,t.OffPt,this.m_UseFullRange);if(m){for(r=o.Prev;e.IntPoint.op_Equality(r.Pt,o.Pt)&&r!==o;)r=r.Prev;if(r.Pt.Y>o.Pt.Y||!e.ClipperBase.SlopesEqual4(o.Pt,r.Pt,t.OffPt,this.m_UseFullRange))return!1}for(l=s.Next;e.IntPoint.op_Equality(l.Pt,s.Pt)&&l!==s;)l=l.Next;var y=l.Pt.Y>s.Pt.Y||!e.ClipperBase.SlopesEqual4(s.Pt,l.Pt,t.OffPt,this.m_UseFullRange);if(y){for(l=s.Prev;e.IntPoint.op_Equality(l.Pt,s.Pt)&&l!==s;)l=l.Prev;if(l.Pt.Y>s.Pt.Y||!e.ClipperBase.SlopesEqual4(s.Pt,l.Pt,t.OffPt,this.m_UseFullRange))return!1}return r!==o&&l!==s&&r!==l&&(i!==n||m!==y)&&(m?(r=this.DupOutPt(o,!1),l=this.DupOutPt(s,!0),o.Prev=s,s.Next=o,r.Next=l,l.Prev=r,t.OutPt1=o,t.OutPt2=r,!0):(r=this.DupOutPt(o,!0),l=this.DupOutPt(s,!1),o.Next=s,s.Prev=o,r.Prev=l,l.Next=r,t.OutPt1=o,t.OutPt2=r,!0))},e.Clipper.GetBounds=function(t){for(var i=0,n=t.length;i<n&&0===t[i].length;)i++;if(i===n)return new e.IntRect(0,0,0,0);var o=new e.IntRect;for(o.left=t[i][0].X,o.right=o.left,o.top=t[i][0].Y,o.bottom=o.top;i<n;i++)for(var r=0,s=t[i].length;r<s;r++)t[i][r].X<o.left?o.left=t[i][r].X:t[i][r].X>o.right&&(o.right=t[i][r].X),t[i][r].Y<o.top?o.top=t[i][r].Y:t[i][r].Y>o.bottom&&(o.bottom=t[i][r].Y);return o},e.Clipper.prototype.GetBounds2=function(t){var i=t,n=new e.IntRect;for(n.left=t.Pt.X,n.right=t.Pt.X,n.top=t.Pt.Y,n.bottom=t.Pt.Y,t=t.Next;t!==i;)t.Pt.X<n.left&&(n.left=t.Pt.X),t.Pt.X>n.right&&(n.right=t.Pt.X),t.Pt.Y<n.top&&(n.top=t.Pt.Y),t.Pt.Y>n.bottom&&(n.bottom=t.Pt.Y),t=t.Next;return n},e.Clipper.PointInPolygon=function(t,e){var i=0,n=e.length;if(n<3)return 0;for(var o=e[0],r=1;r<=n;++r){var s=r===n?e[0]:e[r];if(s.Y===t.Y&&(s.X===t.X||o.Y===t.Y&&s.X>t.X==o.X<t.X))return-1;if(o.Y<t.Y!=s.Y<t.Y)if(o.X>=t.X)if(s.X>t.X)i=1-i;else{if(0===(l=(o.X-t.X)*(s.Y-t.Y)-(s.X-t.X)*(o.Y-t.Y)))return-1;l>0==s.Y>o.Y&&(i=1-i)}else if(s.X>t.X){var l;if(0===(l=(o.X-t.X)*(s.Y-t.Y)-(s.X-t.X)*(o.Y-t.Y)))return-1;l>0==s.Y>o.Y&&(i=1-i)}o=s}return i},e.Clipper.prototype.PointInPolygon=function(t,e){var i=0,n=e,o=t.X,r=t.Y,s=e.Pt.X,l=e.Pt.Y;do{var p=(e=e.Next).Pt.X,u=e.Pt.Y;if(u===r&&(p===o||l===r&&p>o==s<o))return-1;if(l<r!=u<r)if(s>=o)if(p>o)i=1-i;else{if(0===(h=(s-o)*(u-r)-(p-o)*(l-r)))return-1;h>0==u>l&&(i=1-i)}else if(p>o){var h;if(0===(h=(s-o)*(u-r)-(p-o)*(l-r)))return-1;h>0==u>l&&(i=1-i)}s=p,l=u}while(n!==e);return i},e.Clipper.prototype.Poly2ContainsPoly1=function(t,e){var i=t;do{var n=this.PointInPolygon(i.Pt,e);if(n>=0)return n>0;i=i.Next}while(i!==t);return!0},e.Clipper.prototype.FixupFirstLefts1=function(t,i){for(var n,o,r=0,s=this.m_PolyOuts.length;r<s;r++)n=this.m_PolyOuts[r],o=e.Clipper.ParseFirstLeft(n.FirstLeft),null!==n.Pts&&o===t&&this.Poly2ContainsPoly1(n.Pts,i.Pts)&&(n.FirstLeft=i)},e.Clipper.prototype.FixupFirstLefts2=function(t,i){for(var n,o,r=i.FirstLeft,s=0,l=this.m_PolyOuts.length;s<l;s++)null!==(n=this.m_PolyOuts[s]).Pts&&n!==i&&n!==t&&((o=e.Clipper.ParseFirstLeft(n.FirstLeft))!==r&&o!==t&&o!==i||(this.Poly2ContainsPoly1(n.Pts,t.Pts)?n.FirstLeft=t:this.Poly2ContainsPoly1(n.Pts,i.Pts)?n.FirstLeft=i:n.FirstLeft!==t&&n.FirstLeft!==i||(n.FirstLeft=r)))},e.Clipper.prototype.FixupFirstLefts3=function(t,i){for(var n,o,r=0,s=this.m_PolyOuts.length;r<s;r++)n=this.m_PolyOuts[r],o=e.Clipper.ParseFirstLeft(n.FirstLeft),null!==n.Pts&&o===t&&(n.FirstLeft=i)},e.Clipper.ParseFirstLeft=function(t){for(;null!==t&&null===t.Pts;)t=t.FirstLeft;return t},e.Clipper.prototype.JoinCommonEdges=function(){for(var t=0,e=this.m_Joins.length;t<e;t++){var i,n=this.m_Joins[t],o=this.GetOutRec(n.OutPt1.Idx),r=this.GetOutRec(n.OutPt2.Idx);if(null!==o.Pts&&null!==r.Pts)if(!o.IsOpen&&!r.IsOpen)i=o===r?o:this.OutRec1RightOfOutRec2(o,r)?r:this.OutRec1RightOfOutRec2(r,o)?o:this.GetLowermostRec(o,r),this.JoinPoints(n,o,r)&&(o===r?(o.Pts=n.OutPt1,o.BottomPt=null,(r=this.CreateOutRec()).Pts=n.OutPt2,this.UpdateOutPtIdxs(r),this.Poly2ContainsPoly1(r.Pts,o.Pts)?(r.IsHole=!o.IsHole,r.FirstLeft=o,this.m_UsingPolyTree&&this.FixupFirstLefts2(r,o),(r.IsHole^this.ReverseSolution)==this.Area$1(r)>0&&this.ReversePolyPtLinks(r.Pts)):this.Poly2ContainsPoly1(o.Pts,r.Pts)?(r.IsHole=o.IsHole,o.IsHole=!r.IsHole,r.FirstLeft=o.FirstLeft,o.FirstLeft=r,this.m_UsingPolyTree&&this.FixupFirstLefts2(o,r),(o.IsHole^this.ReverseSolution)==this.Area$1(o)>0&&this.ReversePolyPtLinks(o.Pts)):(r.IsHole=o.IsHole,r.FirstLeft=o.FirstLeft,this.m_UsingPolyTree&&this.FixupFirstLefts1(o,r))):(r.Pts=null,r.BottomPt=null,r.Idx=o.Idx,o.IsHole=i.IsHole,i===r&&(o.FirstLeft=r.FirstLeft),r.FirstLeft=o,this.m_UsingPolyTree&&this.FixupFirstLefts3(r,o)))}},e.Clipper.prototype.UpdateOutPtIdxs=function(t){var e=t.Pts;do{e.Idx=t.Idx,e=e.Prev}while(e!==t.Pts)},e.Clipper.prototype.DoSimplePolygons=function(){for(var t=0;t<this.m_PolyOuts.length;){var i=this.m_PolyOuts[t++],n=i.Pts;if(null!==n&&!i.IsOpen)do{for(var o=n.Next;o!==i.Pts;){if(e.IntPoint.op_Equality(n.Pt,o.Pt)&&o.Next!==n&&o.Prev!==n){var r=n.Prev,s=o.Prev;n.Prev=s,s.Next=n,o.Prev=r,r.Next=o,i.Pts=n;var l=this.CreateOutRec();l.Pts=o,this.UpdateOutPtIdxs(l),this.Poly2ContainsPoly1(l.Pts,i.Pts)?(l.IsHole=!i.IsHole,l.FirstLeft=i,this.m_UsingPolyTree&&this.FixupFirstLefts2(l,i)):this.Poly2ContainsPoly1(i.Pts,l.Pts)?(l.IsHole=i.IsHole,i.IsHole=!l.IsHole,l.FirstLeft=i.FirstLeft,i.FirstLeft=l,this.m_UsingPolyTree&&this.FixupFirstLefts2(i,l)):(l.IsHole=i.IsHole,l.FirstLeft=i.FirstLeft,this.m_UsingPolyTree&&this.FixupFirstLefts1(i,l)),o=n}o=o.Next}n=n.Next}while(n!==i.Pts)}},e.Clipper.Area=function(t){if(!Array.isArray(t))return 0;var e=t.length;if(e<3)return 0;for(var i=0,n=0,o=e-1;n<e;++n)i+=(t[o].X+t[n].X)*(t[o].Y-t[n].Y),o=n;return.5*-i},e.Clipper.prototype.Area=function(t){var e=t;if(null===t)return 0;var i=0;do{i+=(t.Prev.Pt.X+t.Pt.X)*(t.Prev.Pt.Y-t.Pt.Y),t=t.Next}while(t!==e);return.5*i},e.Clipper.prototype.Area$1=function(t){return this.Area(t.Pts)},e.Clipper.SimplifyPolygon=function(t,i){var n=new Array,o=new e.Clipper(0);return o.StrictlySimple=!0,o.AddPath(t,e.PolyType.ptSubject,!0),o.Execute(e.ClipType.ctUnion,n,i,i),n},e.Clipper.SimplifyPolygons=function(t,i){void 0===i&&(i=e.PolyFillType.pftEvenOdd);var n=new Array,o=new e.Clipper(0);return o.StrictlySimple=!0,o.AddPaths(t,e.PolyType.ptSubject,!0),o.Execute(e.ClipType.ctUnion,n,i,i),n},e.Clipper.DistanceSqrd=function(t,e){var i=t.X-e.X,n=t.Y-e.Y;return i*i+n*n},e.Clipper.DistanceFromLineSqrd=function(t,e,i){var n=e.Y-i.Y,o=i.X-e.X,r=n*e.X+o*e.Y;return(r=n*t.X+o*t.Y-r)*r/(n*n+o*o)},e.Clipper.SlopesNearCollinear=function(t,i,n,o){return Math.abs(t.X-i.X)>Math.abs(t.Y-i.Y)?t.X>i.X==t.X<n.X?e.Clipper.DistanceFromLineSqrd(t,i,n)<o:i.X>t.X==i.X<n.X?e.Clipper.DistanceFromLineSqrd(i,t,n)<o:e.Clipper.DistanceFromLineSqrd(n,t,i)<o:t.Y>i.Y==t.Y<n.Y?e.Clipper.DistanceFromLineSqrd(t,i,n)<o:i.Y>t.Y==i.Y<n.Y?e.Clipper.DistanceFromLineSqrd(i,t,n)<o:e.Clipper.DistanceFromLineSqrd(n,t,i)<o},e.Clipper.PointsAreClose=function(t,e,i){var n=t.X-e.X,o=t.Y-e.Y;return n*n+o*o<=i},e.Clipper.ExcludeOp=function(t){var e=t.Prev;return e.Next=t.Next,t.Next.Prev=e,e.Idx=0,e},e.Clipper.CleanPolygon=function(t,i){void 0===i&&(i=1.415);var n=t.length;if(0===n)return new Array;for(var o=new Array(n),r=0;r<n;++r)o[r]=new e.OutPt;for(r=0;r<n;++r)o[r].Pt=t[r],o[r].Next=o[(r+1)%n],o[r].Next.Prev=o[r],o[r].Idx=0;for(var s=i*i,l=o[0];0===l.Idx&&l.Next!==l.Prev;)e.Clipper.PointsAreClose(l.Pt,l.Prev.Pt,s)?(l=e.Clipper.ExcludeOp(l),n--):e.Clipper.PointsAreClose(l.Prev.Pt,l.Next.Pt,s)?(e.Clipper.ExcludeOp(l.Next),l=e.Clipper.ExcludeOp(l),n-=2):e.Clipper.SlopesNearCollinear(l.Prev.Pt,l.Pt,l.Next.Pt,s)?(l=e.Clipper.ExcludeOp(l),n--):(l.Idx=1,l=l.Next);n<3&&(n=0);var p=new Array(n);for(r=0;r<n;++r)p[r]=new e.IntPoint1(l.Pt),l=l.Next;return o=null,p},e.Clipper.CleanPolygons=function(t,i){for(var n=new Array(t.length),o=0,r=t.length;o<r;o++)n[o]=e.Clipper.CleanPolygon(t[o],i);return n},e.Clipper.Minkowski=function(t,i,n,o){var r=o?1:0,s=t.length,l=i.length,p=new Array;if(n)for(var u=0;u<l;u++){for(var h=new Array(s),a=0,f=t.length,d=t[a];a<f;d=t[++a])h[a]=new e.IntPoint2(i[u].X+d.X,i[u].Y+d.Y);p.push(h)}else for(u=0;u<l;u++){for(h=new Array(s),a=0,f=t.length,d=t[a];a<f;d=t[++a])h[a]=new e.IntPoint2(i[u].X-d.X,i[u].Y-d.Y);p.push(h)}var P=new Array;for(u=0;u<l-1+r;u++)for(a=0;a<s;a++){var m=new Array;m.push(p[u%l][a%s]),m.push(p[(u+1)%l][a%s]),m.push(p[(u+1)%l][(a+1)%s]),m.push(p[u%l][(a+1)%s]),e.Clipper.Orientation(m)||m.reverse(),P.push(m)}return P},e.Clipper.MinkowskiSum=function(t,i,n){if(i[0]instanceof Array){u=i;for(var o=new e.Paths,r=(l=new e.Clipper,0);r<u.length;++r){var s=e.Clipper.Minkowski(t,u[r],!0,n);if(l.AddPaths(s,e.PolyType.ptSubject,!0),n){p=e.Clipper.TranslatePath(u[r],t[0]);l.AddPath(p,e.PolyType.ptClip,!0)}}return l.Execute(e.ClipType.ctUnion,o,e.PolyFillType.pftNonZero,e.PolyFillType.pftNonZero),o}var l,p=i,u=e.Clipper.Minkowski(t,p,!0,n);return(l=new e.Clipper).AddPaths(u,e.PolyType.ptSubject,!0),l.Execute(e.ClipType.ctUnion,u,e.PolyFillType.pftNonZero,e.PolyFillType.pftNonZero),u},e.Clipper.TranslatePath=function(t,i){for(var n=new e.Path,o=0;o<t.length;o++)n.push(new e.IntPoint2(t[o].X+i.X,t[o].Y+i.Y));return n},e.Clipper.MinkowskiDiff=function(t,i){var n=e.Clipper.Minkowski(t,i,!1,!0),o=new e.Clipper;return o.AddPaths(n,e.PolyType.ptSubject,!0),o.Execute(e.ClipType.ctUnion,n,e.PolyFillType.pftNonZero,e.PolyFillType.pftNonZero),n},e.Clipper.PolyTreeToPaths=function(t){var i=new Array;return e.Clipper.AddPolyNodeToPaths(t,e.Clipper.NodeType.ntAny,i),i},e.Clipper.AddPolyNodeToPaths=function(t,i,n){var o=!0;switch(i){case e.Clipper.NodeType.ntOpen:return;case e.Clipper.NodeType.ntClosed:o=!t.IsOpen}t.m_polygon.length>0&&o&&n.push(t.m_polygon);for(var r=0,s=t.Childs(),l=s.length,p=s[r];r<l;p=s[++r])e.Clipper.AddPolyNodeToPaths(p,i,n)},e.Clipper.OpenPathsFromPolyTree=function(t){for(var i=new e.Paths,n=0,o=t.ChildCount();n<o;n++)t.Childs()[n].IsOpen&&i.push(t.Childs()[n].m_polygon);return i},e.Clipper.ClosedPathsFromPolyTree=function(t){var i=new e.Paths;return e.Clipper.AddPolyNodeToPaths(t,e.Clipper.NodeType.ntClosed,i),i},N(e.Clipper,e.ClipperBase),e.Clipper.NodeType={ntAny:0,ntOpen:1,ntClosed:2},e.ClipperOffset=function(t,i){void 0===t&&(t=2),void 0===i&&(i=e.ClipperOffset.def_arc_tolerance),this.m_destPolys=new e.Paths,this.m_srcPoly=new e.Path,this.m_destPoly=new e.Path,this.m_normals=new Array,this.m_delta=0,this.m_sinA=0,this.m_sin=0,this.m_cos=0,this.m_miterLim=0,this.m_StepsPerRad=0,this.m_lowest=new e.IntPoint0,this.m_polyNodes=new e.PolyNode,this.MiterLimit=t,this.ArcTolerance=i,this.m_lowest.X=-1},e.ClipperOffset.two_pi=6.28318530717959,e.ClipperOffset.def_arc_tolerance=.25,e.ClipperOffset.prototype.Clear=function(){e.Clear(this.m_polyNodes.Childs()),this.m_lowest.X=-1},e.ClipperOffset.Round=e.Clipper.Round,e.ClipperOffset.prototype.AddPath=function(t,i,n){var o=t.length-1;if(!(o<0)){var r=new e.PolyNode;if(r.m_jointype=i,r.m_endtype=n,n===e.EndType.etClosedLine||n===e.EndType.etClosedPolygon)for(;o>0&&e.IntPoint.op_Equality(t[0],t[o]);)o--;r.m_polygon.push(t[0]);for(var s=0,l=0,p=1;p<=o;p++)e.IntPoint.op_Inequality(r.m_polygon[s],t[p])&&(s++,r.m_polygon.push(t[p]),(t[p].Y>r.m_polygon[l].Y||t[p].Y===r.m_polygon[l].Y&&t[p].X<r.m_polygon[l].X)&&(l=s));if(!(n===e.EndType.etClosedPolygon&&s<2)&&(this.m_polyNodes.AddChild(r),n===e.EndType.etClosedPolygon))if(this.m_lowest.X<0)this.m_lowest=new e.IntPoint2(this.m_polyNodes.ChildCount()-1,l);else{var u=this.m_polyNodes.Childs()[this.m_lowest.X].m_polygon[this.m_lowest.Y];(r.m_polygon[l].Y>u.Y||r.m_polygon[l].Y===u.Y&&r.m_polygon[l].X<u.X)&&(this.m_lowest=new e.IntPoint2(this.m_polyNodes.ChildCount()-1,l))}}},e.ClipperOffset.prototype.AddPaths=function(t,e,i){for(var n=0,o=t.length;n<o;n++)this.AddPath(t[n],e,i)},e.ClipperOffset.prototype.FixOrientations=function(){if(this.m_lowest.X>=0&&!e.Clipper.Orientation(this.m_polyNodes.Childs()[this.m_lowest.X].m_polygon))for(var t=0;t<this.m_polyNodes.ChildCount();t++){((i=this.m_polyNodes.Childs()[t]).m_endtype===e.EndType.etClosedPolygon||i.m_endtype===e.EndType.etClosedLine&&e.Clipper.Orientation(i.m_polygon))&&i.m_polygon.reverse()}else for(t=0;t<this.m_polyNodes.ChildCount();t++){var i;(i=this.m_polyNodes.Childs()[t]).m_endtype!==e.EndType.etClosedLine||e.Clipper.Orientation(i.m_polygon)||i.m_polygon.reverse()}},e.ClipperOffset.GetUnitNormal=function(t,i){var n=i.X-t.X,o=i.Y-t.Y;if(0===n&&0===o)return new e.DoublePoint2(0,0);var r=1/Math.sqrt(n*n+o*o);return n*=r,o*=r,new e.DoublePoint2(o,-n)},e.ClipperOffset.prototype.DoOffset=function(t){if(this.m_destPolys=new Array,this.m_delta=t,e.ClipperBase.near_zero(t))for(var i=0;i<this.m_polyNodes.ChildCount();i++){(r=this.m_polyNodes.Childs()[i]).m_endtype===e.EndType.etClosedPolygon&&this.m_destPolys.push(r.m_polygon)}else{var n;this.MiterLimit>2?this.m_miterLim=2/(this.MiterLimit*this.MiterLimit):this.m_miterLim=.5,n=this.ArcTolerance<=0?e.ClipperOffset.def_arc_tolerance:this.ArcTolerance>Math.abs(t)*e.ClipperOffset.def_arc_tolerance?Math.abs(t)*e.ClipperOffset.def_arc_tolerance:this.ArcTolerance;var o=3.14159265358979/Math.acos(1-n/Math.abs(t));this.m_sin=Math.sin(e.ClipperOffset.two_pi/o),this.m_cos=Math.cos(e.ClipperOffset.two_pi/o),this.m_StepsPerRad=o/e.ClipperOffset.two_pi,t<0&&(this.m_sin=-this.m_sin);for(i=0;i<this.m_polyNodes.ChildCount();i++){var r=this.m_polyNodes.Childs()[i];this.m_srcPoly=r.m_polygon;var s=this.m_srcPoly.length;if(!(0===s||t<=0&&(s<3||r.m_endtype!==e.EndType.etClosedPolygon)))if(this.m_destPoly=new Array,1!==s){this.m_normals.length=0;for(f=0;f<s-1;f++)this.m_normals.push(e.ClipperOffset.GetUnitNormal(this.m_srcPoly[f],this.m_srcPoly[f+1]));if(r.m_endtype===e.EndType.etClosedLine||r.m_endtype===e.EndType.etClosedPolygon?this.m_normals.push(e.ClipperOffset.GetUnitNormal(this.m_srcPoly[s-1],this.m_srcPoly[0])):this.m_normals.push(new e.DoublePoint1(this.m_normals[s-2])),r.m_endtype===e.EndType.etClosedPolygon){var l=s-1;for(f=0;f<s;f++)l=this.OffsetPoint(f,l,r.m_jointype);this.m_destPolys.push(this.m_destPoly)}else if(r.m_endtype===e.EndType.etClosedLine){for(l=s-1,f=0;f<s;f++)l=this.OffsetPoint(f,l,r.m_jointype);this.m_destPolys.push(this.m_destPoly),this.m_destPoly=new Array;var p=this.m_normals[s-1];for(f=s-1;f>0;f--)this.m_normals[f]=new e.DoublePoint2(-this.m_normals[f-1].X,-this.m_normals[f-1].Y);this.m_normals[0]=new e.DoublePoint2(-p.X,-p.Y),l=0;for(f=s-1;f>=0;f--)l=this.OffsetPoint(f,l,r.m_jointype);this.m_destPolys.push(this.m_destPoly)}else{var u;for(l=0,f=1;f<s-1;++f)l=this.OffsetPoint(f,l,r.m_jointype);if(r.m_endtype===e.EndType.etOpenButt){f=s-1;u=new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[f].X+this.m_normals[f].X*t),e.ClipperOffset.Round(this.m_srcPoly[f].Y+this.m_normals[f].Y*t)),this.m_destPoly.push(u),u=new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[f].X-this.m_normals[f].X*t),e.ClipperOffset.Round(this.m_srcPoly[f].Y-this.m_normals[f].Y*t)),this.m_destPoly.push(u)}else{f=s-1;l=s-2,this.m_sinA=0,this.m_normals[f]=new e.DoublePoint2(-this.m_normals[f].X,-this.m_normals[f].Y),r.m_endtype===e.EndType.etOpenSquare?this.DoSquare(f,l):this.DoRound(f,l)}for(f=s-1;f>0;f--)this.m_normals[f]=new e.DoublePoint2(-this.m_normals[f-1].X,-this.m_normals[f-1].Y);this.m_normals[0]=new e.DoublePoint2(-this.m_normals[1].X,-this.m_normals[1].Y);for(f=(l=s-1)-1;f>0;--f)l=this.OffsetPoint(f,l,r.m_jointype);r.m_endtype===e.EndType.etOpenButt?(u=new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[0].X-this.m_normals[0].X*t),e.ClipperOffset.Round(this.m_srcPoly[0].Y-this.m_normals[0].Y*t)),this.m_destPoly.push(u),u=new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[0].X+this.m_normals[0].X*t),e.ClipperOffset.Round(this.m_srcPoly[0].Y+this.m_normals[0].Y*t)),this.m_destPoly.push(u)):(l=1,this.m_sinA=0,r.m_endtype===e.EndType.etOpenSquare?this.DoSquare(0,1):this.DoRound(0,1)),this.m_destPolys.push(this.m_destPoly)}}else{if(r.m_jointype===e.JoinType.jtRound)for(var h=1,a=0,f=1;f<=o;f++){this.m_destPoly.push(new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[0].X+h*t),e.ClipperOffset.Round(this.m_srcPoly[0].Y+a*t)));var d=h;h=h*this.m_cos-this.m_sin*a,a=d*this.m_sin+a*this.m_cos}else{h=-1,a=-1;for(var f=0;f<4;++f)this.m_destPoly.push(new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[0].X+h*t),e.ClipperOffset.Round(this.m_srcPoly[0].Y+a*t))),h<0?h=1:a<0?a=1:h=-1}this.m_destPolys.push(this.m_destPoly)}}}},e.ClipperOffset.prototype.Execute=function(){var t=arguments;if(t[0]instanceof e.PolyTree){s=t[1];if((r=t[0]).Clear(),this.FixOrientations(),this.DoOffset(s),(o=new e.Clipper(0)).AddPaths(this.m_destPolys,e.PolyType.ptSubject,!0),s>0)o.Execute(e.ClipType.ctUnion,r,e.PolyFillType.pftPositive,e.PolyFillType.pftPositive);else{p=e.Clipper.GetBounds(this.m_destPolys);if((l=new e.Path).push(new e.IntPoint2(p.left-10,p.bottom+10)),l.push(new e.IntPoint2(p.right+10,p.bottom+10)),l.push(new e.IntPoint2(p.right+10,p.top-10)),l.push(new e.IntPoint2(p.left-10,p.top-10)),o.AddPath(l,e.PolyType.ptSubject,!0),o.ReverseSolution=!0,o.Execute(e.ClipType.ctUnion,r,e.PolyFillType.pftNegative,e.PolyFillType.pftNegative),1===r.ChildCount()&&r.Childs()[0].ChildCount()>0){var i=r.Childs()[0];r.Childs()[0]=i.Childs()[0],r.Childs()[0].m_Parent=r;for(var n=1;n<i.ChildCount();n++)r.AddChild(i.Childs()[n])}else r.Clear()}}else{var o,r=t[0],s=t[1];if(e.Clear(r),this.FixOrientations(),this.DoOffset(s),(o=new e.Clipper(0)).AddPaths(this.m_destPolys,e.PolyType.ptSubject,!0),s>0)o.Execute(e.ClipType.ctUnion,r,e.PolyFillType.pftPositive,e.PolyFillType.pftPositive);else{var l,p=e.Clipper.GetBounds(this.m_destPolys);(l=new e.Path).push(new e.IntPoint2(p.left-10,p.bottom+10)),l.push(new e.IntPoint2(p.right+10,p.bottom+10)),l.push(new e.IntPoint2(p.right+10,p.top-10)),l.push(new e.IntPoint2(p.left-10,p.top-10)),o.AddPath(l,e.PolyType.ptSubject,!0),o.ReverseSolution=!0,o.Execute(e.ClipType.ctUnion,r,e.PolyFillType.pftNegative,e.PolyFillType.pftNegative),r.length>0&&r.splice(0,1)}}},e.ClipperOffset.prototype.OffsetPoint=function(t,i,n){if(this.m_sinA=this.m_normals[i].X*this.m_normals[t].Y-this.m_normals[t].X*this.m_normals[i].Y,Math.abs(this.m_sinA*this.m_delta)<1){if(this.m_normals[i].X*this.m_normals[t].X+this.m_normals[t].Y*this.m_normals[i].Y>0)return this.m_destPoly.push(new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[t].X+this.m_normals[i].X*this.m_delta),e.ClipperOffset.Round(this.m_srcPoly[t].Y+this.m_normals[i].Y*this.m_delta))),i}else this.m_sinA>1?this.m_sinA=1:this.m_sinA<-1&&(this.m_sinA=-1);if(this.m_sinA*this.m_delta<0)this.m_destPoly.push(new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[t].X+this.m_normals[i].X*this.m_delta),e.ClipperOffset.Round(this.m_srcPoly[t].Y+this.m_normals[i].Y*this.m_delta))),this.m_destPoly.push(new e.IntPoint1(this.m_srcPoly[t])),this.m_destPoly.push(new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[t].X+this.m_normals[t].X*this.m_delta),e.ClipperOffset.Round(this.m_srcPoly[t].Y+this.m_normals[t].Y*this.m_delta)));else switch(n){case e.JoinType.jtMiter:var o=this.m_normals[t].X*this.m_normals[i].X+this.m_normals[t].Y*this.m_normals[i].Y+1;o>=this.m_miterLim?this.DoMiter(t,i,o):this.DoSquare(t,i);break;case e.JoinType.jtSquare:this.DoSquare(t,i);break;case e.JoinType.jtRound:this.DoRound(t,i)}return i=t},e.ClipperOffset.prototype.DoSquare=function(t,i){var n=Math.tan(Math.atan2(this.m_sinA,this.m_normals[i].X*this.m_normals[t].X+this.m_normals[i].Y*this.m_normals[t].Y)/4);this.m_destPoly.push(new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[t].X+this.m_delta*(this.m_normals[i].X-this.m_normals[i].Y*n)),e.ClipperOffset.Round(this.m_srcPoly[t].Y+this.m_delta*(this.m_normals[i].Y+this.m_normals[i].X*n)))),this.m_destPoly.push(new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[t].X+this.m_delta*(this.m_normals[t].X+this.m_normals[t].Y*n)),e.ClipperOffset.Round(this.m_srcPoly[t].Y+this.m_delta*(this.m_normals[t].Y-this.m_normals[t].X*n))))},e.ClipperOffset.prototype.DoMiter=function(t,i,n){var o=this.m_delta/n;this.m_destPoly.push(new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[t].X+(this.m_normals[i].X+this.m_normals[t].X)*o),e.ClipperOffset.Round(this.m_srcPoly[t].Y+(this.m_normals[i].Y+this.m_normals[t].Y)*o)))},e.ClipperOffset.prototype.DoRound=function(t,i){for(var n,o=Math.atan2(this.m_sinA,this.m_normals[i].X*this.m_normals[t].X+this.m_normals[i].Y*this.m_normals[t].Y),r=Math.max(e.Cast_Int32(e.ClipperOffset.Round(this.m_StepsPerRad*Math.abs(o))),1),s=this.m_normals[i].X,l=this.m_normals[i].Y,p=0;p<r;++p)this.m_destPoly.push(new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[t].X+s*this.m_delta),e.ClipperOffset.Round(this.m_srcPoly[t].Y+l*this.m_delta))),n=s,s=s*this.m_cos-this.m_sin*l,l=n*this.m_sin+l*this.m_cos;this.m_destPoly.push(new e.IntPoint2(e.ClipperOffset.Round(this.m_srcPoly[t].X+this.m_normals[t].X*this.m_delta),e.ClipperOffset.Round(this.m_srcPoly[t].Y+this.m_normals[t].Y*this.m_delta)))},e.Error=function(t){try{throw new Error(t)}catch(t){alert(t.message)}},e.JS={},e.JS.AreaOfPolygon=function(t,i){return i||(i=1),e.Clipper.Area(t)/(i*i)},e.JS.AreaOfPolygons=function(t,i){i||(i=1);for(var n=0,o=0;o<t.length;o++)n+=e.Clipper.Area(t[o]);return n/(i*i)},e.JS.BoundsOfPath=function(t,i){return e.JS.BoundsOfPaths([t],i)},e.JS.BoundsOfPaths=function(t,i){i||(i=1);var n=e.Clipper.GetBounds(t);return n.left/=i,n.bottom/=i,n.right/=i,n.top/=i,n},e.JS.Clean=function(t,i){if(!(t instanceof Array))return[];var n=t[0]instanceof Array;t=e.JS.Clone(t);if("number"!=typeof i||null===i)return e.Error("Delta is not a number in Clean()."),t;if(0===t.length||1===t.length&&0===t[0].length||i<0)return t;n||(t=[t]);for(var o,r,s,l,p,u,h,a=t.length,f=[],d=0;d<a;d++)if(0!==(o=(r=t[d]).length))if(o<3)s=r,f.push(s);else{for(s=r,l=i*i,p=r[0],u=1,h=1;h<o;h++)(r[h].X-p.X)*(r[h].X-p.X)+(r[h].Y-p.Y)*(r[h].Y-p.Y)<=l||(s[u]=r[h],p=r[h],u++);p=r[u-1],(r[0].X-p.X)*(r[0].X-p.X)+(r[0].Y-p.Y)*(r[0].Y-p.Y)<=l&&u--,u<o&&s.splice(u,o-u),s.length&&f.push(s)}return!n&&f.length?f=f[0]:n||0!==f.length?n&&0===f.length&&(f=[[]]):f=[],f},e.JS.Clone=function(t){if(!(t instanceof Array))return[];if(0===t.length)return[];if(1===t.length&&0===t[0].length)return[[]];var e=t[0]instanceof Array;e||(t=[t]);var i,n,o,r,s=t.length,l=new Array(s);for(n=0;n<s;n++){for(i=t[n].length,r=new Array(i),o=0;o<i;o++)r[o]={X:t[n][o].X,Y:t[n][o].Y};l[n]=r}return e||(l=l[0]),l},e.JS.Lighten=function(t,i){if(!(t instanceof Array))return[];if("number"!=typeof i||null===i)return e.Error("Tolerance is not a number in Lighten()."),e.JS.Clone(t);if(0===t.length||1===t.length&&0===t[0].length||i<0)return e.JS.Clone(t);var n,o,r,s,l,p,u,h,a,f,d,P,m,y,c,v,C=t[0]instanceof Array;C||(t=[t]);var I=t.length,x=i*i,_=[];for(n=0;n<I;n++)if(0!==(p=(r=t[n]).length)){for(s=0;s<1e6;s++){for(l=[],r[(p=r.length)-1].X!==r[0].X||r[p-1].Y!==r[0].Y?(d=1,r.push({X:r[0].X,Y:r[0].Y}),p=r.length):d=0,f=[],o=0;o<p-2;o++)u=r[o],a=r[o+1],h=r[o+2],c=u.X,v=u.Y,P=h.X-c,m=h.Y-v,0===P&&0===m||((y=((a.X-c)*P+(a.Y-v)*m)/(P*P+m*m))>1?(c=h.X,v=h.Y):y>0&&(c+=P*y,v+=m*y)),(P=a.X-c)*P+(m=a.Y-v)*m<=x&&(f[o+1]=1,o++);for(l.push({X:r[0].X,Y:r[0].Y}),o=1;o<p-1;o++)f[o]||l.push({X:r[o].X,Y:r[o].Y});if(l.push({X:r[p-1].X,Y:r[p-1].Y}),d&&r.pop(),!f.length)break;r=l}l[(p=l.length)-1].X===l[0].X&&l[p-1].Y===l[0].Y&&l.pop(),l.length>2&&_.push(l)}return C||(_=_[0]),void 0===_&&(_=[]),_},e.JS.PerimeterOfPath=function(t,e,i){if(void 0===t)return 0;var n,o,r=Math.sqrt,s=0,l=0,p=0,u=0,h=0,a=t.length;if(a<2)return 0;for(e&&(t[a]=t[0],a++);--a;)l=(n=t[a]).X,p=n.Y,s+=r((l-(u=(o=t[a-1]).X))*(l-u)+(p-(h=o.Y))*(p-h));return e&&t.pop(),s/i},e.JS.PerimeterOfPaths=function(t,i,n){n||(n=1);for(var o=0,r=0;r<t.length;r++)o+=e.JS.PerimeterOfPath(t[r],i,n);return o},e.JS.ScaleDownPath=function(t,e){var i,n;for(e||(e=1),i=t.length;i--;)(n=t[i]).X=n.X/e,n.Y=n.Y/e},e.JS.ScaleDownPaths=function(t,e){var i,n,o;for(e||(e=1),i=t.length;i--;)for(n=t[i].length;n--;)(o=t[i][n]).X=o.X/e,o.Y=o.Y/e},e.JS.ScaleUpPath=function(t,e){var i,n,o=Math.round;for(e||(e=1),i=t.length;i--;)(n=t[i]).X=o(n.X*e),n.Y=o(n.Y*e)},e.JS.ScaleUpPaths=function(t,e){var i,n,o,r=Math.round;for(e||(e=1),i=t.length;i--;)for(n=t[i].length;n--;)(o=t[i][n]).X=r(o.X*e),o.Y=r(o.Y*e)},e.ExPolygons=function(){return[]},e.ExPolygon=function(){this.outer=null,this.holes=null},e.JS.AddOuterPolyNodeToExPolygons=function(t,i){var n=new e.ExPolygon;n.outer=t.Contour();var o,r,s,l,p,u,h=t.Childs(),a=h.length;for(n.holes=new Array(a),s=0;s<a;s++)for(o=h[s],n.holes[s]=o.Contour(),l=0,u=(p=o.Childs()).length;l<u;l++)r=p[l],e.JS.AddOuterPolyNodeToExPolygons(r,i);i.push(n)},e.JS.ExPolygonsToPaths=function(t){var i,n,o,r,s=new e.Paths;for(i=0,o=t.length;i<o;i++)for(s.push(t[i].outer),n=0,r=t[i].holes.length;n<r;n++)s.push(t[i].holes[n]);return s},e.JS.PolyTreeToExPolygons=function(t){var i,n,o,r,s=new e.ExPolygons;for(n=0,r=(o=t.Childs()).length;n<r;n++)i=o[n],e.JS.AddOuterPolyNodeToExPolygons(i,s);return s}}();</script>
+<script>
+'use strict';
+/* ====================== Utilitaires ====================== */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const f3 = v => { let s = (Math.abs(v) < 5e-4 ? 0 : v).toFixed(3); s = s.replace(/0+$/, '').replace(/\.$/, ''); return s === '-0' ? '0' : s; };
+const num = (el, def) => { const v = parseFloat(el.value); return isFinite(v) ? v : def; };
+const fmtTime = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60; return (h ? h + ' h ' : '') + (h || m ? m + ' min ' : '') + (h ? '' : ss + ' s'); };
+const clone = o => JSON.parse(JSON.stringify(o));
+
+/* ====================== Réglages persistants ====================== */
+const STORE = 'atelier-cnc-v1';
+const V_TOOLS = [
+  { name: 'Fraise en V 30° (pointe 0,1)', type: 'v', d: 3.175, angle: 30, tip: 0.1, feed: 400, plunge: 100, doc: 0.5, so: 40 },
+  { name: 'Fraise en V 60°', type: 'v', d: 6, angle: 60, tip: 0.2, feed: 500, plunge: 120, doc: 0.8, so: 40 },
+  { name: 'Fraise en V 90°', type: 'v', d: 6, angle: 90, tip: 0.2, feed: 500, plunge: 120, doc: 0.8, so: 40 }
+];
+const DEFAULTS = {
+  machine: { name: 'TwoTrees TTC450 Pro', w: 460, h: 460, z: 80, baud: 115200, safeZ: 5, spindleS: 1000, dwell: 2, rapid: 2000, jogFeed: 1000, probeT: 0, probeDist: 25 },
+  stock: { w: 200, h: 150, t: 6 },
+  tools: [
+    { name: 'Fraise plate 3,175 mm (1/8")', d: 3.175, feed: 600, plunge: 150, doc: 0.8, so: 40 },
+    { name: 'Fraise plate 2 mm', d: 2, feed: 500, plunge: 120, doc: 0.5, so: 40 },
+    { name: 'Fraise plate 1 mm', d: 1, feed: 300, plunge: 80, doc: 0.3, so: 40 },
+    { name: 'Fraise plate 6 mm', d: 6, feed: 800, plunge: 200, doc: 1, so: 40 },
+    ...V_TOOLS
+  ],
+  toolIdx: 0,
+  tabs: { on: true, n: 4, w: 5, h: 1.5 },
+  climb: false,
+  origin: 'corner'
+};
+let S = clone(DEFAULTS);
+try { const raw = localStorage.getItem(STORE); if (raw) { const o = JSON.parse(raw); S = Object.assign(clone(DEFAULTS), o); S.machine = Object.assign(clone(DEFAULTS.machine), o.machine || {}); } } catch (e) {}
+if (!S.tools.some(t => t.type === 'v')) S.tools.push(...clone(V_TOOLS));
+function saveSettings() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} }
+const tool = () => S.tools[Math.min(S.toolIdx, S.tools.length - 1)];
+const isV = (T = tool()) => T.type === 'v';
+// largeur de coupe d'une fraise à une profondeur z (<0)
+function cutWidth(z, T = tool()) {
+  if (!isV(T)) return T.d;
+  return Math.min(T.d, (T.tip || 0) + 2 * Math.max(0, -z) * Math.tan((T.angle || 60) * Math.PI / 360));
+}
+const originOff = () => S.origin === 'center' ? [S.stock.w / 2, S.stock.h / 2] : [0, 0];
+
+/* ====================== Import SVG ====================== */
+const UNIT = { mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6, px: 25.4 / 96, q: 0.25 };
+function parseLength(v) {
+  if (v == null) return null;
+  const m = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*(mm|cm|in|pt|pc|px|q)?\s*$/i.exec(v);
+  if (!m) return null;
+  return parseFloat(m[1]) * UNIT[(m[2] || 'px').toLowerCase()];
+}
+function matMul(A, B) {
+  return [A[0] * B[0] + A[2] * B[1], A[1] * B[0] + A[3] * B[1], A[0] * B[2] + A[2] * B[3], A[1] * B[2] + A[3] * B[3],
+    A[0] * B[4] + A[2] * B[5] + A[4], A[1] * B[4] + A[3] * B[5] + A[5]];
+}
+function cubicPts(p0, p1, p2, p3, tol, out) {
+  const M = Math.max(Math.hypot(p0[0] - 2 * p1[0] + p2[0], p0[1] - 2 * p1[1] + p2[1]), Math.hypot(p1[0] - 2 * p2[0] + p3[0], p1[1] - 2 * p2[1] + p3[1]));
+  const n = Math.max(1, Math.min(500, Math.ceil(Math.sqrt(0.75 * M / tol))));
+  for (let k = 1; k <= n; k++) {
+    const t = k / n, u = 1 - t;
+    out.push([u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+      u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]]);
+  }
+}
+function quadPts(p0, p1, p2, tol, out) {
+  const M = Math.hypot(p0[0] - 2 * p1[0] + p2[0], p0[1] - 2 * p1[1] + p2[1]);
+  const n = Math.max(1, Math.min(500, Math.ceil(Math.sqrt(M / (4 * tol)))));
+  for (let k = 1; k <= n; k++) {
+    const t = k / n, u = 1 - t;
+    out.push([u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0], u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]]);
+  }
+}
+function arcPts(x1, y1, rx, ry, phi, fa, fs, x2, y2, tol, out) {
+  if (x1 === x2 && y1 === y2) return;
+  rx = Math.abs(rx); ry = Math.abs(ry);
+  if (!rx || !ry) { out.push([x2, y2]); return; }
+  const cp = Math.cos(phi * Math.PI / 180), sp = Math.sin(phi * Math.PI / 180);
+  const dx = (x1 - x2) / 2, dy = (y1 - y2) / 2;
+  const x1p = cp * dx + sp * dy, y1p = -sp * dx + cp * dy;
+  const lam = x1p * x1p / (rx * rx) + y1p * y1p / (ry * ry);
+  if (lam > 1) { const s = Math.sqrt(lam); rx *= s; ry *= s; }
+  const nu = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p, de = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
+  let co = Math.sqrt(Math.max(0, nu / de)); if (fa === fs) co = -co;
+  const cxp = co * rx * y1p / ry, cyp = -co * ry * x1p / rx;
+  const cx = cp * cxp - sp * cyp + (x1 + x2) / 2, cy = sp * cxp + cp * cyp + (y1 + y2) / 2;
+  const ang = (ux, uy, vx, vy) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+  const t1 = ang(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
+  let dt = ang((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
+  if (!fs && dt > 0) dt -= 2 * Math.PI; else if (fs && dt < 0) dt += 2 * Math.PI;
+  const r = Math.max(rx, ry), step = 2 * Math.acos(1 - Math.min(tol, r * 0.5) / r) || 0.2;
+  const n = Math.max(2, Math.min(720, Math.ceil(Math.abs(dt) / step)));
+  for (let k = 1; k < n; k++) {
+    const t = t1 + dt * k / n, ex = rx * Math.cos(t), ey = ry * Math.sin(t);
+    out.push([cp * ex - sp * ey + cx, sp * ex + cp * ey + cy]);
+  }
+  out.push([x2, y2]);
+}
+function parsePathD(d, tol) {
+  let i = 0; const n = d.length;
+  const ws = () => { while (i < n && /[\s,]/.test(d[i])) i++; };
+  const re = /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/y;
+  const rd = () => { ws(); re.lastIndex = i; const m = re.exec(d); if (!m) throw new Error('chemin SVG illisible près de « ' + d.slice(i, i + 12) + ' »'); i = re.lastIndex; return parseFloat(m[0]); };
+  const flag = () => { ws(); const c = d[i]; if (c !== '0' && c !== '1') throw new Error('drapeau d\'arc invalide'); i++; return c === '1'; };
+  const subs = []; let cur = null, x = 0, y = 0, x0 = 0, y0 = 0, cmd = null, prev = null, lc = null, lq = null;
+  const begin = () => { if (!cur || cur.closed) { cur = { pts: [[x, y]], closed: false }; subs.push(cur); } };
+  while (true) {
+    ws(); if (i >= n) break;
+    const c = d[i];
+    if (/[A-Za-z]/.test(c)) { cmd = c; i++; } else if (!cmd) throw new Error('chemin SVG invalide');
+    const rel = cmd === cmd.toLowerCase(), C = cmd.toUpperCase();
+    const ox = rel ? x : 0, oy = rel ? y : 0;
+    switch (C) {
+      case 'M': x = ox + rd(); y = oy + rd(); cur = { pts: [[x, y]], closed: false }; subs.push(cur); x0 = x; y0 = y; cmd = rel ? 'l' : 'L'; break;
+      case 'L': { const nx = ox + rd(), ny = oy + rd(); begin(); x = nx; y = ny; cur.pts.push([x, y]); break; }
+      case 'H': { const nx = ox + rd(); begin(); x = nx; cur.pts.push([x, y]); break; }
+      case 'V': { const ny = oy + rd(); begin(); y = ny; cur.pts.push([x, y]); break; }
+      case 'C': { const a = [ox + rd(), oy + rd()], b = [ox + rd(), oy + rd()], e = [ox + rd(), oy + rd()]; begin(); cubicPts([x, y], a, b, e, tol, cur.pts); lc = b; x = e[0]; y = e[1]; break; }
+      case 'S': { const b = [ox + rd(), oy + rd()], e = [ox + rd(), oy + rd()]; const a = (prev && 'CS'.includes(prev)) ? [2 * x - lc[0], 2 * y - lc[1]] : [x, y]; begin(); cubicPts([x, y], a, b, e, tol, cur.pts); lc = b; x = e[0]; y = e[1]; break; }
+      case 'Q': { const a = [ox + rd(), oy + rd()], e = [ox + rd(), oy + rd()]; begin(); quadPts([x, y], a, e, tol, cur.pts); lq = a; x = e[0]; y = e[1]; break; }
+      case 'T': { const e = [ox + rd(), oy + rd()]; const a = (prev && 'QT'.includes(prev)) ? [2 * x - lq[0], 2 * y - lq[1]] : [x, y]; begin(); quadPts([x, y], a, e, tol, cur.pts); lq = a; x = e[0]; y = e[1]; break; }
+      case 'A': { const rx = rd(), ry = rd(), ph = rd(), fa = flag(), fs = flag(), ex = ox + rd(), ey = oy + rd(); begin(); arcPts(x, y, rx, ry, ph, fa, fs, ex, ey, tol, cur.pts); x = ex; y = ey; break; }
+      case 'Z': if (cur) cur.closed = true; x = x0; y = y0; break;
+      default: throw new Error('commande de chemin inconnue : ' + cmd);
+    }
+    prev = C;
+  }
+  return subs;
+}
+function elementSubpaths(el, tol) {
+  const tag = el.tagName.toLowerCase(), g = a => { const v = el[a]; return v && v.baseVal ? v.baseVal.value : parseFloat(el.getAttribute(a)) || 0; };
+  if (tag === 'path') return parsePathD(el.getAttribute('d') || '', tol);
+  if (tag === 'rect') {
+    const x = g('x'), y = g('y'), w = g('width'), h = g('height');
+    if (w <= 0 || h <= 0) return [];
+    let rx = parseFloat(el.getAttribute('rx')), ry = parseFloat(el.getAttribute('ry'));
+    if (!isFinite(rx) && isFinite(ry)) rx = ry; if (!isFinite(ry) && isFinite(rx)) ry = rx;
+    rx = Math.min(rx || 0, w / 2); ry = Math.min(ry || 0, h / 2);
+    if (!rx || !ry) return [{ pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], closed: true }];
+    return parsePathD(`M${x + rx},${y}H${x + w - rx}A${rx},${ry} 0 0 1 ${x + w},${y + ry}V${y + h - ry}A${rx},${ry} 0 0 1 ${x + w - rx},${y + h}H${x + rx}A${rx},${ry} 0 0 1 ${x},${y + h - ry}V${y + ry}A${rx},${ry} 0 0 1 ${x + rx},${y}Z`, tol);
+  }
+  if (tag === 'circle' || tag === 'ellipse') {
+    const cx = g('cx'), cy = g('cy'); let rx, ry;
+    if (tag === 'circle') rx = ry = g('r'); else { rx = g('rx'); ry = g('ry'); }
+    if (rx <= 0 || ry <= 0) return [];
+    return parsePathD(`M${cx + rx},${cy}A${rx},${ry} 0 1 1 ${cx - rx},${cy}A${rx},${ry} 0 1 1 ${cx + rx},${cy}Z`, tol);
+  }
+  if (tag === 'line') return [{ pts: [[g('x1'), g('y1')], [g('x2'), g('y2')]], closed: false }];
+  if (tag === 'polyline' || tag === 'polygon') {
+    const v = (el.getAttribute('points') || '').trim().split(/[\s,]+/).map(Number), pts = [];
+    for (let k = 0; k + 1 < v.length; k += 2) pts.push([v[k], v[k + 1]]);
+    return [{ pts, closed: tag === 'polygon' }];
+  }
+  return [];
+}
+function importSVG(text, name) {
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+  const root = doc.documentElement;
+  if (doc.querySelector('parsererror') || root.nodeName.toLowerCase() !== 'svg') throw new Error('Ce fichier n\'est pas un SVG valide.');
+  const host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:-20000px;top:0;width:10px;height:10px;overflow:hidden;visibility:hidden';
+  const svg = document.importNode(root, true); host.appendChild(svg); document.body.appendChild(host);
+  const warns = [];
+  try {
+    let vb = null; const va = svg.getAttribute('viewBox');
+    if (va) { const a = va.trim().split(/[\s,]+/).map(Number); if (a.length === 4 && a.every(isFinite) && a[2] > 0 && a[3] > 0) vb = a; }
+    const wmm = parseLength(svg.getAttribute('width')), hmm = parseLength(svg.getAttribute('height'));
+    let sx = 25.4 / 96, sy = sx, vx = 0, vy = 0;
+    if (vb) { vx = vb[0]; vy = vb[1]; if (wmm) sx = wmm / vb[2]; if (hmm) sy = hmm / vb[3]; else if (wmm) sy = sx; if (!wmm && hmm) sx = sy; }
+    const skip = 'defs,clipPath,mask,symbol,marker,pattern,metadata';
+    const els = [...svg.querySelectorAll('path,rect,circle,ellipse,line,polyline,polygon')].filter(el => !el.closest(skip));
+    if (svg.querySelectorAll('text').length) warns.push('Les textes sont ignorés : dans Inkscape, convertis-les en chemins (Chemin › Objet en chemin).');
+    if (svg.querySelectorAll('use').length) warns.push('Les clones (<use>) sont ignorés : dans Inkscape, utilise Édition › Cloner › Délier le clone.');
+    const shapes = [];
+    els.forEach((el, idx) => {
+      for (let p = el; p && p !== svg; p = p.parentElement) if (getComputedStyle(p).display === 'none') return;
+      let M = [1, 0, 0, 1, 0, 0];
+      for (let p = el; p && p !== svg; p = p.parentElement) {
+        const t = p.transform && p.transform.baseVal;
+        if (t && t.numberOfItems) { const m = t.consolidate().matrix; M = matMul([m.a, m.b, m.c, m.d, m.e, m.f], M); }
+      }
+      const scale = Math.sqrt(Math.abs(M[0] * M[3] - M[1] * M[2])) * Math.sqrt(sx * sy) || 1;
+      let subs;
+      try { subs = elementSubpaths(el, 0.02 / scale); } catch (e) { warns.push((el.id || el.tagName) + ' : ' + e.message); return; }
+      const out = [];
+      for (const s of subs) {
+        let pts = s.pts.map(([x, y]) => [((M[0] * x + M[2] * y + M[4]) - vx) * sx, ((M[1] * x + M[3] * y + M[5]) - vy) * sy]);
+        pts = pts.filter((p, k) => k === 0 || Math.hypot(p[0] - pts[k - 1][0], p[1] - pts[k - 1][1]) > 1e-4);
+        let closed = s.closed;
+        if (pts.length > 2 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.01) { closed = true; pts.pop(); }
+        if (pts.length >= 2 && !(closed && pts.length < 3)) out.push({ pts, closed });
+      }
+      if (!out.length) return;
+      const closed = out.every(s => s.closed);
+      shapes.push({ id: shapes.length, name: el.getAttribute('inkscape:label') || el.id || (el.tagName.toLowerCase() + ' ' + (idx + 1)), subpaths: out, closed, op: closed ? 'outside' : 'on', depth: 1 });
+    });
+    if (!shapes.length) throw new Error('Aucune forme exploitable dans ce SVG.' + (warns.length ? ' ' + warns.join(' ') : ''));
+    return { shapes, warns };
+  } finally { host.remove(); }
+}
+
+/* ====================== Projet ====================== */
+let D = null; // { name, svgText, shapes, bb, place:{x,y,s} }
+let sel = new Set();
+function bboxOf(shapes) {
+  const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  for (const sh of shapes) for (const s of sh.subpaths) for (const [x, y] of s.pts) { if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y; }
+  return b;
+}
+function loadDesign(text, name, saved) {
+  const { shapes, warns } = importSVG(text, name);
+  D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
+  if (saved) {
+    if (saved.place) D.place = saved.place;
+    (saved.ops || []).forEach((o, k) => { if (D.shapes[k] && o) { D.shapes[k].op = o.op; D.shapes[k].depth = o.depth; } });
+  } else centerDesign();
+  sel = new Set();
+  warns.forEach(w => log(w, 'msg'));
+  $('#designName').textContent = name;
+  refreshAll(); fitView();
+}
+function centerDesign() {
+  if (!D) return;
+  const s = D.place.s / 100, w = (D.bb.x1 - D.bb.x0) * s, h = (D.bb.y1 - D.bb.y0) * s;
+  D.place.x = +((S.stock.w - w) / 2).toFixed(2); D.place.y = +((S.stock.h - h) / 2).toFixed(2);
+}
+function toStockFn() {
+  const s = D.place.s / 100, b = D.bb, px = D.place.x, py = D.place.y;
+  return p => [(p[0] - b.x0) * s + px, (b.y1 - p[1]) * s + py];
+}
+
+/* ====================== FAO ====================== */
+const CL = window.ClipperLib, SC = 1000;
+const toC = pts => pts.map(p => ({ X: Math.round(p[0] * SC), Y: Math.round(p[1] * SC) }));
+const fromC = path => path.map(p => [p.X / SC, p.Y / SC]);
+function unionEO(paths) {
+  const c = new CL.Clipper(); c.AddPaths(paths, CL.PolyType.ptSubject, true);
+  const sol = new CL.Paths(); c.Execute(CL.ClipType.ctUnion, sol, CL.PolyFillType.pftEvenOdd, CL.PolyFillType.pftEvenOdd); return sol;
+}
+function offsetPaths(paths, delta) {
+  if (!paths.length) return [];
+  const co = new CL.ClipperOffset(2, 0.01 * SC); co.AddPaths(paths, CL.JoinType.jtRound, CL.EndType.etClosedPolygon);
+  const sol = new CL.Paths(); co.Execute(sol, delta * SC);
+  return sol.filter(p => p.length > 2 && Math.abs(CL.Clipper.Area(p)) > (0.01 * SC) ** 2);
+}
+function depthPasses(depth, doc) {
+  const n = Math.max(1, Math.ceil(depth / doc - 1e-9)), r = [];
+  for (let k = 1; k <= n; k++) r.push(-depth * k / n);
+  return r;
+}
+function loopWithTabs(pts, z, tab) {
+  const P = pts.concat([pts[0]]);
+  if (!tab || z >= tab.z - 1e-9) return P.map(p => [p[0], p[1], z]);
+  const segL = []; let L = 0;
+  for (let k = 1; k < P.length; k++) { const l = Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]); segL.push(l); L += l; }
+  let n = tab.n; if (L < n * tab.w * 3) n = Math.floor(L / (tab.w * 3));
+  if (n < 1) return P.map(p => [p[0], p[1], z]);
+  const iv = []; for (let k = 0; k < n; k++) { const c = (k + 0.5) * L / n; iv.push([c - tab.w / 2, c + tab.w / 2]); }
+  const inTab = s => iv.some(([a, b]) => s > a && s < b);
+  const bps = iv.flat().sort((a, b) => a - b);
+  const out = [[P[0][0], P[0][1], z]]; let s = 0;
+  for (let k = 1; k < P.length; k++) {
+    const l = segL[k - 1], a = P[k - 1], b = P[k];
+    for (const bp of bps) if (bp > s + 1e-9 && bp < s + l - 1e-9) {
+      const t = (bp - s) / l, q = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      out.push([q[0], q[1], inTab(bp - 1e-6) ? tab.z : z]); out.push([q[0], q[1], inTab(bp + 1e-6) ? tab.z : z]);
+    }
+    s += l; out.push([b[0], b[1], inTab(s - 1e-6) ? tab.z : z]);
+  }
+  return out;
+}
+function computeCAM() {
+  const res = { groups: [], warns: [] };
+  if (!D) return res;
+  const T = tool(), r = T.d / 2, th = S.stock.t, tf = toStockFn();
+  const doc = Math.max(0.05, T.doc), step = T.d * Math.min(0.95, Math.max(0.05, T.so / 100));
+  const order = { on: 0, pocket: 1, inside: 2, outside: 3 };
+  for (const sh of D.shapes) {
+    if (sh.op === 'none' || !(sh.depth > 0)) continue;
+    const depth = sh.depth;
+    if (depth > th + 1e-6) res.warns.push(`« ${sh.name} » : profondeur ${depth} mm > épaisseur du brut`);
+    const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
+    const passes = depthPasses(depth, doc), cuts = [];
+    if (isV(T) && sh.op !== 'on') { res.warns.push(`« ${sh.name} » : avec une fraise en V, seul « Sur la ligne » est usiné`); continue; }
+    if (isV(T) && 2 * depth * Math.tan((T.angle || 60) * Math.PI / 360) + (T.tip || 0) > T.d) res.warns.push(`« ${sh.name} » : profondeur plus grande que la partie conique de la fraise`);
+    if (sh.op === 'on') {
+      for (const s of subs) {
+        let zPrev = 0;
+        for (const z of passes) {
+          const pts = s.closed ? s.pts.concat([s.pts[0]]) : s.pts;
+          cuts.push({ pts: pts.map(p => [p[0], p[1], z]), zTop: zPrev }); zPrev = z;
+        }
+      }
+    } else {
+      const closedSubs = subs.filter(s => s.closed);
+      if (!closedSubs.length) { res.warns.push(`« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`); continue; }
+      const region = unionEO(closedSubs.map(s => toC(s.pts)));
+      const reverse = sh.op === 'outside' ? S.climb : !S.climb;
+      const orient = p => { const q = fromC(p); return reverse ? q.reverse() : q; };
+      if (sh.op === 'pocket') {
+        const rings = []; let cur = offsetPaths(region, -r), guard = 0;
+        while (cur.length && guard++ < 2000) { rings.push(...cur); cur = offsetPaths(cur, -step); }
+        if (!rings.length) { res.warns.push(`« ${sh.name} » : trop étroite pour la fraise de ${T.d} mm`); continue; }
+        const loops = rings.reverse().map(orient);
+        let zPrev = 0;
+        for (const z of passes) { for (const lp of loops) cuts.push({ pts: loopWithTabs(lp, z, null), zTop: zPrev }); zPrev = z; }
+      } else {
+        const loops = offsetPaths(region, sh.op === 'outside' ? r : -r).map(orient);
+        if (!loops.length) { res.warns.push(`« ${sh.name} » : trop petite pour la fraise de ${T.d} mm`); continue; }
+        const through = depth >= th - 1e-6;
+        const tab = (through && S.tabs.on) ? { z: -(th - S.tabs.h), n: Math.max(1, Math.round(S.tabs.n)), w: S.tabs.w + T.d } : null;
+        for (const lp of loops) { let zPrev = 0; for (const z of passes) { cuts.push({ pts: loopWithTabs(lp, z, tab), zTop: zPrev }); zPrev = z; } }
+      }
+    }
+    if (cuts.length) res.groups.push({ shape: sh, rank: order[sh.op], cuts });
+  }
+  // Ordre : gravures, poches, intérieurs, puis extérieurs ; plus proche voisin dans chaque catégorie
+  const sorted = []; let at = [0, 0];
+  for (let rank = 0; rank <= 3; rank++) {
+    const pool = res.groups.filter(g => g.rank === rank);
+    while (pool.length) {
+      let bi = 0, bd = Infinity;
+      pool.forEach((g, k) => { const p = g.cuts[0].pts[0], dd = Math.hypot(p[0] - at[0], p[1] - at[1]); if (dd < bd) { bd = dd; bi = k; } });
+      const g = pool.splice(bi, 1)[0]; sorted.push(g);
+      const lc = g.cuts[g.cuts.length - 1].pts; at = lc[lc.length - 1];
+    }
+  }
+  res.groups = sorted;
+  return res;
+}
+function buildGcode(cam) {
+  const T = tool(), m = S.machine, safe = m.safeZ, L = [], moves = [], lineMove = [];
+  const [gx, gy] = originOff();
+  let x = gx, y = gy, z = safe, F = null, time = 0, zMin = 0;
+  const push = s => { L.push(s); lineMove.push(moves.length); };
+  const mv = (g, nx, ny, nz, feed) => {
+    const parts = [g === 0 ? 'G0' : 'G1'];
+    if (Math.abs(nx - x) > 5e-4) parts.push('X' + f3(nx - gx));
+    if (Math.abs(ny - y) > 5e-4) parts.push('Y' + f3(ny - gy));
+    if (Math.abs(nz - z) > 5e-4) parts.push('Z' + f3(nz));
+    if (parts.length === 1) return;
+    const dist = Math.hypot(nx - x, ny - y, nz - z);
+    if (g === 1) { if (feed !== F) { parts.push('F' + Math.round(feed)); F = feed; } time += dist / feed * 60; }
+    else time += dist / m.rapid * 60;
+    moves.push({ g, x0: x, y0: y, z0: z, x: nx, y: ny, z: nz });
+    x = nx; y = ny; z = nz; if (z < zMin) zMin = z;
+    push(parts.join(' '));
+  };
+  push(`; Atelier CNC — ${D ? D.name : ''} — ${T.name} (Ø${T.d} mm)`);
+  push(`; Brut ${S.stock.w} x ${S.stock.h} x ${S.stock.t} mm — origine X0 Y0 ${S.origin === 'center' ? 'au centre du brut' : 'au coin avant-gauche'}, Z0 dessus du brut`);
+  if (isV(T)) push(`; Fraise en V ${T.angle}°, pointe ${T.tip} mm`);
+  push('G21 G90 G17 G94');
+  push(`G0 Z${f3(safe)}`);
+  push(`M3 S${Math.round(m.spindleS)}`);
+  if (m.dwell > 0) { push(`G4 P${m.dwell}`); time += m.dwell; }
+  for (const g of cam.groups) {
+    push(`; ${g.shape.name}`);
+    for (const c of g.cuts) {
+      const p0 = c.pts[0];
+      const here = Math.hypot(p0[0] - x, p0[1] - y) < 1e-3 && z <= c.zTop + 1e-6 && z < safe;
+      if (!here) {
+        if (z < safe) mv(0, x, y, safe);
+        mv(0, p0[0], p0[1], safe);
+        const app = c.zTop + 0.5; if (app < safe) mv(0, p0[0], p0[1], app);
+      }
+      mv(1, p0[0], p0[1], p0[2], T.plunge);
+      for (let k = 1; k < c.pts.length; k++) {
+        const p = c.pts[k], vert = Math.abs(p[0] - x) < 5e-4 && Math.abs(p[1] - y) < 5e-4;
+        mv(1, p[0], p[1], p[2], vert && p[2] < z ? T.plunge : T.feed);
+      }
+    }
+  }
+  if (z < safe) mv(0, x, y, safe);
+  push('M5');
+  mv(0, gx, gy, safe);
+  push('M2');
+  return { lines: L, moves, lineMove, time, zMin };
+}
+
+/* ====================== Vue ====================== */
+const cv = $('#cv'), ctx = cv.getContext('2d');
+let view = { s: 1, ox: 0, oy: 0 }, viewMode = 'design', job = null, G = null, CAM = null;
+const W2S = (x, y) => [view.ox + x * view.s, view.oy - y * view.s];
+const S2W = (sx, sy) => [(sx - view.ox) / view.s, (view.oy - sy) / view.s];
+function resize() { const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1; cv.width = r.width * d; cv.height = r.height * d; ctx.setTransform(d, 0, 0, d, 0, 0); draw(); }
+function fitView() {
+  const r = cv.getBoundingClientRect(); let x0 = 0, y0 = 0, x1 = S.stock.w, y1 = S.stock.h;
+  if (D) { const s = D.place.s / 100; x0 = Math.min(x0, D.place.x); y0 = Math.min(y0, D.place.y); x1 = Math.max(x1, D.place.x + (D.bb.x1 - D.bb.x0) * s); y1 = Math.max(y1, D.place.y + (D.bb.y1 - D.bb.y0) * s); }
+  const m = 50; view.s = Math.min((r.width - 2 * m) / (x1 - x0), (r.height - 2 * m - 40) / (y1 - y0));
+  view.ox = m + (r.width - 2 * m - (x1 - x0) * view.s) / 2 - x0 * view.s;
+  view.oy = r.height - m - 40 - ((r.height - 2 * m - 40) - (y1 - y0) * view.s) / 2 + y0 * view.s;
+  draw();
+}
+const OPCOL = { outside: '#1f6feb', inside: '#8e44ad', on: '#16a085', pocket: '#d35400', none: '#999' };
+function depthColor(z) {
+  const t = Math.min(1, Math.max(0, -z / Math.max(0.1, S.stock.t)));
+  const a = [214, 180, 128], b = [92, 54, 24];
+  return `rgb(${a.map((v, k) => Math.round(v + (b[k] - v) * t)).join(',')})`;
+}
+function draw() {
+  const r = cv.getBoundingClientRect();
+  ctx.clearRect(0, 0, r.width, r.height);
+  ctx.fillStyle = '#ebe7df'; ctx.fillRect(0, 0, r.width, r.height);
+  // zone machine
+  const [mx0, my0] = W2S(0, S.machine.h), [mx1, my1] = W2S(S.machine.w, 0);
+  ctx.strokeStyle = '#cfc8bb'; ctx.setLineDash([6, 4]); ctx.strokeRect(mx0, my0, mx1 - mx0, my1 - my0); ctx.setLineDash([]);
+  // brut
+  const [sx0, sy0] = W2S(0, S.stock.h), [sx1, sy1] = W2S(S.stock.w, 0);
+  ctx.fillStyle = '#f3e4c4'; ctx.fillRect(sx0, sy0, sx1 - sx0, sy1 - sy0);
+  ctx.strokeStyle = 'rgba(0,0,0,.06)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let gx = 10; gx < S.stock.w; gx += 10) { const [a] = W2S(gx, 0); ctx.moveTo(a, sy0); ctx.lineTo(a, sy1); }
+  for (let gy = 10; gy < S.stock.h; gy += 10) { const [, b] = W2S(0, gy); ctx.moveTo(sx0, b); ctx.lineTo(sx1, b); }
+  ctx.stroke();
+  ctx.strokeStyle = '#b89a66'; ctx.strokeRect(sx0, sy0, sx1 - sx0, sy1 - sy0);
+  // origine
+  const [ox, oy] = W2S(...originOff());
+  ctx.lineWidth = 2; ctx.strokeStyle = '#c0392b'; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + 30, oy); ctx.stroke();
+  ctx.strokeStyle = '#27ae60'; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, oy - 30); ctx.stroke();
+  ctx.fillStyle = '#22201c'; ctx.font = '11px system-ui'; ctx.fillText('X0 Y0', ox + 4, oy + 14);
+  if (G && (viewMode === 'carve' || viewMode === 'paths')) drawMoves();
+  if (D && viewMode !== 'carve') drawShapes(viewMode === 'paths' ? 0.35 : 1);
+  if (job && G) drawProgress();
+  if (machine.wpos) {
+    const [tx, ty] = W2S(machine.wpos[0] + originOff()[0], machine.wpos[1] + originOff()[1]);
+    ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(tx, ty, 7, 0, 7); ctx.moveTo(tx - 11, ty); ctx.lineTo(tx + 11, ty); ctx.moveTo(tx, ty - 11); ctx.lineTo(tx, ty + 11); ctx.stroke();
+  }
+}
+function drawShapes(alpha) {
+  const tf = toStockFn(); ctx.globalAlpha = alpha; ctx.lineJoin = 'round';
+  for (const sh of D.shapes) {
+    const isSel = sel.has(sh.id);
+    ctx.beginPath();
+    for (const s of sh.subpaths) { s.pts.forEach((p, k) => { const [a, b] = W2S(...tf(p)); k ? ctx.lineTo(a, b) : ctx.moveTo(a, b); }); if (s.closed) ctx.closePath(); }
+    if (sh.op === 'pocket') { ctx.fillStyle = 'rgba(211,84,0,.18)'; ctx.fill('evenodd'); }
+    ctx.lineWidth = isSel ? 2.5 : 1.3; ctx.strokeStyle = isSel ? '#e74c3c' : OPCOL[sh.op]; ctx.setLineDash(sh.op === 'none' ? [4, 3] : []); ctx.stroke();
+  }
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+}
+function drawMoves() {
+  const T = tool();
+  if (viewMode === 'carve') {
+    const buckets = new Map();
+    for (const m of G.moves) if (m.g === 1 && (m.z < 0 || m.z0 < 0)) { const zz = Math.round(Math.min(m.z, m.z0) * 100) / 100; if (!buckets.has(zz)) buckets.set(zz, []); buckets.get(zz).push(m); }
+    const keys = [...buckets.keys()].sort((a, b) => b - a);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const k of keys) {
+      ctx.lineWidth = Math.max(1, cutWidth(k, T) * view.s);
+      ctx.strokeStyle = depthColor(k); ctx.beginPath();
+      for (const m of buckets.get(k)) { const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c + 0.01, d); }
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  } else {
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(120,120,120,.6)'; ctx.beginPath();
+    for (const m of G.moves) if (m.g === 0) { const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d); }
+    ctx.stroke(); ctx.setLineDash([]);
+    let last = null;
+    for (const m of G.moves) if (m.g === 1) {
+      const col = depthColor(Math.min(m.z, m.z0)); if (col !== last) { if (last) ctx.stroke(); ctx.strokeStyle = col; ctx.beginPath(); last = col; }
+      const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d);
+    }
+    if (last) ctx.stroke();
+  }
+}
+function drawProgress() {
+  const upto = G.lineMove[Math.min(job.acked, G.lineMove.length - 1)] || 0;
+  ctx.strokeStyle = 'rgba(46,139,87,.9)'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let k = 0; k < upto; k++) { const m = G.moves[k]; if (m.g !== 1) continue; const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d); }
+  ctx.stroke();
+}
+// interactions
+let drag = null;
+cv.addEventListener('mousedown', e => { drag = { x: e.offsetX, y: e.offsetY, ox: view.ox, oy: view.oy, moved: false }; });
+window.addEventListener('mousemove', e => {
+  if (!drag) return; const r = cv.getBoundingClientRect(), dx = e.clientX - r.left - drag.x, dy = e.clientY - r.top - drag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+  if (drag.moved) { view.ox = drag.ox + dx; view.oy = drag.oy + dy; cv.style.cursor = 'grabbing'; draw(); }
+});
+window.addEventListener('mouseup', e => {
+  if (!drag) return; const d = drag; drag = null; cv.style.cursor = 'crosshair';
+  if (!d.moved && e.target === cv) pick(e.offsetX, e.offsetY, e.shiftKey || e.ctrlKey || e.metaKey);
+});
+cv.addEventListener('wheel', e => {
+  e.preventDefault(); const k = Math.exp(-e.deltaY * 0.0015), [wx, wy] = S2W(e.offsetX, e.offsetY);
+  view.s *= k; view.ox = e.offsetX - wx * view.s; view.oy = e.offsetY + wy * view.s; draw();
+}, { passive: false });
+function pointInPoly(x, y, pts) { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function segDist(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy; let t = l ? ((px - a[0]) * dx + (py - a[1]) * dy) / l : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
+function pick(sx, sy, add) {
+  if (!D) return;
+  const [x, y] = S2W(sx, sy), tf = toStockFn(), tolW = 6 / view.s; let hit = null, best = Infinity;
+  for (const sh of D.shapes) {
+    const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
+    let dmin = Infinity;
+    for (const s of subs) { const n = s.pts.length; for (let k = 1; k < n + (s.closed ? 1 : 0); k++) dmin = Math.min(dmin, segDist(x, y, s.pts[k - 1], s.pts[k % n])); }
+    let inside = false; for (const s of subs) if (s.closed && pointInPoly(x, y, s.pts)) inside = !inside;
+    const score = dmin < tolW ? dmin : (inside ? tolW + 1 : Infinity);
+    if (score < best) { best = score; hit = sh; }
+  }
+  if (!add) sel.clear();
+  if (hit) { if (add && sel.has(hit.id)) sel.delete(hit.id); else sel.add(hit.id); }
+  refreshShapes(); draw();
+}
+
+/* ====================== Panneaux ====================== */
+function bindNum(id, get, set) { const el = $(id); el.value = get(); el.addEventListener('change', () => { set(num(el, get())); saveSettings(); invalidate(); }); return el; }
+function refreshTools() {
+  const s = $('#toolSel'); s.innerHTML = '';
+  S.tools.forEach((t, k) => { const o = document.createElement('option'); o.value = k; o.textContent = t.name; s.appendChild(o); });
+  s.value = S.toolIdx; const T = tool();
+  $('#tType').value = isV(T) ? 'v' : 'flat'; $('#tAng').value = T.angle || 60; $('#tTip').value = T.tip || 0;
+  $$('.vonly').forEach(e => e.classList.toggle('hide', !isV(T))); $$('.flatonly').forEach(e => e.classList.toggle('hide', isV(T)));
+  $('#lD').textContent = isV(T) ? 'Diamètre du corps (mm)' : 'Diamètre (mm)';
+  if (isV(T)) $('#vNote').textContent = `Largeur de trait : ${f3(cutWidth(-0.5, T))} mm à 0,5 mm de profondeur, ${f3(cutWidth(-1, T))} mm à 1 mm, ${f3(cutWidth(-2, T))} mm à 2 mm. Utilisable en « Sur la ligne ».`;
+  $('#tName').value = T.name; $('#tD').value = T.d; $('#tF').value = T.feed; $('#tP').value = T.plunge; $('#tDoc').value = T.doc; $('#tSo').value = T.so;
+}
+function refreshShapes() {
+  const box = $('#shapeList');
+  if (!D) return;
+  const label = { outside: 'ext.', inside: 'int.', on: 'ligne', pocket: 'poche', none: '—' };
+  // mise à jour en place (reconstruire la liste ferait perdre le clic en cours)
+  if (box.dataset.design !== String(D.uid)) {
+    box.innerHTML = ''; box.dataset.design = String(D.uid);
+    for (const sh of D.shapes) {
+      const d = document.createElement('div'); d.innerHTML = '<span></span><small></small>'; d.firstChild.textContent = sh.name;
+      d.onclick = e => { const mod = e.shiftKey || e.ctrlKey || e.metaKey; if (!mod) sel.clear(); if (mod && sel.has(sh.id)) sel.delete(sh.id); else sel.add(sh.id); refreshShapes(); draw(); };
+      box.appendChild(d);
+    }
+  }
+  D.shapes.forEach((sh, k) => {
+    const d = box.children[k]; d.className = sel.has(sh.id) ? 'sel' : '';
+    const sm = d.lastChild; sm.style.color = OPCOL[sh.op]; sm.textContent = label[sh.op] + (sh.op !== 'none' ? ' · ' + sh.depth + ' mm' : '');
+  });
+  const ed = $('#selEdit');
+  if (!sel.size) { ed.classList.add('hide'); return; }
+  ed.classList.remove('hide');
+  const ss = D.shapes.filter(s => sel.has(s.id));
+  $('#selCount').textContent = ss.length === 1 ? ss[0].name : ss.length + ' formes sélectionnées';
+  const ops = new Set(ss.map(s => s.op)), deps = new Set(ss.map(s => s.depth));
+  $('#sOp').value = ops.size === 1 ? [...ops][0] : ''; $('#sDepth').value = deps.size === 1 ? [...deps][0] : '';
+}
+function refreshPlace() {
+  if (!D) { $('#dSize').textContent = ''; return; }
+  $('#pX').value = D.place.x; $('#pY').value = D.place.y; $('#pS').value = D.place.s;
+  const s = D.place.s / 100; $('#dSize').textContent = `${f3((D.bb.x1 - D.bb.x0) * s)} × ${f3((D.bb.y1 - D.bb.y0) * s)} mm`;
+}
+let camTimer = null;
+function invalidate() { clearTimeout(camTimer); camTimer = setTimeout(recompute, 120); refreshPlace(); draw(); }
+function recompute() {
+  if (job) return;
+  const warns = [];
+  try {
+    CAM = computeCAM(); warns.push(...CAM.warns);
+    G = CAM.groups.length ? buildGcode(CAM) : null;
+  } catch (e) { G = null; warns.push('Erreur de calcul : ' + e.message); console.error(e); }
+  if (D) {
+    const s = D.place.s / 100, x1 = D.place.x + (D.bb.x1 - D.bb.x0) * s, y1 = D.place.y + (D.bb.y1 - D.bb.y0) * s;
+    if (D.place.x < -1e-6 || D.place.y < -1e-6 || x1 > S.stock.w + 1e-6 || y1 > S.stock.h + 1e-6) warns.push('Le dessin dépasse du brut');
+  }
+  if (S.stock.w > S.machine.w || S.stock.h > S.machine.h) warns.push('Le brut dépasse la course de la machine');
+  $('#iTime').textContent = G ? fmtTime(G.time) : '—';
+  $('#iLines').textContent = G ? G.lines.length.toLocaleString('fr') : '—';
+  $('#iDepth').textContent = G ? f3(-G.zMin) + ' mm' : '—';
+  $('#warns').textContent = warns.length ? '⚠ ' + [...new Set(warns)].join(' · ') : '';
+  updateButtons(); draw();
+}
+function refreshAll() {
+  $('#stW').value = S.stock.w; $('#stH').value = S.stock.h; $('#stT').value = S.stock.t;
+  $('#tabOn').checked = S.tabs.on; $('#tabN').value = S.tabs.n; $('#tabW').value = S.tabs.w; $('#tabH').value = S.tabs.h;
+  $('#climb').value = S.climb ? '1' : '0'; $('#origin').value = S.origin;
+  refreshTools(); refreshShapes(); refreshPlace(); invalidate();
+}
+// matériau
+[['#stW', 'w'], ['#stH', 'h'], ['#stT', 't']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.stock[k]); if (v > 0) S.stock[k] = v; saveSettings(); invalidate(); }));
+// fraise
+$('#toolSel').addEventListener('change', e => { S.toolIdx = +e.target.value; saveSettings(); refreshTools(); invalidate(); });
+[['#tD', 'd'], ['#tF', 'feed'], ['#tP', 'plunge'], ['#tDoc', 'doc'], ['#tSo', 'so']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, tool()[k]); if (v > 0) tool()[k] = v; saveSettings(); invalidate(); }));
+$('#tType').addEventListener('change', e => { const T = tool(); T.type = e.target.value; if (T.type === 'v') { T.angle = T.angle || 60; T.tip = T.tip ?? 0.2; } saveSettings(); refreshTools(); invalidate(); });
+$('#tAng').addEventListener('change', e => { const v = num(e.target, tool().angle); if (v > 0 && v < 180) tool().angle = v; saveSettings(); refreshTools(); invalidate(); });
+$('#tTip').addEventListener('change', e => { const v = num(e.target, tool().tip); if (v >= 0) tool().tip = v; saveSettings(); refreshTools(); invalidate(); });
+$('#origin').addEventListener('change', e => { S.origin = e.target.value; saveSettings(); invalidate(); });
+$('#tName').addEventListener('change', e => { tool().name = e.target.value || 'Fraise'; saveSettings(); refreshTools(); });
+$('#bToolAdd').onclick = () => { const t = clone(tool()); t.name += ' (copie)'; S.tools.push(t); S.toolIdx = S.tools.length - 1; saveSettings(); refreshTools(); };
+$('#bToolDel').onclick = () => { if (S.tools.length < 2) return; S.tools.splice(S.toolIdx, 1); S.toolIdx = 0; saveSettings(); refreshTools(); invalidate(); };
+// placement
+[['#pX', 'x'], ['#pY', 'y'], ['#pS', 's']].forEach(([id, k]) => $(id).addEventListener('change', e => { if (!D) return; const v = num(e.target, D.place[k]); if (k !== 's' || v > 0) D.place[k] = v; invalidate(); }));
+$('#bCenter').onclick = () => { centerDesign(); invalidate(); };
+// formes
+$('#bSelAll').onclick = () => { if (!D) return; sel = new Set(D.shapes.map(s => s.id)); refreshShapes(); draw(); };
+$('#sOp').addEventListener('change', e => { if (!D || !e.target.value) return; for (const sh of D.shapes) if (sel.has(sh.id)) { if (!sh.closed && e.target.value !== 'on' && e.target.value !== 'none') continue; sh.op = e.target.value; } refreshShapes(); invalidate(); });
+$('#sDepth').addEventListener('change', e => { if (!D) return; const v = num(e.target, NaN); if (!(v >= 0)) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.depth = v; refreshShapes(); invalidate(); });
+$('#bThrough').onclick = () => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.depth = S.stock.t; refreshShapes(); invalidate(); };
+// attaches & sens
+$('#tabOn').addEventListener('change', e => { S.tabs.on = e.target.checked; saveSettings(); invalidate(); });
+[['#tabN', 'n'], ['#tabW', 'w'], ['#tabH', 'h']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.tabs[k]); if (v > 0) S.tabs[k] = v; saveSettings(); invalidate(); }));
+$('#climb').addEventListener('change', e => { S.climb = e.target.value === '1'; saveSettings(); invalidate(); });
+// vue
+$$('#viewbar [data-v]').forEach(b => b.onclick = () => { viewMode = b.dataset.v; $$('#viewbar [data-v]').forEach(x => x.classList.toggle('on', x === b)); draw(); });
+$('#bFit').onclick = fitView;
+// fichiers
+$('#bImport').onclick = () => $('#fSvg').click();
+$('#fSvg').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) openSvgFile(f); });
+async function openSvgFile(f) { try { loadDesign(await f.text(), f.name); } catch (err) { alert(err.message); } }
+$('#bSave').onclick = () => {
+  if (!D) return alert('Rien à enregistrer : importe d\'abord un SVG.');
+  const data = { app: 'atelier-cnc', v: 1, name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth })), stock: S.stock, tool: tool(), tabs: S.tabs, climb: S.climb, origin: S.origin };
+  download(D.name.replace(/\.svg$/i, '') + '.cnc.json', JSON.stringify(data), 'application/json');
+};
+$('#bOpen').onclick = () => $('#fProj').click();
+$('#fProj').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const p = JSON.parse(await f.text()); if (p.app !== 'atelier-cnc') throw new Error('Ce fichier n\'est pas un projet Atelier CNC.');
+    if (p.stock) S.stock = p.stock; if (p.origin) S.origin = p.origin; if (p.tabs) S.tabs = p.tabs; S.climb = !!p.climb;
+    if (p.tool) { let k = S.tools.findIndex(t => t.name === p.tool.name); if (k < 0) { S.tools.push(p.tool); k = S.tools.length - 1; } else S.tools[k] = p.tool; S.toolIdx = k; }
+    saveSettings(); loadDesign(p.svg, p.name, p);
+  } catch (err) { alert(err.message); }
+});
+function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+$('#bExport').onclick = () => { if (G) download((D ? D.name.replace(/\.svg$/i, '') : 'projet') + '.nc', G.lines.join('\n') + '\n', 'text/plain'); };
+// glisser-déposer
+const center = $('#center');
+center.addEventListener('dragover', e => { e.preventDefault(); $('#drop').style.display = 'flex'; });
+center.addEventListener('dragleave', e => { if (e.target === center || e.target === cv) $('#drop').style.display = 'none'; });
+center.addEventListener('drop', e => { e.preventDefault(); $('#drop').style.display = 'none'; const f = e.dataTransfer.files[0]; if (f) openSvgFile(f); });
+// réglages machine
+const MF = [['#mName', 'name', 's'], ['#mW', 'w'], ['#mH', 'h'], ['#mZ', 'z'], ['#mBaud', 'baud'], ['#mSafe', 'safeZ'], ['#mS', 'spindleS'], ['#mDwell', 'dwell'], ['#mRapid', 'rapid'], ['#mJog', 'jogFeed'], ['#mProbe', 'probeT'], ['#mProbeDist', 'probeDist']];
+$('#bMachine').onclick = () => { MF.forEach(([id, k]) => $(id).value = S.machine[k]); $('#dlgMachine').showModal(); };
+$('#mCancel').onclick = () => $('#dlgMachine').close();
+$('#mOk').onclick = () => { MF.forEach(([id, k, t]) => { if (t === 's') S.machine[k] = $(id).value; else { const v = parseFloat($(id).value); if (isFinite(v) && v >= 0) S.machine[k] = v; } }); saveSettings(); $('#dlgMachine').close(); invalidate(); };
+
+/* ====================== GRBL / Web Serial ====================== */
+const RX_BUF = 127;
+const ALARMS = { 1: 'fin de course matériel déclenché', 2: 'déplacement hors limites logicielles', 3: 'reset pendant un mouvement : position perdue, refais l\'origine', 4: 'sonde déjà en contact au départ', 5: 'la sonde n\'a pas touché la plaque', 6: 'homing interrompu', 7: 'porte ouverte pendant le homing', 8: 'homing : impossible de dégager le fin de course', 9: 'homing : fin de course introuvable' };
+const ERRORS = { 1: 'lettre de commande attendue', 2: 'valeur numérique invalide', 3: 'commande $ inconnue', 5: 'homing non activé ($22)', 8: 'commande refusée hors état Idle', 9: 'G-code verrouillé : alarme active (déverrouiller)', 10: 'limites logicielles sans homing', 15: 'jog hors limites', 16: 'commande de jog invalide', 20: 'commande G-code non supportée', 22: 'avance F non définie', 33: 'cible de mouvement invalide', 36: 'mots G-code inutilisés' };
+const machine = { port: null, writer: null, reader: null, state: null, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
+function log(text, cls) { const el = $('#log'), d = document.createElement('div'); if (cls) d.className = cls; d.textContent = text; el.appendChild(d); while (el.childNodes.length > 400) el.firstChild.remove(); el.scrollTop = el.scrollHeight; }
+const enc = new TextEncoder();
+function writeRaw(data) { if (!machine.writer) return; const bytes = typeof data === 'string' ? enc.encode(data) : data; machine.wchain = machine.wchain.then(() => machine.writer.write(bytes)).catch(e => log('Écriture impossible : ' + e.message, 'err')); }
+function rt(byte) { writeRaw(new Uint8Array([byte])); }
+function cleanLine(l) { return l.replace(/\(.*?\)/g, '').replace(/;.*$/, '').trim().toUpperCase(); }
+function sendLines(lines, meta) { for (const l of lines) { const c = cleanLine(l); if (c) machine.queue.push({ line: c, meta, echo: !meta }); } pump(); }
+function pump() {
+  while (machine.queue.length) {
+    const q = machine.queue[0], len = q.line.length + 1;
+    if (machine.used + len > RX_BUF && machine.inflight.length) break;
+    machine.queue.shift(); machine.inflight.push({ len, q }); machine.used += len;
+    if (q.echo) log('> ' + q.line, 'tx');
+    writeRaw(q.line + '\n');
+  }
+}
+function onAck(err) {
+  const it = machine.inflight.shift(); if (it) machine.used -= it.len;
+  if (err) {
+    const code = +err; log(`error:${err} — ${ERRORS[code] || 'erreur GRBL'}${it ? ' (' + it.q.line + ')' : ''}`, 'err');
+    if (job && it && it.q.meta === 'job') { abortJob('Erreur GRBL ' + err + ' sur la ligne « ' + it.q.line + ' »'); return; }
+    machine.queue = machine.queue.filter(q => q.meta === 'job');
+  }
+  if (job && it && it.q.meta === 'job') { job.acked++; feedJob(); }
+  pump();
+}
+function feedJob() {
+  if (!job) return;
+  const inQ = machine.queue.length;
+  while (job.next < job.lines.length && machine.queue.length - inQ < 200 && machine.queue.length < 400) { const c = cleanLine(job.lines[job.next++]); if (c) machine.queue.push({ line: c, meta: 'job' }); else job.acked++; }
+  updateJobUI();
+}
+function parseStatus(s) {
+  const parts = s.slice(1, -1).split('|'); machine.state = parts[0].split(':')[0];
+  for (const p of parts.slice(1)) {
+    const [k, v] = p.split(':'); const a = (v || '').split(',').map(Number);
+    if (k === 'MPos') machine.mpos = a; else if (k === 'WPos') machine.wpos = a; else if (k === 'WCO') machine.wco = a; else if (k === 'Ov') machine.ov = a;
+  }
+  if (parts.some(p => p.startsWith('MPos'))) machine.wpos = machine.mpos.map((v, k) => v - (machine.wco[k] || 0));
+  else if (machine.wpos) machine.mpos = machine.wpos.map((v, k) => v + (machine.wco[k] || 0));
+  const st = $('#state'); st.textContent = { Idle: 'Prête', Run: 'En cours', Hold: 'Pause', Jog: 'Jog', Alarm: 'Alarme', Door: 'Porte', Check: 'Test', Home: 'Homing', Sleep: 'Veille' }[machine.state] || machine.state; st.className = 'tag ' + machine.state;
+  if (machine.wpos) { $('#wx').textContent = machine.wpos[0].toFixed(2); $('#wy').textContent = machine.wpos[1].toFixed(2); $('#wz').textContent = machine.wpos[2].toFixed(2); }
+  $('#ovF').textContent = ' ' + machine.ov[0] + ' %';
+  if (machine.state === 'Idle') { const cbs = machine.onIdle.splice(0); cbs.forEach(f => f()); }
+  if (job && job.acked >= job.total && machine.state === 'Idle' && !machine.inflight.length) finishJob();
+  updateButtons(); if (machine.port) draw();
+}
+function handleLine(l) {
+  if (!l) return;
+  if (l[0] === '<') return parseStatus(l);
+  if (l === 'ok') return onAck(null);
+  if (l.startsWith('error:')) return onAck(l.slice(6));
+  if (l.startsWith('ALARM:')) { const c = +l.slice(6); log(`ALARME ${c} — ${ALARMS[c] || ''}`, 'err'); if (job) abortJob('Alarme ' + c + ' : ' + (ALARMS[c] || '')); return; }
+  if (/^Grbl/i.test(l)) { machine.queue = []; machine.inflight = []; machine.used = 0; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); return; }
+  if (l.startsWith('[PRB:')) { log(l, 'msg'); return; }
+  log(l, l.startsWith('[MSG') ? 'msg' : '');
+}
+async function readLoop() {
+  const dec = new TextDecoder(); let buf = '';
+  try {
+    while (machine.port && machine.port.readable) {
+      machine.reader = machine.port.readable.getReader();
+      try {
+        while (true) {
+          const { value, done } = await machine.reader.read(); if (done) break;
+          buf += dec.decode(value, { stream: true }); let k;
+          while ((k = buf.indexOf('\n')) >= 0) { handleLine(buf.slice(0, k).trim()); buf = buf.slice(k + 1); }
+        }
+      } finally { machine.reader.releaseLock(); }
+      if (!machine.port) break;
+    }
+  } catch (e) { if (machine.port) log('Lecture interrompue : ' + e.message, 'err'); }
+}
+async function connect() {
+  if (machine.port) return disconnect();
+  if (!('serial' in navigator)) return alert('Web Serial indisponible : ouvre la page dans Chrome ou Edge, via http://localhost.');
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: +S.machine.baud || 115200 });
+    machine.port = port; machine.writer = port.writable.getWriter(); machine.queue = []; machine.inflight = []; machine.used = 0;
+    log('Port ouvert à ' + S.machine.baud + ' bauds.', 'msg');
+    readLoop();
+    setTimeout(() => { writeRaw('\r\n\r\n'); rt(0x3f); }, 1500);
+    machine.poll = setInterval(() => rt(0x3f), 250);
+    $('#bConnect').textContent = 'Déconnecter'; $('#bConnect').classList.remove('pri');
+  } catch (e) { if (e.name !== 'NotFoundError') { log('Connexion impossible : ' + e.message, 'err'); alert('Connexion impossible : ' + e.message); } }
+}
+async function disconnect() {
+  if (job) { if (!confirm('Une gravure est en cours. Arrêter et déconnecter ?')) return; stopJob(); }
+  clearInterval(machine.poll); const port = machine.port; machine.port = null;
+  try { await machine.wchain; } catch (e) {}
+  try { await machine.reader?.cancel(); } catch (e) {}
+  try { machine.writer?.releaseLock(); } catch (e) {}
+  try { await port?.close(); } catch (e) {}
+  Object.assign(machine, { writer: null, reader: null, state: null, wpos: null, queue: [], inflight: [], used: 0 });
+  $('#state').textContent = 'déconnectée'; $('#state').className = 'tag off';
+  ['#wx', '#wy', '#wz'].forEach(id => $(id).textContent = '—');
+  $('#bConnect').textContent = 'Connecter (USB)'; $('#bConnect').classList.add('pri');
+  updateButtons(); draw();
+}
+if ('serial' in navigator) navigator.serial.addEventListener('disconnect', e => { if (machine.port && e.target === machine.port) { log('La machine a été débranchée.', 'err'); disconnect(); } });
+else $('#serialBanner').style.display = 'block';
+$('#bConnect').onclick = connect;
+$('#bUnlock').onclick = () => sendLines(['$X']);
+$('#bHome').onclick = () => sendLines(['$H']);
+let jogStep = 1;
+$$('#steps button').forEach(b => b.onclick = () => { jogStep = +b.dataset.s; $$('#steps button').forEach(x => x.classList.toggle('on', x === b)); });
+function jog(axis, dir) { if (!machine.port || job) return; const f = axis === 'Z' ? Math.min(S.machine.jogFeed, 500) : S.machine.jogFeed; sendLines([`$J=G91 G21 ${axis}${f3(dir * jogStep)} F${Math.round(f)}`], 'jog'); }
+$$('[data-jog]').forEach(b => b.onclick = () => jog(b.dataset.jog[0], b.dataset.jog[1] === '+' ? 1 : -1));
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,select,textarea') || !machine.port || job || document.querySelector('dialog[open]')) return;
+  const map = { ArrowLeft: ['X', -1], ArrowRight: ['X', 1], ArrowUp: ['Y', 1], ArrowDown: ['Y', -1], PageUp: ['Z', 1], PageDown: ['Z', -1] };
+  if (map[e.key]) { e.preventDefault(); jog(...map[e.key]); }
+});
+$$('[data-zero]').forEach(b => b.onclick = () => sendLines([`G10 L20 P1 ${b.dataset.zero}0`]));
+$('#bZeroXY').onclick = () => sendLines(['G10 L20 P1 X0 Y0']);
+$('#bGoZero').onclick = () => { const z = machine.wpos && machine.wpos[2] < S.machine.safeZ ? [`G90 G0 Z${f3(S.machine.safeZ)}`] : []; sendLines([...z, 'G90 G0 X0 Y0']); };
+$('#bProbe').onclick = () => {
+  if (!confirm(`Place la plaque de sonde sous la fraise et connecte la pince.\nLa fraise va descendre lentement jusqu'à ${S.machine.probeDist} mm.\n\nÉpaisseur de plaque utilisée : ${S.machine.probeT} mm.`)) return;
+  sendLines(['G91', `G38.2 Z-${f3(S.machine.probeDist)} F80`, 'G90', `G10 L20 P1 Z${f3(S.machine.probeT)}`, 'G91', 'G0 Z5', 'G90']);
+  log('Sonde lancée. Pense à retirer la plaque une fois terminé.', 'msg');
+};
+$('#bSend').onclick = () => { const v = $('#cmd').value.trim(); if (!v || !machine.port) return; if (v === '?') rt(0x3f); else sendLines([v]); $('#cmd').value = ''; };
+$('#cmd').addEventListener('keydown', e => { if (e.key === 'Enter') $('#bSend').click(); });
+$$('[data-ov]').forEach(b => b.onclick = () => rt({ reset: 0x90, inc: 0x91, dec: 0x92 }[b.dataset.ov]));
+
+/* ====================== Gravure ====================== */
+function updateButtons() {
+  const ready = machine.port && machine.state === 'Idle' && !job;
+  $('#bCarve').disabled = !(G && ready);
+  $('#bExport').disabled = !G;
+  ['#bUnlock', '#bHome', '#bZeroXY', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
+  $('#bUnlock').disabled = !machine.port || (!!job && machine.state !== 'Alarm');
+  $$('[data-jog],[data-zero]').forEach(b => b.disabled = !machine.port || !!job);
+  $('#bCarve').title = !G ? 'Rien à graver' : !machine.port ? 'Connecte la machine' : machine.state !== 'Idle' ? 'La machine doit être prête (Idle)' : '';
+}
+$('#bCarve').onclick = () => {
+  if (!G) return;
+  const T = tool(), warns = $('#warns').textContent;
+  $('#cSummary').innerHTML = `Durée estimée <b>${fmtTime(G.time)}</b> · profondeur max <b>${f3(-G.zMin)} mm</b> · ${G.lines.length.toLocaleString('fr')} lignes`;
+  $('#cWarn').textContent = warns; $('#cTool').textContent = `La fraise « ${T.name} » (${isV(T) ? 'en V ' + T.angle + '°' : 'Ø ' + T.d + ' mm'}) est installée.`;
+  $('#cOrigin').textContent = S.origin === 'center' ? 'Le zéro X/Y est placé au centre du brut.' : 'Le zéro X/Y est placé au coin avant-gauche du brut.';
+  $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').disabled = true;
+  $('#dlgCarve').showModal();
+};
+$$('#dlgCarve input[type=checkbox]').forEach(c => c.addEventListener('change', () => { $('#cGo').disabled = !$$('#dlgCarve input[type=checkbox]').every(x => x.checked); }));
+$('#cCancel').onclick = () => $('#dlgCarve').close();
+$('#cGo').onclick = () => { $('#dlgCarve').close(); startJob(); };
+function startJob() {
+  if (!G || !machine.port || machine.state !== 'Idle') return;
+  job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), paused: false };
+  $('#job').classList.remove('hide'); $('#bPause').textContent = 'Pause';
+  log('Gravure lancée (' + job.total + ' lignes).', 'msg');
+  feedJob(); pump(); updateButtons();
+}
+function updateJobUI() {
+  if (!job) return;
+  const p = job.total ? job.acked / job.total : 0;
+  $('#pBar').style.width = (p * 100).toFixed(1) + '%';
+  $('#pTxt').textContent = `${job.acked.toLocaleString('fr')} / ${job.total.toLocaleString('fr')} lignes (${(p * 100).toFixed(0)} %)`;
+  const el = (Date.now() - job.t0) / 1000; $('#pTime').textContent = fmtTime(el) + (p > 0.03 ? ' · reste ~' + fmtTime(el / p * (1 - p)) : '');
+}
+setInterval(() => { if (job) { updateJobUI(); } }, 1000);
+$('#bPause').onclick = () => { if (!job) return; job.paused = !job.paused; rt(job.paused ? 0x21 : 0x7e); $('#bPause').textContent = job.paused ? 'Reprendre' : 'Pause'; };
+$('#bStop').onclick = () => { if (job && confirm('Arrêter la gravure maintenant ?')) stopJob(); };
+function stopJob() {
+  machine.queue = []; rt(0x21);
+  setTimeout(() => { rt(0x18); machine.inflight = []; machine.used = 0; }, 300);
+  endJob('Gravure arrêtée. Si la machine passe en alarme, clique « Déverrouiller » puis vérifie les zéros avant de relancer.');
+}
+function abortJob(why) { machine.queue = []; rt(0x21); endJob('Gravure interrompue : ' + why + ' La machine est en pause ; utilise « Arrêter » ou un reset si besoin.', true); }
+function finishJob() { endJob('Gravure terminée en ' + fmtTime((Date.now() - job.t0) / 1000) + '.'); }
+function endJob(msg, keepHold) {
+  if (!job) return; job = null; log(msg, 'msg');
+  $('#job').classList.add('hide'); updateButtons(); recompute();
+  if (keepHold) alert(msg);
+}
+window.addEventListener('beforeunload', e => { if (job) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ====================== Démarrage ====================== */
+new ResizeObserver(resize).observe(cv);
+refreshAll(); updateButtons();
+setTimeout(fitView, 0);
+log('Atelier CNC prêt. Importe un SVG, choisis les usinages, puis connecte la machine.', 'msg');
+window.__atelier = { get G() { return G; }, get D() { return D; }, get job() { return job; }, machine, S, loadDesign, recompute };
+</script>
+</body>
+</html>
