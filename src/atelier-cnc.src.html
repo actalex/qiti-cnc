@@ -850,7 +850,7 @@ $('#mOk').onclick = () => { MF.forEach(([id, k, t]) => { if (t === 's') S.machin
 const RX_BUF = 127;
 const ALARMS = { 1: 'fin de course matériel déclenché', 2: 'déplacement hors limites logicielles', 3: 'reset pendant un mouvement : position perdue, refais l\'origine', 4: 'sonde déjà en contact au départ', 5: 'la sonde n\'a pas touché la plaque', 6: 'homing interrompu', 7: 'porte ouverte pendant le homing', 8: 'homing : impossible de dégager le fin de course', 9: 'homing : fin de course introuvable' };
 const ERRORS = { 1: 'lettre de commande attendue', 2: 'valeur numérique invalide', 3: 'commande $ inconnue', 5: 'homing non activé ($22)', 8: 'commande refusée hors état Idle', 9: 'G-code verrouillé : alarme active (déverrouiller)', 10: 'limites logicielles sans homing', 15: 'jog hors limites', 16: 'commande de jog invalide', 20: 'commande G-code non supportée', 22: 'avance F non définie', 33: 'cible de mouvement invalide', 36: 'mots G-code inutilisés' };
-const machine = { port: null, writer: null, reader: null, state: null, sub: null, stopWait: null, grbl: {}, quietSettings: false, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
+const machine = { port: null, writer: null, reader: null, state: null, sub: null, stopWait: null, grbl: {}, quietSettings: false, settingsAsked: false, jogWarn: 0, noted: {}, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
 function log(text, cls) { const el = $('#log'), d = document.createElement('div'); if (cls) d.className = cls; d.textContent = text; el.appendChild(d); while (el.childNodes.length > 400) el.firstChild.remove(); el.scrollTop = el.scrollHeight; }
 const enc = new TextEncoder();
 function writeRaw(data) { if (!machine.writer) return; const bytes = typeof data === 'string' ? enc.encode(data) : data; machine.wchain = machine.wchain.then(() => machine.writer.write(bytes)).catch(e => log('Écriture impossible : ' + e.message, 'err')); }
@@ -885,6 +885,7 @@ function feedJob() {
 }
 function parseStatus(s) {
   const parts = s.slice(1, -1).split('|'); [machine.state, machine.sub] = parts[0].split(':');
+  if (!machine.settingsAsked) readGrblSettings(); // pas de bannière reçue (tronquée, ou carte non redémarrée à l'ouverture)
   for (const p of parts.slice(1)) {
     const [k, v] = p.split(':'); const a = (v || '').split(',').map(Number);
     if (k === 'MPos') machine.mpos = a; else if (k === 'WPos') machine.wpos = a; else if (k === 'WCO') machine.wco = a; else if (k === 'Ov') machine.ov = a;
@@ -901,6 +902,7 @@ function parseStatus(s) {
 }
 function handleLine(l) {
   if (!l) return;
+  if (l[0] !== '<' && /<[^<>]*>$/.test(l)) l = l.slice(l.lastIndexOf('<')); // octets parasites avant un état (bannière tronquée à l'ouverture du port)
   if (l[0] === '<') return parseStatus(l);
   if (l === 'ok') return onAck(null);
   if (l.startsWith('error:')) return onAck(l.slice(6));
@@ -928,7 +930,7 @@ async function readLoop() {
 }
 // Réglages de la carte ($$), lus à chaque démarrage : ils font foi pour la course ($130-$132), la valeur S max de la
 // broche ($30, que M3 S doit respecter) et la vitesse rapide ; accélérations et vitesses max servent à l'estimation de durée.
-function readGrblSettings() { machine.grbl = {}; machine.quietSettings = true; sendLines(['$$'], 'settings'); }
+function readGrblSettings() { machine.grbl = {}; machine.quietSettings = true; machine.settingsAsked = true; sendLines(['$$'], 'settings'); }
 function applyGrblSettings() {
   const g = machine.grbl, M = S.machine, ch = [];
   if (!Object.keys(g).length) return;
@@ -938,9 +940,11 @@ function applyGrblSettings() {
   const plan = g[120] > 0 && g[121] > 0 && g[122] > 0 ? { acc: [g[120], g[121], g[122]], rate: [g[110], g[111], g[112]], jd: g[11] > 0 ? g[11] : 0.01 } : null;
   const planChanged = JSON.stringify(plan) !== JSON.stringify(M.plan || null); M.plan = plan;
   saveSettings();
-  log(ch.length ? 'Réglages de la carte appliqués : ' + ch.join(', ') + '.' : 'Réglages de la carte lus.', 'msg');
+  const note = (k, msg) => { if (!machine.noted[k]) { machine.noted[k] = 1; log(msg, 'msg'); } }; // une fois par connexion, pas à chaque reset
+  if (ch.length) log('Réglages de la carte appliqués : ' + ch.join(', ') + '.', 'msg'); else note('read', 'Réglages de la carte lus.');
   if (planChanged && plan) log(`Estimation de durée avec les accélérations de la carte (${plan.acc.join(' / ')} mm/s²).`, 'msg');
-  if (g[20] === 0) log('Limites logicielles désactivées ($20=0) : vérifie que le dessin tient dans la course avant de graver.', 'msg');
+  if (g[22] === 0) note('home', 'Homing désactivé ($22=0) : bouton « Origine » inactif, place les zéros à la main.');
+  if (g[20] === 0) note('soft', 'Limites logicielles désactivées ($20=0) : vérifie que le dessin tient dans la course avant de graver.');
   if (ch.length || planChanged) invalidate();
 }
 async function connect() {
@@ -949,7 +953,7 @@ async function connect() {
   try {
     const port = await navigator.serial.requestPort();
     await port.open({ baudRate: +S.machine.baud || 115200 });
-    machine.port = port; machine.writer = port.writable.getWriter(); machine.queue = []; machine.inflight = []; machine.used = 0;
+    machine.port = port; machine.writer = port.writable.getWriter(); machine.queue = []; machine.inflight = []; machine.used = 0; machine.settingsAsked = false; machine.grbl = {}; machine.noted = {};
     log('Port ouvert à ' + S.machine.baud + ' bauds.', 'msg');
     readLoop();
     setTimeout(() => { writeRaw('\r\n\r\n'); rt(0x3f); }, 1500);
@@ -965,7 +969,7 @@ async function disconnect() {
   try { await machine.reader?.cancel(); } catch (e) {}
   try { machine.writer?.releaseLock(); } catch (e) {}
   try { await port?.close(); } catch (e) {}
-  Object.assign(machine, { writer: null, reader: null, state: null, sub: null, stopWait: null, wpos: null, queue: [], inflight: [], used: 0 });
+  Object.assign(machine, { settingsAsked: false, grbl: {}, writer: null, reader: null, state: null, sub: null, stopWait: null, wpos: null, queue: [], inflight: [], used: 0 });
   $('#state').textContent = 'déconnectée'; $('#state').className = 'tag off';
   ['#wx', '#wy', '#wz'].forEach(id => $(id).textContent = '—');
   $('#bConnect').textContent = 'Connecter (USB)'; $('#bConnect').classList.add('pri');
@@ -979,12 +983,19 @@ $('#bHalt').onclick = () => job ? stopJob() : safeStop(null);
 $('#bHome').onclick = () => sendLines(['$H']);
 let jogStep = 1;
 $$('#steps button').forEach(b => b.onclick = () => { jogStep = +b.dataset.s; $$('#steps button').forEach(x => x.classList.toggle('on', x === b)); });
-function jog(axis, dir) { if (!machine.port || job) return; const f = axis === 'Z' ? Math.min(S.machine.jogFeed, 500) : S.machine.jogFeed; sendLines([`$J=G91 G21 ${axis}${f3(dir * jogStep)} F${Math.round(f)}`], 'jog'); }
+const canJog = () => machine.state === 'Idle' || machine.state === 'Jog';
+function jog(axis, dir) {
+  if (!machine.port || job) return;
+  if (!canJog()) { // GRBL refuserait (error:8) : un seul message, pas un par appui
+    if (Date.now() - machine.jogWarn > 3000) log(machine.state === 'Alarm' ? 'Déplacement impossible : machine en alarme. Clique « Déverrouiller », puis refais les zéros si la position a été perdue.' : `Déplacement impossible : machine pas prête (${$('#state').textContent}).`, 'err');
+    machine.jogWarn = Date.now(); return;
+  }
+  const f = axis === 'Z' ? Math.min(S.machine.jogFeed, 500) : S.machine.jogFeed; sendLines([`$J=G91 G21 ${axis}${f3(dir * jogStep)} F${Math.round(f)}`], 'jog'); }
 $$('[data-jog]').forEach(b => b.onclick = () => jog(b.dataset.jog[0], b.dataset.jog[1] === '+' ? 1 : -1));
 document.addEventListener('keydown', e => {
   if (e.target.matches('input,select,textarea') || !machine.port || job || document.querySelector('dialog[open]')) return;
   const map = { ArrowLeft: ['X', -1], ArrowRight: ['X', 1], ArrowUp: ['Y', 1], ArrowDown: ['Y', -1], PageUp: ['Z', 1], PageDown: ['Z', -1] };
-  if (map[e.key]) { e.preventDefault(); jog(...map[e.key]); }
+  if (map[e.key]) { e.preventDefault(); if (!e.repeat) jog(...map[e.key]); } // touche maintenue : pas de répétition (les pas s'empileraient et la machine continuerait après relâchement)
 });
 $$('[data-zero]').forEach(b => b.onclick = () => sendLines([`G10 L20 P1 ${b.dataset.zero}0`]));
 $('#bZeroXY').onclick = () => sendLines(['G10 L20 P1 X0 Y0']);
@@ -1005,9 +1016,13 @@ function updateButtons() {
   $('#bExport').disabled = !G;
   ['#bUnlock', '#bHome', '#bZeroXY', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
   $('#bUnlock').disabled = !machine.port || (!!job && machine.state !== 'Alarm');
+  const noHome = machine.grbl[22] === 0;
+  if (noHome) $('#bHome').disabled = true;
+  $('#bHome').title = noHome ? 'Homing désactivé sur cette carte ($22=0)' : '$H — nécessite les fins de course';
   $('#bPause').disabled = $('#bStop').disabled = !!machine.stopWait;
   $('#bHalt').disabled = !machine.port || !!machine.stopWait;
-  $$('[data-jog],[data-zero]').forEach(b => b.disabled = !machine.port || !!job);
+  $$('[data-zero]').forEach(b => b.disabled = !machine.port || !!job);
+  $$('[data-jog]').forEach(b => b.disabled = !machine.port || !!job || !canJog());
   $('#bCarve').title = !G ? 'Rien à graver' : !machine.port ? 'Connecte la machine' : machine.state !== 'Idle' ? 'La machine doit être prête (Idle)' : '';
 }
 $('#bCarve').onclick = () => {

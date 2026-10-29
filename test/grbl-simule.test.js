@@ -10,7 +10,7 @@ const launch = require('./navigateur');
     const emit = t => ctrl && ctrl.enqueue(enc.encode(t + '\r\n'));
     const port = {
       async open() {},
-      readable: new ReadableStream({ start(c) { ctrl = c; setTimeout(() => emit("Grbl 1.1h ['$' for help]"), 50); } }),
+      readable: new ReadableStream({ start(c) { ctrl = c; setTimeout(() => emit('8ÿþ徍T|B<Idle|MPos:0.000,0.000,0.000|FS:0,0>'), 50); } }),
       writable: new WritableStream({ write(chunk) {
         for (const byte of chunk) {
           // « Run » tant que des lignes arrivent ; le hold met 600 ms à décélérer (Hold:1 → Hold:0)
@@ -24,7 +24,7 @@ const launch = require('./navigateur');
           if (ch === '\n') { const l = st.buf.trim(); st.buf = ''; if (!l) continue; st.lines++; st.rx.push(l); if (!l.startsWith('$')) st.lastT = Date.now();
             const m = /X(-?[\d.]+)/.exec(l); if (m && !l.startsWith('$')) st.pos[0]=+m[1];
             const used = st.rx.length; // not exact
-            const reglages = '$11=0.010 $20=0 $30=1000 $110=3000 $111=3000 $112=600 $120=200 $121=200 $122=50 $130=450 $131=455 $132=80'.split(' ');
+            const reglages = '$11=0.010 $20=0 $22=0 $30=1000 $110=3000 $111=3000 $112=600 $120=200 $121=200 $122=50 $130=450 $131=455 $132=80'.split(' ');
             setTimeout(() => { if (l === '$$') reglages.forEach(emit); emit(l === '$BAD' ? 'error:3' : 'ok'); }, 1); }
           else if (ch !== '\r') { st.buf += ch; st.maxUsed = Math.max(st.maxUsed, st.buf.length); }
         }
@@ -53,7 +53,7 @@ const launch = require('./navigateur');
   // réglages $$ lus à la connexion : course et vitesse appliquées, accélérations pour l'estimation, lignes $ non affichées
   const reg = await p.evaluate(() => ({ m: window.__atelier.S.machine, log: $('#log').innerText }));
   console.log('réglages :', reg.m.w, reg.m.h, reg.m.rapid, JSON.stringify(reg.m.plan));
-  if (reg.m.w !== 450 || reg.m.h !== 455 || reg.m.rapid !== 3000 || !reg.m.plan || reg.m.plan.acc[2] !== 50 || !reg.log.includes('Réglages de la carte appliqués') || reg.log.includes('$120=')) { console.error('ÉCHEC réglages'); process.exitCode = 1; }
+  if (reg.m.w !== 450 || reg.m.h !== 455 || reg.m.rapid !== 3000 || !reg.m.plan || reg.m.plan.acc[2] !== 50 || !reg.log.includes('Réglages de la carte appliqués') || reg.log.includes('$120=') || !(await p.$eval('#bHome', b => b.disabled))) { console.error('ÉCHEC réglages'); process.exitCode = 1; }
   await p.fill('#cmd', '$BAD'); await p.press('#cmd','Enter'); await p.waitForTimeout(200);
   await p.click('[data-jog="X+"]'); await p.waitForTimeout(100);
   await p.click('#bCarve'); for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
@@ -89,5 +89,14 @@ const launch = require('./navigateur');
   const s1 = await carveStep(), s2 = await carveStep(), s3 = await carveStep();
   console.log('étapes :', steps, s1, s2, s3);
   if (steps.length !== 3 || !steps[1].includes('V') || steps[0] !== steps[2] || s1.btn !== 'Graver l\'étape 2' || !s1.last.includes('Installe') || !s2.z.includes('refait') || !s3.last.includes('Dernière étape')) { console.error('ÉCHEC étapes'); process.exitCode = 1; }
+  // Alarme : les flèches ne doivent rien envoyer (GRBL répondrait error:8), un seul message même touche maintenue
+  await p.evaluate(() => { __grbl.s = 'Alarm'; }); await p.waitForTimeout(400);
+  const nRx = await p.evaluate(() => __grbl.rx.length);
+  for (let k = 0; k < 5; k++) await p.keyboard.press('ArrowUp');
+  await p.keyboard.down('ArrowDown'); await p.waitForTimeout(600); await p.keyboard.up('ArrowDown');
+  await p.waitForTimeout(300);
+  const al = await p.evaluate(n => ({ jogs: __grbl.rx.slice(n).filter(l => l.startsWith('$J')).length, msgs: $('#log').innerText.split('\n').filter(l => l.includes('machine en alarme')).length, err8: $('#log').innerText.includes('error:8'), btn: document.querySelector('[data-jog]').disabled }), nRx);
+  console.log('alarme :', al);
+  if (al.jogs || al.msgs !== 1 || al.err8 || !al.btn) { console.error('ÉCHEC jog en alarme'); process.exitCode = 1; }
   await b.close();
 })();
