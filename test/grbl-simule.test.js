@@ -13,12 +13,15 @@ const launch = require('./navigateur');
       readable: new ReadableStream({ start(c) { ctrl = c; setTimeout(() => emit("Grbl 1.1h ['$' for help]"), 50); } }),
       writable: new WritableStream({ write(chunk) {
         for (const byte of chunk) {
-          if (byte === 0x3f) { emit(`<${st.s}|MPos:${st.pos.map(v=>v.toFixed(3)).join(',')}|FS:0,0|WCO:0.000,0.000,0.000>`); continue; }
-          if (byte === 0x21) { st.s = 'Hold:0'; continue; } if (byte === 0x7e) { st.s = 'Idle'; continue; }
-          if (byte === 0x18) { st.s='Idle'; emit("Grbl 1.1h ['$' for help]"); continue; }
+          // « Run » tant que des lignes arrivent ; le hold met 600 ms à décélérer (Hold:1 → Hold:0)
+          const state = () => st.s === 'Idle' && Date.now() - (st.lastT || 0) < 300 ? 'Run' : st.s;
+          if (byte === 0x3f) { emit(`<${state()}|MPos:${st.pos.map(v=>v.toFixed(3)).join(',')}|FS:0,0|WCO:0.000,0.000,0.000>`); continue; }
+          if (byte === 0x21) { if (state() === 'Run') { st.s = 'Hold:1'; setTimeout(() => { if (st.s === 'Hold:1') st.s = 'Hold:0'; }, 600); } continue; }
+          if (byte === 0x7e) { st.s = 'Idle'; continue; }
+          if (byte === 0x18) { st.resetIn = state(); if (st.resetIn === 'Run' || st.resetIn === 'Hold:1') { st.s = 'Alarm'; emit('ALARM:3'); } else st.s = 'Idle'; st.lastT = 0; emit("Grbl 1.1h ['$' for help]"); continue; }
           if (byte >= 0x80) continue;
           const ch = String.fromCharCode(byte);
-          if (ch === '\n') { const l = st.buf.trim(); st.buf = ''; if (!l) continue; st.lines++; st.rx.push(l);
+          if (ch === '\n') { const l = st.buf.trim(); st.buf = ''; if (!l) continue; st.lines++; st.rx.push(l); if (!l.startsWith('$')) st.lastT = Date.now();
             const m = /X(-?[\d.]+)/.exec(l); if (m && !l.startsWith('$')) st.pos[0]=+m[1];
             const used = st.rx.length; // not exact
             setTimeout(() => emit(l === '$BAD' ? 'error:3' : 'ok'), 1); }
@@ -57,5 +60,14 @@ const launch = require('./navigateur');
   console.log('lignes reçues par GRBL:', await p.evaluate(() => __grbl.lines), 'G-code:', g.length);
   console.log('erreurs:', errs);
   if (errs.length || !log.includes('Gravure terminée')) { console.error('ÉCHEC'); process.exitCode = 1; }
+  // « Arrêter » en pleine gravure : le reset ne doit partir qu'une fois la machine arrêtée (Hold:0), sans alarme 3
+  await p.waitForTimeout(500);
+  await p.click('#bCarve'); for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
+  await p.click('#cGo'); await p.waitForTimeout(400);
+  p.once('dialog', d => d.accept()); await p.click('#bStop');
+  for (let k = 0; k < 30; k++) { if (await p.evaluate(() => !window.__atelier.job && !window.__atelier.machine.stopWait)) break; await p.waitForTimeout(200); }
+  const stop = await p.evaluate(() => ({ resetIn: __grbl.resetIn, state: window.__atelier.machine.state, log: $('#log').innerText.split('\n').slice(-4) }));
+  console.log('arrêt :', stop);
+  if (stop.resetIn !== 'Hold:0' || stop.log.some(l => l.includes('ALARME')) || !stop.log.some(l => l.includes('broche coupée'))) { console.error('ÉCHEC arrêt'); process.exitCode = 1; }
   await b.close();
 })();

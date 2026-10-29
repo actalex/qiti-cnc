@@ -181,6 +181,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <button id="bConnect" class="pri" style="flex:1">Connecter (USB)</button>
       <button id="bUnlock" title="$X">Déverrouiller</button>
       <button id="bHome" title="$H — nécessite les fins de course">Origine</button>
+      <button id="bHalt" class="danger" title="Arrêt sûr : pause, attente de l'arrêt complet, puis reset (coupe la broche)">Stop</button>
     </div>
     <div class="dro" style="margin-top:8px">
       <span>X</span><span class="v" id="wx">—</span><button data-zero="X">X=0</button>
@@ -934,7 +935,7 @@ $('#mOk').onclick = () => { MF.forEach(([id, k, t]) => { if (t === 's') S.machin
 const RX_BUF = 127;
 const ALARMS = { 1: 'fin de course matériel déclenché', 2: 'déplacement hors limites logicielles', 3: 'reset pendant un mouvement : position perdue, refais l\'origine', 4: 'sonde déjà en contact au départ', 5: 'la sonde n\'a pas touché la plaque', 6: 'homing interrompu', 7: 'porte ouverte pendant le homing', 8: 'homing : impossible de dégager le fin de course', 9: 'homing : fin de course introuvable' };
 const ERRORS = { 1: 'lettre de commande attendue', 2: 'valeur numérique invalide', 3: 'commande $ inconnue', 5: 'homing non activé ($22)', 8: 'commande refusée hors état Idle', 9: 'G-code verrouillé : alarme active (déverrouiller)', 10: 'limites logicielles sans homing', 15: 'jog hors limites', 16: 'commande de jog invalide', 20: 'commande G-code non supportée', 22: 'avance F non définie', 33: 'cible de mouvement invalide', 36: 'mots G-code inutilisés' };
-const machine = { port: null, writer: null, reader: null, state: null, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
+const machine = { port: null, writer: null, reader: null, state: null, sub: null, stopWait: null, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
 function log(text, cls) { const el = $('#log'), d = document.createElement('div'); if (cls) d.className = cls; d.textContent = text; el.appendChild(d); while (el.childNodes.length > 400) el.firstChild.remove(); el.scrollTop = el.scrollHeight; }
 const enc = new TextEncoder();
 function writeRaw(data) { if (!machine.writer) return; const bytes = typeof data === 'string' ? enc.encode(data) : data; machine.wchain = machine.wchain.then(() => machine.writer.write(bytes)).catch(e => log('Écriture impossible : ' + e.message, 'err')); }
@@ -957,17 +958,17 @@ function onAck(err) {
     if (job && it && it.q.meta === 'job') { abortJob('Erreur GRBL ' + err + ' sur la ligne « ' + it.q.line + ' »'); return; }
     machine.queue = machine.queue.filter(q => q.meta === 'job');
   }
-  if (job && it && it.q.meta === 'job') { job.acked++; feedJob(); }
+  if (job && it && it.q.meta === 'job') { job.acked++; if (!job.stopping) feedJob(); }
   pump();
 }
 function feedJob() {
-  if (!job) return;
+  if (!job || job.stopping) return;
   const inQ = machine.queue.length;
   while (job.next < job.lines.length && machine.queue.length - inQ < 200 && machine.queue.length < 400) { const c = cleanLine(job.lines[job.next++]); if (c) machine.queue.push({ line: c, meta: 'job' }); else job.acked++; }
   updateJobUI();
 }
 function parseStatus(s) {
-  const parts = s.slice(1, -1).split('|'); machine.state = parts[0].split(':')[0];
+  const parts = s.slice(1, -1).split('|'); [machine.state, machine.sub] = parts[0].split(':');
   for (const p of parts.slice(1)) {
     const [k, v] = p.split(':'); const a = (v || '').split(',').map(Number);
     if (k === 'MPos') machine.mpos = a; else if (k === 'WPos') machine.wpos = a; else if (k === 'WCO') machine.wco = a; else if (k === 'Ov') machine.ov = a;
@@ -978,7 +979,8 @@ function parseStatus(s) {
   if (machine.wpos) { $('#wx').textContent = machine.wpos[0].toFixed(2); $('#wy').textContent = machine.wpos[1].toFixed(2); $('#wz').textContent = machine.wpos[2].toFixed(2); }
   $('#ovF').textContent = ' ' + machine.ov[0] + ' %';
   if (machine.state === 'Idle') { const cbs = machine.onIdle.splice(0); cbs.forEach(f => f()); }
-  if (job && job.acked >= job.total && machine.state === 'Idle' && !machine.inflight.length) finishJob();
+  checkStop();
+  if (job && !job.stopping && job.acked >= job.total && machine.state === 'Idle' && !machine.inflight.length) finishJob();
   updateButtons(); if (machine.port) draw();
 }
 function handleLine(l) {
@@ -1023,12 +1025,13 @@ async function connect() {
 }
 async function disconnect() {
   if (job) { if (!confirm('Une gravure est en cours. Arrêter et déconnecter ?')) return; stopJob(); }
+  if (machine.stopWait) await new Promise(r => { const t = setInterval(() => { if (!machine.stopWait) { clearInterval(t); r(); } }, 100); });
   clearInterval(machine.poll); const port = machine.port; machine.port = null;
   try { await machine.wchain; } catch (e) {}
   try { await machine.reader?.cancel(); } catch (e) {}
   try { machine.writer?.releaseLock(); } catch (e) {}
   try { await port?.close(); } catch (e) {}
-  Object.assign(machine, { writer: null, reader: null, state: null, wpos: null, queue: [], inflight: [], used: 0 });
+  Object.assign(machine, { writer: null, reader: null, state: null, sub: null, stopWait: null, wpos: null, queue: [], inflight: [], used: 0 });
   $('#state').textContent = 'déconnectée'; $('#state').className = 'tag off';
   ['#wx', '#wy', '#wz'].forEach(id => $(id).textContent = '—');
   $('#bConnect').textContent = 'Connecter (USB)'; $('#bConnect').classList.add('pri');
@@ -1038,6 +1041,7 @@ if ('serial' in navigator) navigator.serial.addEventListener('disconnect', e => 
 else $('#serialBanner').style.display = 'block';
 $('#bConnect').onclick = connect;
 $('#bUnlock').onclick = () => sendLines(['$X']);
+$('#bHalt').onclick = () => job ? stopJob() : safeStop(null);
 $('#bHome').onclick = () => sendLines(['$H']);
 let jogStep = 1;
 $$('#steps button').forEach(b => b.onclick = () => { jogStep = +b.dataset.s; $$('#steps button').forEach(x => x.classList.toggle('on', x === b)); });
@@ -1067,6 +1071,8 @@ function updateButtons() {
   $('#bExport').disabled = !G;
   ['#bUnlock', '#bHome', '#bZeroXY', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
   $('#bUnlock').disabled = !machine.port || (!!job && machine.state !== 'Alarm');
+  $('#bPause').disabled = $('#bStop').disabled = !!machine.stopWait;
+  $('#bHalt').disabled = !machine.port || !!machine.stopWait;
   $$('[data-jog],[data-zero]').forEach(b => b.disabled = !machine.port || !!job);
   $('#bCarve').title = !G ? 'Rien à graver' : !machine.port ? 'Connecte la machine' : machine.state !== 'Idle' ? 'La machine doit être prête (Idle)' : '';
 }
@@ -1099,17 +1105,38 @@ function updateJobUI() {
 setInterval(() => { if (job) { updateJobUI(); } }, 1000);
 $('#bPause').onclick = () => { if (!job) return; job.paused = !job.paused; rt(job.paused ? 0x21 : 0x7e); $('#bPause').textContent = job.paused ? 'Reprendre' : 'Pause'; };
 $('#bStop').onclick = () => { if (job && confirm('Arrêter la gravure maintenant ?')) stopJob(); };
-function stopJob() {
-  machine.queue = []; rt(0x21);
-  setTimeout(() => { rt(0x18); machine.inflight = []; machine.used = 0; }, 300);
-  endJob('Gravure arrêtée. Si la machine passe en alarme, clique « Déverrouiller » puis vérifie les zéros avant de relancer.');
+function stopJob() { safeStop('Gravure arrêtée.'); }
+// Arrêt sûr : feed hold, puis reset seulement quand GRBL signale l'arrêt complet (Hold:0).
+// Un reset pendant un mouvement déclenche l'alarme 3 et fait perdre la position.
+function safeStop(endMsg) {
+  if (machine.stopWait) return;
+  machine.queue = []; if (job) job.stopping = true; rt(0x21);
+  machine.stopWait = { t0: Date.now(), endMsg };
+  log('Arrêt : décélération en cours…', 'msg'); updateButtons();
 }
-function abortJob(why) { machine.queue = []; rt(0x21); endJob('Gravure interrompue : ' + why + ' La machine est en pause ; utilise « Arrêter » ou un reset si besoin.', true); }
+function checkStop() {
+  const w = machine.stopWait; if (!w) return;
+  const moving = machine.state === 'Run' || machine.state === 'Jog' || (machine.state === 'Hold' && machine.sub !== '0');
+  const late = Date.now() - w.t0 > 10000;
+  if (moving && !late) return;
+  machine.stopWait = null;
+  if (w.endMsg) endJob(w.endMsg); // avant le reset : la bannière Grbl ne doit pas être prise pour un redémarrage en gravure
+  rt(0x18); machine.queue = []; machine.inflight = []; machine.used = 0;
+  if (late) log('Reset envoyé alors que la machine bougeait encore : la position peut être perdue, refais l\'origine machine et les zéros.', 'err');
+  else log('Machine arrêtée, broche coupée.', 'msg');
+  updateButtons();
+}
+function abortJob(why) {
+  machine.queue = []; rt(0x21);
+  const msg = 'Gravure interrompue : ' + why;
+  endJob(msg);
+  if (confirm(msg + '\n\nOK : arrêt complet (broche coupée).\nAnnuler : rester en pause, broche allumée, pour inspecter.')) safeStop(null);
+  else log('Machine en pause, broche allumée. Bouton « Stop » du panneau Machine pour couper.', 'msg');
+}
 function finishJob() { endJob('Gravure terminée en ' + fmtTime((Date.now() - job.t0) / 1000) + '.'); }
-function endJob(msg, keepHold) {
+function endJob(msg) {
   if (!job) return; job = null; log(msg, 'msg');
   $('#job').classList.add('hide'); updateButtons(); recompute();
-  if (keepHold) alert(msg);
 }
 window.addEventListener('beforeunload', e => { if (job) { e.preventDefault(); e.returnValue = ''; } });
 

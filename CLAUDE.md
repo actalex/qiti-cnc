@@ -16,7 +16,7 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 4. **G-code** — `buildGcode()` : coordonnées décalées par `originOff()` (centre ou coin), `moves[]` (pour l'aperçu, en coordonnées brut) et `lineMove[]` (ligne → mouvement, pour la progression).
 5. **Vue** — canvas, vues « Dessin / Aperçu fraisage / Trajectoires », zoom molette, déplacement à la souris, sélection par clic (Maj = multi).
 6. **GRBL / Web Serial** — objet `machine` : file `queue`, `inflight`, comptage de caractères (`RX_BUF = 127`), interrogation `?` toutes les 250 ms, `parseStatus()` (MPos/WPos/WCO/Ov), commandes temps réel (`!` `~` 0x18 0x90-0x92).
-7. **Gravure** — `startJob/feedJob/stopJob/abortJob/finishJob`.
+7. **Gravure** — `startJob/feedJob/stopJob/abortJob/finishJob`. Arrêt sûr `safeStop()` / `checkStop()` : feed hold, reset seulement à `Hold:0` (sinon alarme 3), délai max 10 s ; bouton « Stop » du panneau Machine.
 
 `window.__atelier` expose l'état pour les tests.
 
@@ -37,6 +37,4 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 **3. Qualité d'usinage et machine**
 - Poches et remplissage en V : rester dans la matière entre anneaux quand c'est sûr au lieu de remonter au Z de sécurité ; affiner le dernier anneau V sur l'axe médian.
 - Entrée en rampe plutôt que plongée verticale.
-- « Arrêter » : le reset part 300 ms après le hold sans attendre l'arrêt réel (risque d'alarme et de perte de position à avance élevée) → attendre `Hold:0`.
-- Arrêt sur erreur : la machine reste en pause broche allumée → proposer l'arrêt complet.
 - Lire `$$` à la connexion (course, $30) ; estimation de durée avec les accélérations ($120-$122).
