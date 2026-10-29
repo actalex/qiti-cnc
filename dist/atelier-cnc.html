@@ -137,6 +137,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
           <option value="vcarve">Remplissage en V (fraise en V)</option>
           <option value="none">Ne pas usiner</option>
         </select></div>
+      <div class="row"><label>Fraise</label><select id="sTool" style="width:160px"></select></div>
+      <div class="row hide" id="rowClear"><label title="Creuse d'abord le fond plat avec une fraise plate ; le V ne fait plus que les flancs">Dégager le fond</label><select id="sClear" style="width:160px"></select></div>
       <div class="row"><label>Profondeur (mm)</label><input type="number" id="sDepth" step="0.1" min="0"></div>
       <div class="row"><button id="bThrough">= épaisseur (découpe traversante)</button></div>
     </div>
@@ -204,6 +206,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
   </section>
   <section class="box">
     <h2>Gravure</h2>
+    <select id="stepSel" class="hide" style="width:100%;margin-bottom:6px" title="Une étape par fraise"></select>
     <button id="bCarve" class="pri big" disabled>Graver</button>
     <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button></div>
     <div id="job" class="hide">
@@ -250,7 +253,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <label class="check"><input type="checkbox"> <span>Le matériau est fixé solidement sur la table.</span></label>
     <label class="check"><input type="checkbox"> <span id="cTool">La bonne fraise est installée.</span></label>
     <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
-    <label class="check"><input type="checkbox"> <span>Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).</span></label>
+    <label class="check"><input type="checkbox"> <span id="cZ">Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).</span></label>
     <label class="check"><input type="checkbox"> <span>Lunettes, protection auditive et aspiration en place.</span></label>
   </div>
   <div class="ft"><button id="cCancel">Annuler</button><button id="cGo" class="pri" disabled>Lancer la gravure</button></div>
@@ -293,6 +296,9 @@ const DEFAULTS = {
 let S = clone(DEFAULTS);
 try { const raw = localStorage.getItem(STORE); if (raw) { const o = JSON.parse(raw); S = Object.assign(clone(DEFAULTS), o); S.machine = Object.assign(clone(DEFAULTS.machine), o.machine || {}); } } catch (e) {}
 if (!S.tools.some(t => t.type === 'v')) S.tools.push(...clone(V_TOOLS));
+// identifiant stable : les formes et les projets désignent leur fraise par id
+const newId = () => Math.random().toString(36).slice(2, 10);
+S.tools.forEach(t => { if (!t.id) t.id = newId(); });
 function saveSettings() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} }
 const tool = () => S.tools[Math.min(S.toolIdx, S.tools.length - 1)];
 const isV = (T = tool()) => T.type === 'v';
@@ -473,7 +479,7 @@ function loadDesign(text, name, saved) {
   D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
   if (saved) {
     if (saved.place) D.place = saved.place;
-    (saved.ops || []).forEach((o, k) => { if (D.shapes[k] && o) { D.shapes[k].op = o.op; D.shapes[k].depth = o.depth; } });
+    (saved.ops || []).forEach((o, k) => { if (D.shapes[k] && o) { Object.assign(D.shapes[k], { op: o.op, depth: o.depth, tool: o.tool || '', clear: o.clear || '' }); } });
   } else centerDesign();
   sel = new Set();
   warns.forEach(w => log(w, 'msg'));
@@ -532,13 +538,17 @@ function segInArea(area, a, b) {
   }
   return true;
 }
-// Parties des tracés ouverts « paths » hors des polygones « clip » (Clipper, entiers)
-function clipOpen(paths, clip) {
+// Parties des tracés ouverts « paths » hors des polygones « clip » (ou dedans avec ctIntersection) (Clipper, entiers)
+function clipOpen(paths, clip, ct = CL.ClipType.ctDifference) {
   const c = new CL.Clipper();
   for (const p of paths) c.AddPath(p, CL.PolyType.ptSubject, false);
   c.AddPaths(clip, CL.PolyType.ptClip, true);
-  const tree = new CL.PolyTree(); c.Execute(CL.ClipType.ctDifference, tree, CL.PolyFillType.pftEvenOdd, CL.PolyFillType.pftNonZero);
+  const tree = new CL.PolyTree(); c.Execute(ct, tree, CL.PolyFillType.pftEvenOdd, CL.PolyFillType.pftNonZero);
   return CL.Clipper.OpenPathsFromPolyTree(tree);
+}
+function polyDiff(a, b) {
+  const c = new CL.Clipper(); c.AddPaths(a, CL.PolyType.ptSubject, true); c.AddPaths(b, CL.PolyType.ptClip, true);
+  const sol = new CL.Paths(); c.Execute(CL.ClipType.ctDifference, sol, CL.PolyFillType.pftNonZero, CL.PolyFillType.pftNonZero); return sol;
 }
 // Recolle les morceaux qui se suivent (une boucle est coupée à son point de départ)
 function joinPieces(ps) {
@@ -556,32 +566,44 @@ const polyLen = P => { let l = 0; for (let i = 1; i < P.length; i++) l += Math.h
 // Un point d'un anneau de pente est inutile si l'anneau suivant passe à dr de lui : le cône suivant, plus profond de
 // dr/tan, contient le précédent. On ne garde que les morceaux non couverts (pointes, angles, parties étroites) ;
 // le dernier anneau de pente de chaque passe (celui qui forme le flanc) reste entier.
-function vcarveCuts(region, reverse, T, zMax, doc) {
+// « cleared » : zone déjà creusée à zMax par une fraise plate ; le fond plat du V ne reprend que ce qu'elle n'a pas
+// atteint (coins de rayon = celui de la fraise plate).
+function vcarveCuts(region, reverse, T, zMax, doc, cleared) {
   const k = Math.tan((T.angle || 60) * Math.PI / 360), tip2 = (T.tip || 0) / 2, so = Math.min(0.95, Math.max(0.05, T.so / 100));
   const cuts = []; let prev = 0, at = [0, 0], flat = false;
   const ring = o => { const ps = offsetPaths(region, -o).map(p => reverse ? p.slice().reverse() : p); return ps.length ? { o, ps, area: ps.map(fromC) } : null; };
   const emitLoops = (rg, z) => { for (const p of rg.ps) { const q = rotateTo(fromC(p), at); at = q[0]; cuts.push({ pts: loopWithTabs(q, z, null), zTop: -prev, area: rg.area }); } };
+  const emitPieces = (rg, clip, z, ct) => {
+    const pieces = joinPieces(clipOpen(rg.ps.map(p => p.concat([p[0]])), clip, ct).map(fromC)).filter(P => polyLen(P) > 0.01);
+    while (pieces.length) {
+      let bi = 0, bd = Infinity;
+      pieces.forEach((P, n) => { const d = Math.hypot(P[0][0] - at[0], P[0][1] - at[1]); if (d < bd) { bd = d; bi = n; } });
+      const P = pieces.splice(bi, 1)[0]; at = P[P.length - 1];
+      cuts.push({ pts: P.map(q => [q[0], q[1], z]), zTop: -prev, area: rg.area });
+    }
+  };
   const passes = depthPasses(zMax, doc);
   passes.forEach((lv, li) => {
     const L = -lv, oL = tip2 + L * k, slope = [], flats = [];
     for (let o = tip2 + prev * k; ;) { o = Math.min(o + VSTEP, oL); const rg = ring(o); if (!rg) break; slope.push(rg); if (o >= oL - 1e-9) break; }
     if (slope.length && slope[slope.length - 1].o >= oL - 1e-9) {
-      const fs = Math.max(VSTEP, cutWidth(-L, T) * so);
+      // fond dégagé à la fraise plate : le V ne reprend que les coins, au pas fin (crêtes ≤ VSTEP/2/tan)
+      const fs = cleared && li === passes.length - 1 ? VSTEP : Math.max(VSTEP, cutWidth(-L, T) * so);
       for (let o = oL + fs, guard = 0; guard++ < 2000; o += fs) { const rg = ring(o); if (!rg) break; flats.push(rg); }
     }
     if (flats.length && li === passes.length - 1) flat = true;
     slope.forEach((rg, i) => {
       const z = -Math.min(L, (rg.o - tip2) / k), nx = slope[i + 1];
       if (!nx) return emitLoops(rg, z);
-      let pieces = joinPieces(clipOpen(rg.ps.map(p => p.concat([p[0]])), offsetPaths(nx.ps, nx.o - rg.o + 0.01)).map(fromC)).filter(P => polyLen(P) > 0.01);
-      while (pieces.length) {
-        let bi = 0, bd = Infinity;
-        pieces.forEach((P, n) => { const d = Math.hypot(P[0][0] - at[0], P[0][1] - at[1]); if (d < bd) { bd = d; bi = n; } });
-        const P = pieces.splice(bi, 1)[0]; at = P[P.length - 1];
-        cuts.push({ pts: P.map(q => [q[0], q[1], z]), zTop: -prev, area: rg.area });
-      }
+      emitPieces(rg, offsetPaths(nx.ps, nx.o - rg.o + 0.01), z);
     });
-    for (const rg of flats) emitLoops(rg, -L);
+    if (!cleared) for (const rg of flats) emitLoops(rg, -L);
+    else {
+      // fond plat de la passe non dégagé (sans les filets dus aux arrondis), élargi de la demi-empreinte du V
+      const left = offsetPaths(offsetPaths(polyDiff(offsetPaths(region, -oL), cleared), -0.05), 0.05);
+      const keep = offsetPaths(left, cutWidth(-L, T) / 2);
+      if (keep.length) for (const rg of flats) emitPieces(rg, keep, -L, CL.ClipType.ctIntersection);
+    }
     prev = L;
   });
   return { cuts, flat };
@@ -608,67 +630,85 @@ function loopWithTabs(pts, z, tab) {
   return out;
 }
 const VSTEP = 0.1; // pas radial du remplissage en V (mm)
-function computeCAM() {
-  const res = { groups: [], warns: [], skipped: new Set() };
-  const skip = (sh, msg) => { res.warns.push(msg); res.skipped.add(sh.id); };
-  if (!D) return res;
-  const T = tool(), r = T.d / 2, th = S.stock.t, tf = toStockFn();
-  const doc = Math.max(0.05, T.doc), step = T.d * Math.min(0.95, Math.max(0.05, T.so / 100));
-  const order = { on: 0, pocket: 1, vcarve: 1, inside: 2, outside: 3 };
-  for (const sh of D.shapes) {
-    if (sh.op === 'none' || !(sh.depth > 0)) continue;
-    const depth = sh.depth;
-    if (depth > th + 1e-6) res.warns.push(`« ${sh.name} » : profondeur ${depth} mm > épaisseur du brut`);
-    const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
-    const passes = depthPasses(depth, doc), cuts = [];
-    if (isV(T) && sh.op !== 'on' && sh.op !== 'vcarve') { skip(sh, `« ${sh.name} » ignorée : avec une fraise en V, choisir « Sur la ligne » ou « Remplissage en V »`); continue; }
-    if (!isV(T) && sh.op === 'vcarve') { skip(sh, `« ${sh.name} » ignorée : le remplissage en V demande une fraise en V`); continue; }
-    if (isV(T) && sh.op === 'on' && 2 * depth * Math.tan((T.angle || 60) * Math.PI / 360) + (T.tip || 0) > T.d) res.warns.push(`« ${sh.name} » : profondeur plus grande que la partie conique de la fraise`);
-    if (sh.op === 'on') {
-      for (const s of subs) {
-        let zPrev = 0;
-        for (const z of passes) {
-          const pts = s.closed ? s.pts.concat([s.pts[0]]) : s.pts;
-          cuts.push({ pts: pts.map(p => [p[0], p[1], z]), zTop: zPrev }); zPrev = z;
-        }
-      }
-    } else {
-      const closedSubs = subs.filter(s => s.closed);
-      if (!closedSubs.length) { skip(sh, `« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`); continue; }
-      const region = unionEO(closedSubs.map(s => toC(s.pts)));
-      const reverse = sh.op === 'outside' ? S.climb : !S.climb;
-      const orient = p => { const q = fromC(p); return reverse ? q.reverse() : q; };
-      if (sh.op === 'vcarve') {
-        const k = Math.tan((T.angle || 60) * Math.PI / 360), tip2 = (T.tip || 0) / 2;
-        const zCone = (T.d / 2 - tip2) / k, zMax = Math.min(depth, zCone);
-        if (depth > zCone + 1e-6) res.warns.push(`« ${sh.name} » : profondeur limitée à ${f3(zCone)} mm (partie conique de la fraise)`);
-        const vc = vcarveCuts(region, reverse, T, zMax, doc);
-        if (!vc.cuts.length) { skip(sh, `« ${sh.name} » : trop étroite pour la pointe de la fraise`); continue; }
-        if (vc.flat) res.warns.push(`« ${sh.name} » : fond plat à ${f3(zMax)} mm (forme plus large que le V à cette profondeur)`);
-        cuts.push(...vc.cuts);
-      } else if (sh.op === 'pocket') {
-        const rings = []; let cur = offsetPaths(region, -r), guard = 0;
-        const area = cur.map(fromC); // zone où le centre de la fraise peut aller sans entamer le contour
-        while (cur.length && guard++ < 2000) { rings.push(...cur); cur = offsetPaths(cur, -step); }
-        if (!rings.length) { skip(sh, `« ${sh.name} » : trop étroite pour la fraise de ${T.d} mm`); continue; }
-        const loops = rings.reverse().map(orient);
-        let zPrev = 0;
-        let at = [0, 0];
-        for (const z of passes) { for (const lp of loops) { const q = rotateTo(lp, at); at = q[0]; cuts.push({ pts: loopWithTabs(q, z, null), zTop: zPrev, area }); } zPrev = z; }
-      } else {
-        const loops = offsetPaths(region, sh.op === 'outside' ? r : -r).map(orient);
-        if (!loops.length) { skip(sh, `« ${sh.name} » : trop petite pour la fraise de ${T.d} mm`); continue; }
-        const through = depth >= th - 1e-6;
-        const tab = (through && S.tabs.on) ? { z: -(th - S.tabs.h), n: Math.max(1, Math.round(S.tabs.n)), w: S.tabs.w + T.d } : null;
-        for (const lp of loops) { let zPrev = 0; for (const z of passes) { cuts.push({ pts: loopWithTabs(lp, z, tab), zTop: zPrev }); zPrev = z; } }
+const soOf = T => Math.min(0.95, Math.max(0.05, T.so / 100));
+const toolById = id => id ? S.tools.find(t => t.id === id) : null;
+// Fraise d'une forme : la sienne si elle en a une, sinon la fraise courante (panneau « Fraise »)
+const shapeTool = sh => toolById(sh.tool) || tool();
+// Anneaux de poche depuis la zone « start » (centre de fraise), du centre vers le bord
+function pocketLoops(start, T, reverse) {
+  const rings = []; let cur = start, guard = 0;
+  while (cur.length && guard++ < 2000) { rings.push(...cur); cur = offsetPaths(cur, -T.d * soOf(T)); }
+  return rings.reverse().map(p => { const q = fromC(p); return reverse ? q.reverse() : q; });
+}
+function pocketCuts(loops, passes, area) {
+  const cuts = []; let zPrev = 0, at = [0, 0];
+  for (const z of passes) { for (const lp of loops) { const q = rotateTo(lp, at); at = q[0]; cuts.push({ pts: loopWithTabs(q, z, null), zTop: zPrev, area }); } zPrev = z; }
+  return cuts;
+}
+// Dégagement du fond d'un remplissage en V à la fraise plate C : poche à zMax là où le V atteint zMax
+// (distance au bord ≥ oMax), sans en sortir. Renvoie les passes et la zone dégagée.
+function clearCuts(region, reverse, C, zMax, oMax) {
+  const start = offsetPaths(region, -(oMax + C.d / 2));
+  if (!start.length) return null;
+  const cuts = pocketCuts(pocketLoops(start, C, reverse), depthPasses(zMax, Math.max(0.05, C.doc)), start.map(fromC));
+  return { cuts, cleared: offsetPaths(start, C.d / 2) };
+}
+// Groupes de passes d'une forme : [{ shape, tool, rank, cuts }] (deux groupes si le fond d'un V est dégagé)
+function shapeGroups(sh, res) {
+  const skip = msg => { res.warns.push(msg); res.skipped.add(sh.id); return []; };
+  const T = shapeTool(sh), r = T.d / 2, th = S.stock.t, depth = sh.depth, tf = toStockFn();
+  const doc = Math.max(0.05, T.doc), order = { on: 0, pocket: 1, vcarve: 1, inside: 2, outside: 3 };
+  if (depth > th + 1e-6) res.warns.push(`« ${sh.name} » : profondeur ${depth} mm > épaisseur du brut`);
+  const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
+  const passes = depthPasses(depth, doc), cuts = [];
+  const group = (cs, tl = T, rank = order[sh.op]) => cs.length ? [{ shape: sh, tool: tl, rank, cuts: cs }] : [];
+  if (isV(T) && sh.op !== 'on' && sh.op !== 'vcarve') return skip(`« ${sh.name} » ignorée : avec une fraise en V, choisir « Sur la ligne » ou « Remplissage en V »`);
+  if (!isV(T) && sh.op === 'vcarve') return skip(`« ${sh.name} » ignorée : le remplissage en V demande une fraise en V`);
+  if (isV(T) && sh.op === 'on' && 2 * depth * Math.tan((T.angle || 60) * Math.PI / 360) + (T.tip || 0) > T.d) res.warns.push(`« ${sh.name} » : profondeur plus grande que la partie conique de la fraise`);
+  if (sh.op === 'on') {
+    for (const s of subs) {
+      let zPrev = 0;
+      for (const z of passes) {
+        const pts = s.closed ? s.pts.concat([s.pts[0]]) : s.pts;
+        cuts.push({ pts: pts.map(p => [p[0], p[1], z]), zTop: zPrev }); zPrev = z;
       }
     }
-    if (cuts.length) res.groups.push({ shape: sh, rank: order[sh.op], cuts });
+    return group(cuts);
   }
-  // Ordre : gravures, poches, intérieurs, puis extérieurs ; plus proche voisin dans chaque catégorie
+  const closedSubs = subs.filter(s => s.closed);
+  if (!closedSubs.length) return skip(`« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`);
+  const region = unionEO(closedSubs.map(s => toC(s.pts)));
+  const reverse = sh.op === 'outside' ? S.climb : !S.climb;
+  if (sh.op === 'vcarve') {
+    const k = Math.tan((T.angle || 60) * Math.PI / 360), tip2 = (T.tip || 0) / 2;
+    const zCone = (T.d / 2 - tip2) / k, zMax = Math.min(depth, zCone);
+    if (depth > zCone + 1e-6) res.warns.push(`« ${sh.name} » : profondeur limitée à ${f3(zCone)} mm (partie conique de la fraise)`);
+    const C = toolById(sh.clear); let cc = null;
+    if (C && isV(C)) res.warns.push(`« ${sh.name} » : la fraise de dégagement doit être plate`);
+    else if (C) cc = clearCuts(region, reverse, C, zMax, tip2 + zMax * k);
+    const vc = vcarveCuts(region, reverse, T, zMax, doc, cc && cc.cleared);
+    if (!vc.cuts.length) return skip(`« ${sh.name} » : trop étroite pour la pointe de la fraise`);
+    if (vc.flat && !cc) res.warns.push(C && !isV(C) ? `« ${sh.name} » : fraise de dégagement trop grosse pour le fond plat`
+      : `« ${sh.name} » : fond plat à ${f3(zMax)} mm, la pointe en V y laisse des crêtes : choisir une fraise plate dans « Dégager le fond »`);
+    return (cc ? group(cc.cuts, C, 1) : []).concat(group(vc.cuts));
+  }
+  if (sh.op === 'pocket') {
+    const start = offsetPaths(region, -r);
+    if (!start.length) return skip(`« ${sh.name} » : trop étroite pour la fraise de ${T.d} mm`);
+    return group(pocketCuts(pocketLoops(start, T, reverse), passes, start.map(fromC)));
+  }
+  const loops = offsetPaths(region, sh.op === 'outside' ? r : -r).map(p => { const q = fromC(p); return reverse ? q.reverse() : q; });
+  if (!loops.length) return skip(`« ${sh.name} » : trop petite pour la fraise de ${T.d} mm`);
+  const through = depth >= th - 1e-6;
+  const tab = (through && S.tabs.on) ? { z: -(th - S.tabs.h), n: Math.max(1, Math.round(S.tabs.n)), w: S.tabs.w + T.d } : null;
+  for (const lp of loops) { let zPrev = 0; for (const z of passes) { cuts.push({ pts: loopWithTabs(lp, z, tab), zTop: zPrev }); zPrev = z; } }
+  return group(cuts);
+}
+// Ordre dans une étape : gravures, poches, intérieurs, puis extérieurs ; plus proche voisin dans chaque catégorie
+function orderGroups(groups) {
   const sorted = []; let at = [0, 0];
   for (let rank = 0; rank <= 3; rank++) {
-    const pool = res.groups.filter(g => g.rank === rank);
+    const pool = groups.filter(g => g.rank === rank);
     while (pool.length) {
       let bi = 0, bd = Infinity;
       pool.forEach((g, k) => { const p = g.cuts[0].pts[0], dd = Math.hypot(p[0] - at[0], p[1] - at[1]); if (dd < bd) { bd = dd; bi = k; } });
@@ -676,11 +716,29 @@ function computeCAM() {
       const lc = g.cuts[g.cuts.length - 1].pts; at = lc[lc.length - 1];
     }
   }
-  res.groups = sorted;
+  return sorted;
+}
+// Étapes : le travail de chaque fraise (plates de la plus grosse à la plus fine, puis V), puis les détourages en dernier
+// (une fraise qui dégage un fond et détoure fait donc deux étapes). Étapes voisines de même fraise fusionnées.
+function computeCAM() {
+  const res = { steps: [], warns: [], skipped: new Set() };
+  if (!D) return res;
+  const byKey = new Map();
+  for (const sh of D.shapes) if (sh.op !== 'none' && sh.depth > 0) for (const g of shapeGroups(sh, res)) {
+    const out = g.rank === 3 ? 1 : 0, key = g.tool.id + (out ? ':out' : '');
+    if (!byKey.has(key)) byKey.set(key, { tool: g.tool, out, groups: [] }); byKey.get(key).groups.push(g);
+  }
+  const sorted = [...byKey.values()].sort((a, b) => a.out - b.out || (isV(a.tool) ? 1 : 0) - (isV(b.tool) ? 1 : 0) || b.tool.d - a.tool.d);
+  for (const st of sorted) {
+    const prev = res.steps[res.steps.length - 1];
+    if (prev && prev.tool === st.tool) prev.groups.push(...st.groups); else res.steps.push({ tool: st.tool, groups: st.groups });
+  }
+  res.steps.forEach(st => { st.groups = orderGroups(st.groups); });
+  if (new Set(sorted.filter(st => st.out).map(st => st.tool)).size > 1) res.warns.push('Plusieurs fraises détourent des formes : les pièces peuvent se libérer avant la dernière étape (attaches conseillées)');
   return res;
 }
-function buildGcode(cam) {
-  const T = tool(), m = S.machine, safe = m.safeZ, L = [], moves = [], lineMove = [];
+function buildGcode(step) {
+  const T = step.tool, m = S.machine, safe = m.safeZ, L = [], moves = [], lineMove = [];
   const [gx, gy] = originOff();
   let x = gx, y = gy, z = safe, F = null, time = 0, zMin = 0;
   const push = s => { L.push(s); lineMove.push(moves.length); };
@@ -705,7 +763,7 @@ function buildGcode(cam) {
   push(`M3 S${Math.round(m.spindleS)}`);
   if (m.dwell > 0) { push(`G4 P${m.dwell}`); time += m.dwell; }
   let last = null;
-  for (const g of cam.groups) {
+  for (const g of step.groups) {
     push(`; ${g.shape.name}`);
     for (const c of g.cuts) {
       const p0 = c.pts[0];
@@ -732,12 +790,12 @@ function buildGcode(cam) {
   push('M5');
   mv(0, gx, gy, safe);
   push('M2');
-  return { lines: L, moves, lineMove, time, zMin };
+  return { lines: L, moves, lineMove, time, zMin, tool: T };
 }
 
 /* ====================== Vue ====================== */
 const cv = $('#cv'), ctx = cv.getContext('2d');
-let view = { s: 1, ox: 0, oy: 0 }, viewMode = 'design', job = null, G = null, CAM = null;
+let view = { s: 1, ox: 0, oy: 0 }, viewMode = 'design', job = null, G = null, CAM = null, PLAN = [], stepIdx = 0; // PLAN : une étape (G-code) par fraise ; G = étape choisie
 const W2S = (x, y) => [view.ox + x * view.s, view.oy - y * view.s];
 const S2W = (sx, sy) => [(sx - view.ox) / view.s, (view.oy - sy) / view.s];
 function resize() { const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1; cv.width = r.width * d; cv.height = r.height * d; ctx.setTransform(d, 0, 0, d, 0, 0); draw(); }
@@ -796,26 +854,27 @@ function drawShapes(alpha) {
   ctx.setLineDash([]); ctx.globalAlpha = 1;
 }
 function drawMoves() {
-  const T = tool();
   if (viewMode === 'carve') {
-    const buckets = new Map();
-    for (const m of G.moves) if (m.g === 1 && (m.z < 0 || m.z0 < 0)) { const zz = Math.round(Math.min(m.z, m.z0) * 100) / 100; if (!buckets.has(zz)) buckets.set(zz, []); buckets.get(zz).push(m); }
-    const keys = [...buckets.keys()].sort((a, b) => b - a);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    for (const k of keys) {
-      ctx.lineWidth = Math.max(1, cutWidth(k, T) * view.s);
-      ctx.strokeStyle = depthColor(k); ctx.beginPath();
-      for (const m of buckets.get(k)) { const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c + 0.01, d); }
-      ctx.stroke();
+    for (const P of PLAN) {
+      const buckets = new Map();
+      for (const m of P.moves) if (m.g === 1 && (m.z < 0 || m.z0 < 0)) { const zz = Math.round(Math.min(m.z, m.z0) * 100) / 100; if (!buckets.has(zz)) buckets.set(zz, []); buckets.get(zz).push(m); }
+      for (const k of [...buckets.keys()].sort((a, b) => b - a)) {
+        ctx.lineWidth = Math.max(1, cutWidth(k, P.tool) * view.s);
+        ctx.strokeStyle = depthColor(k); ctx.beginPath();
+        for (const m of buckets.get(k)) { const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c + 0.01, d); }
+        ctx.stroke();
+      }
     }
     ctx.lineCap = 'butt';
   } else {
+    const all = PLAN.flatMap(P => P.moves);
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(120,120,120,.6)'; ctx.beginPath();
-    for (const m of G.moves) if (m.g === 0) { const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d); }
+    for (const m of all) if (m.g === 0) { const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d); }
     ctx.stroke(); ctx.setLineDash([]);
     let last = null;
-    for (const m of G.moves) if (m.g === 1) {
+    for (const m of all) if (m.g === 1) {
       const col = depthColor(Math.min(m.z, m.z0)); if (col !== last) { if (last) ctx.stroke(); ctx.strokeStyle = col; ctx.beginPath(); last = col; }
       const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d);
     }
@@ -873,6 +932,17 @@ function refreshTools() {
   $('#lD').textContent = isV(T) ? 'Diamètre du corps (mm)' : 'Diamètre (mm)';
   if (isV(T)) $('#vNote').textContent = `Largeur de trait : ${f3(cutWidth(-0.5, T))} mm à 0,5 mm de profondeur, ${f3(cutWidth(-1, T))} mm à 1 mm, ${f3(cutWidth(-2, T))} mm à 2 mm. Utilisable en « Sur la ligne » et « Remplissage en V ».`;
   $('#tName').value = T.name; $('#tD').value = T.d; $('#tF').value = T.feed; $('#tP').value = T.plunge; $('#tDoc').value = T.doc; $('#tSo').value = T.so;
+  refreshShapeTools();
+}
+// listes « Fraise » et « Dégager le fond » des formes ('' = fraise courante / pas de dégagement, '*' = valeurs mélangées)
+function refreshShapeTools() {
+  const fill = (el, first, list) => {
+    const v = el.value; el.innerHTML = '';
+    [['', first], ...list.map(t => [t.id, t.name])].forEach(([id, n]) => { const o = document.createElement('option'); o.value = id; o.textContent = n; el.appendChild(o); });
+    el.value = v;
+  };
+  fill($('#sTool'), `Fraise courante (${tool().name})`, S.tools);
+  fill($('#sClear'), 'Non', S.tools.filter(t => !isV(t)));
 }
 function refreshShapes() {
   const box = $('#shapeList');
@@ -891,7 +961,8 @@ function refreshShapes() {
     const d = box.children[k]; d.className = sel.has(sh.id) ? 'sel' : '';
     const skipped = CAM && CAM.skipped && CAM.skipped.has(sh.id);
     const sm = d.lastChild; sm.style.color = skipped ? '#c0392b' : OPCOL[sh.op];
-    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + sh.depth + ' mm' : '');
+    const own = toolById(sh.tool);
+    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + sh.depth + ' mm' + (own ? ' · ' + own.name : '') : '');
   });
   const ed = $('#selEdit');
   if (!sel.size) { ed.classList.add('hide'); return; }
@@ -900,6 +971,9 @@ function refreshShapes() {
   $('#selCount').textContent = ss.length === 1 ? ss[0].name : ss.length + ' formes sélectionnées';
   const ops = new Set(ss.map(s => s.op)), deps = new Set(ss.map(s => s.depth));
   $('#sOp').value = ops.size === 1 ? [...ops][0] : ''; $('#sDepth').value = deps.size === 1 ? [...deps][0] : '';
+  const tls = new Set(ss.map(s => s.tool || '')), cls = new Set(ss.map(s => s.clear || ''));
+  $('#sTool').value = tls.size === 1 ? [...tls][0] : '*'; $('#sClear').value = cls.size === 1 ? [...cls][0] : '*';
+  $('#rowClear').classList.toggle('hide', !ss.every(s => s.op === 'vcarve'));
 }
 function refreshPlace() {
   if (!D) { $('#dSize').textContent = ''; return; }
@@ -917,7 +991,7 @@ function autosave() {
   try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
   catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
 }
-function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth })) }; }
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '' })) }; }
 function restoreAutosave() {
   let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
   if (!p || !p.svg) return;
@@ -929,23 +1003,27 @@ function recompute() {
   const warns = [];
   try {
     CAM = computeCAM(); warns.push(...CAM.warns);
-    G = CAM.groups.length ? buildGcode(CAM) : null;
-  } catch (e) { G = null; warns.push('Erreur de calcul : ' + e.message); console.error(e); }
+    PLAN = CAM.steps.map(st => buildGcode(st));
+  } catch (e) { PLAN = []; warns.push('Erreur de calcul : ' + e.message); console.error(e); }
+  stepIdx = Math.min(stepIdx, Math.max(0, PLAN.length - 1)); G = PLAN[stepIdx] || null;
   if (D) {
     const s = D.place.s / 100, x1 = D.place.x + (D.bb.x1 - D.bb.x0) * s, y1 = D.place.y + (D.bb.y1 - D.bb.y0) * s;
     if (D.place.x < -1e-6 || D.place.y < -1e-6 || x1 > S.stock.w + 1e-6 || y1 > S.stock.h + 1e-6) warns.push('Le dessin dépasse du brut');
   }
   if (S.stock.w > S.machine.w || S.stock.h > S.machine.h) warns.push('Le brut dépasse la course de la machine');
-  $('#iTime').textContent = G ? fmtTime(G.time) : '—';
-  $('#iLines').textContent = G ? G.lines.length.toLocaleString('fr') : '—';
-  $('#iDepth').textContent = G ? f3(-G.zMin) + ' mm' : '—';
+  const sum = f => PLAN.reduce((a, g) => a + f(g), 0);
+  $('#iTime').textContent = G ? fmtTime(sum(g => g.time)) + (PLAN.length > 1 ? ` (${PLAN.length} étapes)` : '') : '—';
+  $('#iLines').textContent = G ? sum(g => g.lines.length).toLocaleString('fr') : '—';
+  $('#iDepth').textContent = G ? f3(-Math.min(...PLAN.map(g => g.zMin))) + ' mm' : '—';
+  refreshSteps();
   $('#warns').textContent = warns.length ? '⚠ ' + [...new Set(warns)].join(' · ') : '';
   refreshShapes(); updateButtons(); draw();
 }
 // Passage à une fraise en V : proposer de convertir les usinages qu'elle ne sait pas faire
 function offerVConvert() {
   if (!D || !isV()) return;
-  const pockets = D.shapes.filter(s => s.op === 'pocket'), contours = D.shapes.filter(s => s.op === 'inside' || s.op === 'outside');
+  const dflt = D.shapes.filter(s => !toolById(s.tool)); // seules les formes qui suivent la fraise courante
+  const pockets = dflt.filter(s => s.op === 'pocket'), contours = dflt.filter(s => s.op === 'inside' || s.op === 'outside');
   if (!pockets.length && !contours.length) return;
   const parts = [];
   if (pockets.length) parts.push(`${pockets.length} poche(s) → « Remplissage en V »`);
@@ -970,7 +1048,7 @@ $('#tAng').addEventListener('change', e => { const v = num(e.target, tool().angl
 $('#tTip').addEventListener('change', e => { const v = num(e.target, tool().tip); if (v >= 0) tool().tip = v; saveSettings(); refreshTools(); invalidate(); });
 $('#origin').addEventListener('change', e => { S.origin = e.target.value; saveSettings(); invalidate(); });
 $('#tName').addEventListener('change', e => { tool().name = e.target.value || 'Fraise'; saveSettings(); refreshTools(); });
-$('#bToolAdd').onclick = () => { const t = clone(tool()); t.name += ' (copie)'; S.tools.push(t); S.toolIdx = S.tools.length - 1; saveSettings(); refreshTools(); };
+$('#bToolAdd').onclick = () => { const t = clone(tool()); t.name += ' (copie)'; t.id = newId(); S.tools.push(t); S.toolIdx = S.tools.length - 1; saveSettings(); refreshTools(); };
 $('#bToolDel').onclick = () => { if (S.tools.length < 2) return; S.tools.splice(S.toolIdx, 1); S.toolIdx = 0; saveSettings(); refreshTools(); invalidate(); };
 // placement
 [['#pX', 'x'], ['#pY', 'y'], ['#pS', 's']].forEach(([id, k]) => $(id).addEventListener('change', e => { if (!D) return; const v = num(e.target, D.place[k]); if (k !== 's' || v > 0) D.place[k] = v; invalidate(); }));
@@ -979,6 +1057,8 @@ $('#bCenter').onclick = () => { centerDesign(); invalidate(); };
 $('#bSelAll').onclick = () => { if (!D) return; sel = new Set(D.shapes.map(s => s.id)); refreshShapes(); draw(); };
 $('#sOp').addEventListener('change', e => { if (!D || !e.target.value) return; for (const sh of D.shapes) if (sel.has(sh.id)) { if (!sh.closed && e.target.value !== 'on' && e.target.value !== 'none') continue; sh.op = e.target.value; } refreshShapes(); invalidate(); });
 $('#sDepth').addEventListener('change', e => { if (!D) return; const v = num(e.target, NaN); if (!(v >= 0)) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.depth = v; refreshShapes(); invalidate(); });
+$('#sTool').addEventListener('change', e => { if (!D || e.target.value === '*') return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.tool = e.target.value; refreshShapes(); invalidate(); });
+$('#sClear').addEventListener('change', e => { if (!D || e.target.value === '*') return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.clear = e.target.value; refreshShapes(); invalidate(); });
 $('#bThrough').onclick = () => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.depth = S.stock.t; refreshShapes(); invalidate(); };
 // attaches & sens
 $('#tabOn').addEventListener('change', e => { S.tabs.on = e.target.checked; saveSettings(); invalidate(); });
@@ -993,7 +1073,8 @@ $('#fSvg').addEventListener('change', async e => { const f = e.target.files[0]; 
 async function openSvgFile(f) { try { loadDesign(await f.text(), f.name); } catch (err) { alert(err.message); } }
 $('#bSave').onclick = () => {
   if (!D) return alert('Rien à enregistrer : importe d\'abord un SVG.');
-  const data = { app: 'atelier-cnc', v: 1, ...designData(), stock: S.stock, tool: tool(), tabs: S.tabs, climb: S.climb, origin: S.origin };
+  const used = new Set([tool().id, ...D.shapes.flatMap(s => [s.tool, s.clear])]);
+  const data = { app: 'atelier-cnc', v: 2, ...designData(), stock: S.stock, tool: tool(), tools: S.tools.filter(t => used.has(t.id)), tabs: S.tabs, climb: S.climb, origin: S.origin };
   download(D.name.replace(/\.svg$/i, '') + '.cnc.json', JSON.stringify(data), 'application/json');
 };
 $('#bOpen').onclick = () => $('#fProj').click();
@@ -1002,12 +1083,34 @@ $('#fProj').addEventListener('change', async e => {
   try {
     const p = JSON.parse(await f.text()); if (p.app !== 'atelier-cnc') throw new Error('Ce fichier n\'est pas un projet Atelier CNC.');
     if (p.stock) S.stock = p.stock; if (p.origin) S.origin = p.origin; if (p.tabs) S.tabs = p.tabs; S.climb = !!p.climb;
-    if (p.tool) { let k = S.tools.findIndex(t => t.name === p.tool.name); if (k < 0) { S.tools.push(p.tool); k = S.tools.length - 1; } else S.tools[k] = p.tool; S.toolIdx = k; }
+    // fraises du projet : même id, sinon même nom (les formes sont réaffectées), sinon ajoutée
+    const remap = {};
+    const merge = pt => {
+      let t = S.tools.find(x => pt.id && x.id === pt.id) || S.tools.find(x => x.name === pt.name);
+      if (t) Object.assign(t, pt, { id: t.id }); else { t = Object.assign({}, pt, { id: pt.id || newId() }); S.tools.push(t); }
+      if (pt.id) remap[pt.id] = t.id; return t;
+    };
+    (p.tools || []).forEach(merge);
+    if (p.tool) S.toolIdx = S.tools.indexOf(merge(p.tool));
+    (p.ops || []).forEach(o => { if (o) { o.tool = remap[o.tool] || ''; o.clear = remap[o.clear] || ''; } });
     saveSettings(); loadDesign(p.svg, p.name, p);
   } catch (err) { alert(err.message); }
 });
 function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
-$('#bExport').onclick = () => { if (G) download((D ? D.name.replace(/\.svg$/i, '') : 'projet') + '.nc', G.lines.join('\n') + '\n', 'text/plain'); };
+$('#bExport').onclick = () => {
+  if (!G) return;
+  const suffix = PLAN.length > 1 ? `-etape${stepIdx + 1}-` + G.tool.name.replace(/[^\w.-]+/g, '_') : '';
+  download((D ? D.name.replace(/\.svg$/i, '') : 'projet') + suffix + '.nc', G.lines.join('\n') + '\n', 'text/plain');
+};
+// Étapes : une par fraise, gravées l'une après l'autre (changement de fraise et zéro Z entre deux)
+function refreshSteps() {
+  const s = $('#stepSel'); s.innerHTML = ''; s.classList.toggle('hide', PLAN.length < 2); s.disabled = !!job;
+  PLAN.forEach((g, k) => { const o = document.createElement('option'); o.value = k; o.textContent = `Étape ${k + 1}/${PLAN.length} : ${g.tool.name} — ${fmtTime(g.time)}`; s.appendChild(o); });
+  s.value = stepIdx;
+  $('#bCarve').textContent = PLAN.length > 1 ? `Graver l'étape ${stepIdx + 1}` : 'Graver';
+  $('#bExport').textContent = PLAN.length > 1 ? `Exporter le G-code (étape ${stepIdx + 1})` : 'Exporter le G-code';
+}
+$('#stepSel').addEventListener('change', e => { stepIdx = +e.target.value; G = PLAN[stepIdx]; refreshSteps(); updateButtons(); draw(); });
 // glisser-déposer
 const center = $('#center');
 center.addEventListener('dragover', e => { e.preventDefault(); $('#drop').style.display = 'flex'; });
@@ -1166,8 +1269,9 @@ function updateButtons() {
 }
 $('#bCarve').onclick = () => {
   if (!G) return;
-  const T = tool(), warns = $('#warns').textContent;
-  $('#cSummary').innerHTML = `Durée estimée <b>${fmtTime(G.time)}</b> · profondeur max <b>${f3(-G.zMin)} mm</b> · ${G.lines.length.toLocaleString('fr')} lignes`;
+  const T = G.tool, warns = $('#warns').textContent;
+  $('#cZ').textContent = stepIdx > 0 ? 'Le zéro Z est refait avec cette fraise, et le zéro X/Y n\'a pas bougé depuis l\'étape 1.' : 'Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).';
+  $('#cSummary').innerHTML = (PLAN.length > 1 ? `<b>Étape ${stepIdx + 1}/${PLAN.length}</b> · ` : '') + `Durée estimée <b>${fmtTime(G.time)}</b> · profondeur max <b>${f3(-G.zMin)} mm</b> · ${G.lines.length.toLocaleString('fr')} lignes`;
   $('#cWarn').textContent = warns; $('#cTool').textContent = `La fraise « ${T.name} » (${isV(T) ? 'en V ' + T.angle + '°' : 'Ø ' + T.d + ' mm'}) est installée.`;
   $('#cOrigin').textContent = S.origin === 'center' ? 'Le zéro X/Y est placé au centre du brut.' : 'Le zéro X/Y est placé au coin avant-gauche du brut.';
   $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').disabled = true;
@@ -1178,7 +1282,8 @@ $('#cCancel').onclick = () => $('#dlgCarve').close();
 $('#cGo').onclick = () => { $('#dlgCarve').close(); startJob(); };
 function startJob() {
   if (!G || !machine.port || machine.state !== 'Idle') return;
-  job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), paused: false };
+  job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), paused: false, step: stepIdx };
+  refreshSteps();
   $('#job').classList.remove('hide'); $('#bPause').textContent = 'Pause';
   log('Gravure lancée (' + job.total + ' lignes).', 'msg');
   feedJob(); pump(); updateButtons();
@@ -1221,7 +1326,12 @@ function abortJob(why) {
   if (confirm(msg + '\n\nOK : arrêt complet (broche coupée).\nAnnuler : rester en pause, broche allumée, pour inspecter.')) safeStop(null);
   else log('Machine en pause, broche allumée. Bouton « Stop » du panneau Machine pour couper.', 'msg');
 }
-function finishJob() { endJob('Gravure terminée en ' + fmtTime((Date.now() - job.t0) / 1000) + '.'); }
+function finishJob() {
+  const k = job.step, t = fmtTime((Date.now() - job.t0) / 1000);
+  if (k >= PLAN.length - 1) return endJob(PLAN.length > 1 ? `Dernière étape terminée en ${t}.` : `Gravure terminée en ${t}.`);
+  stepIdx = k + 1;
+  endJob(`Étape ${k + 1} terminée en ${t}. Installe « ${PLAN[k + 1].tool.name} », refais le zéro Z (sans toucher au zéro X/Y), puis lance l'étape ${k + 2}.`);
+}
 function endJob(msg) {
   if (!job) return; job = null; log(msg, 'msg');
   $('#job').classList.add('hide'); updateButtons(); recompute();
@@ -1234,7 +1344,7 @@ refreshAll(); updateButtons();
 setTimeout(fitView, 0);
 log('Atelier CNC prêt. Importe un SVG, choisis les usinages, puis connecte la machine.', 'msg');
 restoreAutosave();
-window.__atelier = { get G() { return G; }, get D() { return D; }, autosave, get CAM() { return CAM; }, get job() { return job; }, machine, S, loadDesign, recompute, computeCAM };
+window.__atelier = { get G() { return G; }, get PLAN() { return PLAN; }, get D() { return D; }, autosave, get CAM() { return CAM; }, get job() { return job; }, machine, S, loadDesign, recompute, computeCAM };
 </script>
 </body>
 </html>

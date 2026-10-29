@@ -15,46 +15,51 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
   await p.goto('file://' + __dirname + '/../dist/atelier-cnc.html');
   await p.evaluate(svg => { localStorage.clear(); window.__atelier.loadDesign(svg, 'vcarve.svg'); }, SVG);
 
-  // ops : { nom: [usinage, profondeur] }, les autres formes ne sont pas usinées
+  // ops : { nom: [usinage, profondeur, dégagement 'flat'?] }, les autres formes ne sont pas usinées
   const run = (toolSel, ops, doc = 10) => p.evaluate(([toolSel, ops, doc]) => {
     const A = window.__atelier, S = A.S;
     S.toolIdx = S.tools.findIndex(t => toolSel === 'flat' ? t.type !== 'v' : (t.type === 'v' && t.angle === 60));
     const T = S.tools[S.toolIdx]; T.tip = 0; T.doc = doc;
-    A.D.shapes.forEach(s => { const o = ops[s.name] || ['none', 1]; s.op = o[0]; s.depth = o[1]; });
+    const flat = S.tools.find(t => t.type !== 'v');
+    A.D.shapes.forEach(s => { const o = ops[s.name] || ['none', 1]; s.op = o[0]; s.depth = o[1]; s.tool = ''; s.clear = o[2] === 'flat' ? flat.id : ''; });
     A.recompute();
-    const cam = A.CAM, G = A.G;
-    const zs = {}; for (const g of cam.groups) zs[g.shape.name] = Math.min(...g.cuts.flatMap(c => c.pts.map(q => q[2])));
+    const cam = A.CAM, PLAN = A.PLAN;
+    const zs = {}; for (const st of cam.steps) for (const g of st.groups) zs[g.shape.name] = Math.min(zs[g.shape.name] ?? 0, ...g.cuts.flatMap(c => c.pts.map(q => q[2])));
+    // chaque mouvement avec la fraise de son étape
+    const moves = PLAN.flatMap(P => P.moves.map(m => Object.assign({ T: P.tool }, m)));
+    const kOf = t => Math.tan((t.angle || 60) * Math.PI / 360), k = kOf(T);
     // entaille : point de coupe plus proche du contour que le rayon de coupe à cette profondeur
-    const k = Math.tan((T.angle || 60) * Math.PI / 360), rad = z => T.type === 'v' ? -z * k : T.d / 2;
+    const rad = (t, z) => t.type === 'v' ? (t.tip || 0) / 2 - z * kOf(t) : t.d / 2;
     const tf = toStockFn(), segs = [];
     for (const sh of A.D.shapes) if (sh.op !== 'none') for (const s of sh.subpaths) { const P = s.pts.map(tf); for (let i = 1; i < P.length; i++) segs.push([P[i - 1], P[i]]); segs.push([P[P.length - 1], P[0]]); }
     // tolérance : les arrondis des décalages sont approchés par des segments (≈ 0,01-0,02 mm sur les petits rayons)
     let gouge = 0;
-    if (segs.length < 2000) for (const m of G.moves) if (m.g === 1 && m.z < 0 && m.z0 < 0) {
+    if (segs.length < 2000) for (const m of moves) if (m.g === 1 && m.z < 0 && m.z0 < 0) {
       const n = Math.max(1, Math.ceil(Math.hypot(m.x - m.x0, m.y - m.y0) / 0.2));
       for (let i = 0; i <= n; i++) {
         const t = i / n, x = m.x0 + (m.x - m.x0) * t, y = m.y0 + (m.y - m.y0) * t, z = m.z0 + (m.z - m.z0) * t;
         let d = Infinity; for (const [a, c] of segs) d = Math.min(d, segDist(x, y, a, c));
-        gouge = Math.max(gouge, rad(z) - d);
+        gouge = Math.max(gouge, rad(m.T, z) - d);
       }
     }
-    const retracts = G.moves.filter(m => m.g === 0 && m.z > m.z0).length;
-    // manque : sur une grille, profondeur obtenue (cônes de tous les mouvements) vs profondeur idéale du V
+    const retracts = moves.filter(m => m.g === 0 && m.z > m.z0).length;
+    // manque : sur une grille, profondeur obtenue (empreinte de tous les mouvements) vs profondeur idéale du V
     let short = 0, shortFlat = 0;
     if (T.type === 'v' && segs.length < 2000) {
       const zMax = Math.min(...A.D.shapes.filter(s => s.op === 'vcarve').map(s => s.depth), T.d / 2 / k);
-      const cutsM = G.moves.filter(m => m.g === 1 && m.z < 0 && Math.abs(m.z - m.z0) < 1e-6);
+      const cutsM = moves.filter(m => m.g === 1 && m.z < 0 && Math.abs(m.z - m.z0) < 1e-6);
+      const removed = (m, d) => m.T.type === 'v' ? -m.z - Math.max(0, d - (m.T.tip || 0) / 2) / kOf(m.T) : (d <= m.T.d / 2 + 1e-6 ? -m.z : 0);
       const xs = segs.flatMap(s => [s[0][0], s[1][0]]), ys = segs.flatMap(s => [s[0][1], s[1][1]]);
       for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.2) for (let y = Math.min(...ys); y <= Math.max(...ys); y += 0.2) {
         let d = Infinity; for (const [a, c] of segs) d = Math.min(d, segDist(x, y, a, c));
         const inside = A.D.shapes.some(sh => sh.op === 'vcarve' && sh.subpaths.filter(s => pointInPoly(x, y, s.pts.map(tf))).length % 2);
         if (!inside) continue;
         const ideal = Math.min(zMax, d / k);
-        let got = 0; for (const m of cutsM) { got = Math.max(got, -m.z - segDist(x, y, [m.x0, m.y0], [m.x, m.y]) / k); if (got >= ideal) break; }
+        let got = 0; for (const m of cutsM) { got = Math.max(got, removed(m, segDist(x, y, [m.x0, m.y0], [m.x, m.y]))); if (got >= ideal) break; }
         if (ideal < zMax - 0.01) short = Math.max(short, ideal - got); else shortFlat = Math.max(shortFlat, ideal - got);
       }
     }
-    return { zs, warns: cam.warns, skipped: [...cam.skipped], T: { d: T.d }, gouge, short, shortFlat, retracts, time: G.time };
+    return { zs, warns: cam.warns, skipped: [...cam.skipped], T: { d: T.d }, gouge, short, shortFlat, retracts, time: PLAN.reduce((a, P) => a + P.time, 0), steps: PLAN.map(P => (P.tool.type || 'flat') + ':' + P.tool.d) };
   }, [toolSel, ops, doc]);
 
   // V 60°, pointe 0 : profondeur = distance au bord / tan 30°
@@ -87,6 +92,33 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
   assert.ok(r.gouge < 0.03, `poches : entaille de ${r.gouge} mm`);
   assert.ok(r.retracts <= 4, `poches : ${r.retracts} remontées (2 formes × 2 passes au plus)`);
 
+  // Fond du V dégagé à la fraise plate : deux étapes (plate puis V), sans entaille, fond creusé
+  for (const doc of [10, 0.8]) {
+    const sans = await run('v', { crochet: ['vcarve', 2] }, doc);
+    r = await run('v', { crochet: ['vcarve', 2, 'flat'] }, doc);
+    console.log(`crochet V + dégagement, passe ${doc} mm : étapes ${r.steps}, entaille ${Math.max(0, r.gouge).toFixed(3)} mm, manque pente ${r.short.toFixed(3)} / fond ${r.shortFlat.toFixed(3)} mm, ${Math.round(r.time)} s (sans dégagement ${Math.round(sans.time)} s)`);
+    assert.deepStrictEqual(r.steps.map(s => s[0]), ['f', 'v'], 'fraise plate puis V');
+    assert.ok(r.gouge < 0.03, `dégagement : entaille de ${r.gouge} mm`);
+    assert.ok(r.short < 0.2, `dégagement : il manque ${r.short} mm dans la pente`);
+    assert.ok(r.shortFlat < sans.shortFlat / 2, `dégagement : fond ${r.shortFlat} mm (sans : ${sans.shortFlat})`);
+    assert.ok(!r.warns.some(w => w.includes('crêtes')), 'plus d\'avertissement de crêtes');
+  }
+
+  // Fraise par forme : la V grave, la plate détoure ; l'étape qui détoure passe en dernier
+  const st = await p.evaluate(() => {
+    const A = window.__atelier, S = A.S, v = S.tools.find(t => t.type === 'v'), f = S.tools.find(t => t.type !== 'v' && t.d >= 3);
+    S.toolIdx = S.tools.indexOf(f);
+    A.D.shapes.forEach(s => { s.op = 'none'; s.tool = ''; s.clear = ''; });
+    Object.assign(A.D.shapes[0], { op: 'on', depth: 0.5, tool: v.id });
+    Object.assign(A.D.shapes[1], { op: 'outside', depth: S.stock.t });
+    Object.assign(A.D.shapes[2], { op: 'pocket', depth: 1, tool: v.id }); // poche en V : ignorée
+    A.recompute();
+    return { steps: A.PLAN.map(P => P.tool.name), v: v.name, f: f.name, skipped: [...A.CAM.skipped], sel: !$('#stepSel').classList.contains('hide'), btn: $('#bCarve').textContent };
+  });
+  assert.deepStrictEqual(st.steps, [st.v, st.f]);
+  assert.deepStrictEqual(st.skipped, [2]);
+  assert.ok(st.sel && st.btn === 'Graver l\'étape 1', JSON.stringify(st));
+
   // Fraise plate + remplissage en V, fraise en V + poche : formes signalées comme ignorées
   r = await run('flat', { barre: ['vcarve', 1], disque: ['pocket', 1] });
   assert.deepStrictEqual(r.skipped, [0]);
@@ -103,11 +135,23 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
   const lst = await p.$$eval('#shapeList small', e => e.map(x => x.textContent));
   assert.ok(!lst.some(t => t.includes('ignorée')), 'liste sans forme ignorée : ' + lst);
 
+  // Ouverture d'un projet : fraise connue par son nom (id réaffecté), fraise inconnue ajoutée
+  const flatName = await p.evaluate(() => window.__atelier.S.tools.find(t => t.type !== 'v' && t.d >= 3).name);
+  const proj = { app: 'atelier-cnc', v: 2, name: 'proj.svg', svg: SVG, place: { x: 0, y: 0, s: 100 },
+    ops: [{ op: 'none', depth: 1 }, { op: 'vcarve', depth: 2, tool: 'idV45', clear: 'idAutrePC' }, { op: 'none', depth: 1 }],
+    tool: { name: flatName, d: 3.175, feed: 600, plunge: 150, doc: 0.8, so: 40, id: 'idAutrePC' },
+    tools: [{ name: 'Ma V 45°', type: 'v', d: 6, angle: 45, tip: 0.1, feed: 400, plunge: 100, doc: 0.5, so: 40, id: 'idV45' }] };
+  await p.setInputFiles('#fProj', { name: 'proj.cnc.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(proj)) });
+  await p.waitForTimeout(500);
+  const opened = await p.evaluate(() => { const A = window.__atelier, sh = A.D.shapes[1], byId = id => A.S.tools.find(t => t.id === id);
+    return { tool: byId(sh.tool) && byId(sh.tool).name, clear: byId(sh.clear) && byId(sh.clear).name, steps: A.PLAN.map(P => P.tool.name) }; });
+  assert.deepStrictEqual(opened, { tool: 'Ma V 45°', clear: flatName, steps: [flatName, 'Ma V 45°'] });
+
   // Sauvegarde automatique : placement et usinages retrouvés après rechargement de la page
   await p.fill('#pX', '12'); await p.dispatchEvent('#pX', 'change'); await p.waitForTimeout(800);
   await p.reload(); await p.waitForTimeout(400);
   const back = await p.evaluate(() => { const D = window.__atelier.D; return D && { name: D.name, x: D.place.x, ops: D.shapes.map(s => s.op) }; });
-  assert.deepStrictEqual(back, { name: 'vcarve.svg', x: 12, ops: ['vcarve', 'on', 'none'] });
+  assert.deepStrictEqual(back, { name: 'proj.svg', x: 12, ops: ['none', 'vcarve', 'none'] });
 
   assert.deepStrictEqual(errs, []);
   console.log('vcarve : OK');

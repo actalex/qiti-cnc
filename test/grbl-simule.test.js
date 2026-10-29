@@ -69,5 +69,20 @@ const launch = require('./navigateur');
   const stop = await p.evaluate(() => ({ resetIn: __grbl.resetIn, state: window.__atelier.machine.state, log: $('#log').innerText.split('\n').slice(-4) }));
   console.log('arrêt :', stop);
   if (stop.resetIn !== 'Hold:0' || stop.log.some(l => l.includes('ALARME')) || !stop.log.some(l => l.includes('broche coupée'))) { console.error('ÉCHEC arrêt'); process.exitCode = 1; }
+  // Deux fraises : poches et intérieur à la plate, « vague » en V, puis détourage de la plaque à la plate (3 étapes)
+  await p.waitForTimeout(500);
+  await p.evaluate(() => { const A = window.__atelier, v = A.S.tools.find(t => t.type === 'v'); A.D.shapes[3].tool = v.id; A.recompute(); });
+  const carveStep = async () => {
+    await p.click('#bCarve'); const z = await p.textContent('#cZ');
+    for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
+    await p.click('#cGo'); await p.waitForTimeout(300);
+    for (let k = 0; k < 60; k++) { if (await p.evaluate(() => !window.__atelier.job)) break; await p.waitForTimeout(250); }
+    await p.waitForTimeout(400);
+    return { z, btn: await p.textContent('#bCarve'), last: await p.evaluate(() => $('#log').innerText.split('\n').slice(-1)[0]) };
+  };
+  const steps = await p.evaluate(() => window.__atelier.PLAN.map(P => P.tool.name));
+  const s1 = await carveStep(), s2 = await carveStep(), s3 = await carveStep();
+  console.log('étapes :', steps, s1, s2, s3);
+  if (steps.length !== 3 || !steps[1].includes('V') || steps[0] !== steps[2] || s1.btn !== 'Graver l\'étape 2' || !s1.last.includes('Installe') || !s2.z.includes('refait') || !s3.last.includes('Dernière étape')) { console.error('ÉCHEC étapes'); process.exitCode = 1; }
   await b.close();
 })();
