@@ -1,6 +1,6 @@
 # QiTi-CNC — contexte pour Claude Code
 
-Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventables ne doit être copié) : une page HTML **autonome** qui fait la FAO 2,5D à partir d'un SVG et pilote une CNC GRBL via **Web Serial**. Machine cible : TwoTrees TTC450 Pro (course 460×460×80 mm, GRBL 1.1, 115200 bauds, broche 775 pilotée par `M3 S`, $30=1000 par défaut).
+Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventables ne doit être copié) : une page HTML **autonome** qui fait la FAO 2,5D à partir d'un SVG et pilote une CNC GRBL via **Web Serial**. Machine cible : TwoTrees TTC450 Pro. Relevé sur la machine de l'utilisateur (2026-10-29) : carte ESP32 « LaserBox_E » derrière un CH340 (USB 1a86:7523), GRBL 1.1h (VER 1.1h.2020101901), 115200 bauds, $130/$131/$132 = 450/450/80, vitesses max 750 mm/min ($110-$112), accélérations 400 mm/s², pas de homing ($22=0), fins de course actifs ($21=1), $30=31250. Broche : vitesse réglée au bouton du variateur, la carte ne fait que M3/M5. La carte peut rester muette après ouverture du port : la page propose alors un redémarrage par RTS (`watchSilence`).
 
 ## Règles
 - Interface et messages **en français**.

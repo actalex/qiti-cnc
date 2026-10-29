@@ -1338,6 +1338,22 @@ function applyGrblSettings() {
   if (g[20] === 0) note('soft', 'Limites logicielles désactivées ($20=0) : vérifie que le dessin tient dans la course avant de graver.');
   if (ch.length || planChanged) invalidate();
 }
+// Carte muette (vu sur la TTC450 : ESP32 figé, qui répond après un redémarrage) : proposer de la redémarrer par les
+// lignes du port USB, comme esptool : RTS seul = reset de l'ESP32, puis tout relâché = démarrage normal (DTR bas).
+function watchSilence(port, afterReset) {
+  setTimeout(async () => {
+    if (machine.port !== port || machine.rx) return;
+    $('#state').textContent = 'muette';
+    if (afterReset || !port.setSignals) { log('La carte ne répond toujours pas. Vérifie que c\'est bien le port USB de la CNC (pas un port Bluetooth) et que la machine est sous tension ; sinon éteins et rallume la machine.', 'err'); return; }
+    log('Aucune réponse de la carte sur ce port.', 'err');
+    if (!confirm('La carte ne répond pas : elle est peut-être figée.\n\nLa redémarrer par l\'USB ? C\'est comme l\'éteindre et la rallumer : si elle bougeait, elle s\'arrête net, et les zéros sont à refaire.')) { log('Vérifie que c\'est bien le port USB de la CNC (pas un port Bluetooth), puis déconnecte et réessaie.', 'msg'); return; }
+    try {
+      await port.setSignals({ dataTerminalReady: false, requestToSend: true }); await new Promise(r => setTimeout(r, 150));
+      await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+      log('Redémarrage de la carte demandé…', 'msg'); watchSilence(port, true);
+    } catch (e) { log('Redémarrage impossible : ' + e.message, 'err'); }
+  }, 4000);
+}
 async function connect() {
   if (machine.port) return disconnect();
   if (!('serial' in navigator)) return alert('Web Serial indisponible : ouvre la page dans Chrome ou Edge, via http://localhost.');
@@ -1350,7 +1366,7 @@ async function connect() {
     const info = port.getInfo ? port.getInfo() : {}, hex = v => v.toString(16).padStart(4, '0');
     log('Port ouvert à ' + S.machine.baud + ' bauds' + (info.usbVendorId ? ` (USB ${hex(info.usbVendorId)}:${hex(info.usbProductId)}).` : ' (pas un port USB : Bluetooth ou port intégré ?).'), 'msg');
     machine.rx = 0;
-    setTimeout(() => { if (machine.port === port && !machine.rx) { log('Aucune réponse de la carte sur ce port. Vérifie que c\'est bien le port USB de la CNC (pas un port Bluetooth), que la machine est sous tension, puis déconnecte et réessaie ; sinon éteins et rallume la machine.', 'err'); $('#state').textContent = 'muette'; } }, 4000);
+    watchSilence(port);
     readLoop();
     setTimeout(() => { writeRaw('\r\n\r\n'); rt(0x3f); }, 1500);
     machine.poll = setInterval(() => rt(0x3f), 250);
