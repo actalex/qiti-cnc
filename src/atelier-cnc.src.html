@@ -99,6 +99,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row" style="margin-top:6px"><label>Origine X0 Y0</label>
       <select id="origin" style="width:150px"><option value="corner">Coin avant-gauche</option><option value="center">Centre du brut</option></select></div>
     <div class="note">mm — Z0 sur le dessus du brut.</div>
+    <div class="row" style="margin-top:6px"><label>Matériau</label><select id="matSel" style="width:150px" title="Pré-remplit avance, plongée et profondeur par passe de toutes les fraises"></select></div>
   </section>
   <section class="box">
     <h2>Fraise <span><button id="bToolAdd" title="Dupliquer la fraise">+</button> <button id="bToolDel" title="Supprimer la fraise">−</button></span></h2>
@@ -293,7 +294,8 @@ const DEFAULTS = {
   tabs: { on: true, n: 4, w: 5, h: 1.5 },
   climb: false,
   ramp: { on: true, angle: 3 },
-  origin: 'corner'
+  origin: 'corner',
+  material: ''
 };
 let S = clone(DEFAULTS);
 try { const raw = localStorage.getItem(STORE); if (raw) { const o = JSON.parse(raw); S = Object.assign(clone(DEFAULTS), o); S.machine = Object.assign(clone(DEFAULTS.machine), o.machine || {}); } } catch (e) {}
@@ -500,6 +502,7 @@ function toStockFn() {
 
 /*INCLUDE:fao.js*/
 /*INCLUDE:temps.js*/
+/*INCLUDE:materiaux.js*/
 /* ====================== Vue ====================== */
 const cv = $('#cv'), ctx = cv.getContext('2d');
 let view = { s: 1, ox: 0, oy: 0 }, viewMode = 'design', job = null, G = null, CAM = null, PLAN = [], stepIdx = 0; // PLAN : une étape (G-code) par fraise ; G = étape choisie
@@ -741,12 +744,23 @@ function offerVConvert() {
 }
 function refreshAll() {
   $('#stW').value = S.stock.w; $('#stH').value = S.stock.h; $('#stT').value = S.stock.t;
+  const ms = $('#matSel'); ms.innerHTML = '';
+  [['', '— réglages manuels'], ...MATERIALS.map(m => [m.id, m.name])].forEach(([id, n]) => { const o = document.createElement('option'); o.value = id; o.textContent = n; ms.appendChild(o); });
+  ms.value = S.material || '';
   $('#tabOn').checked = S.tabs.on; $('#tabN').value = S.tabs.n; $('#tabW').value = S.tabs.w; $('#tabH').value = S.tabs.h;
   $('#climb').value = S.climb ? '1' : '0'; $('#origin').value = S.origin;
   $('#rampOn').checked = S.ramp.on; $('#rampA').value = S.ramp.angle;
   refreshTools(); refreshShapes(); refreshPlace(); invalidate();
 }
 // matériau
+$('#matSel').addEventListener('change', e => {
+  const id = e.target.value, mat = MATERIALS.find(m => m.id === id);
+  if (mat && !confirm(`Appliquer les réglages « ${mat.name} » à toutes les fraises (avance, plongée, profondeur par passe) ?
+
+Ce sont des valeurs de départ prudentes : fais un essai dans une chute et ajuste.`)) { e.target.value = S.material || ''; return; }
+  S.material = id; if (mat) { applyMaterial(id); log(`Réglages « ${mat.name} » appliqués aux fraises.`, 'msg'); }
+  saveSettings(); refreshTools(); invalidate();
+});
 [['#stW', 'w'], ['#stH', 'h'], ['#stT', 't']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.stock[k]); if (v > 0) S.stock[k] = v; saveSettings(); invalidate(); }));
 // fraise
 $('#toolSel').addEventListener('change', e => { S.toolIdx = +e.target.value; saveSettings(); refreshTools(); offerVConvert(); invalidate(); });

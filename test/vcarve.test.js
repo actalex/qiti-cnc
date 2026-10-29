@@ -185,6 +185,17 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
   const back = await p.evaluate(() => { const D = window.__atelier.D; return D && { name: D.name, x: D.place.x, ops: D.shapes.map(s => s.op) }; });
   assert.deepStrictEqual(back, { name: 'proj.svg', x: 12, ops: ['none', 'vcarve', 'none'] });
 
+  // Matériau : refus = rien ne change ; acceptation = avance, plongée, profondeur par passe de toutes les fraises
+  const toolsOf = () => p.evaluate(() => window.__atelier.S.tools.map(t => [t.name, t.feed, t.plunge, t.doc].join('|')));
+  const before = await toolsOf();
+  p.once('dialog', d => d.dismiss()); await p.selectOption('#matSel', 'dur'); await p.waitForTimeout(200);
+  assert.deepStrictEqual(await toolsOf(), before, 'refus : fraises inchangées');
+  assert.strictEqual(await p.$eval('#matSel', e => e.value), '');
+  p.once('dialog', d => d.accept()); await p.selectOption('#matSel', 'dur'); await p.waitForTimeout(200);
+  const mat = await p.evaluate(() => { const T = window.__atelier.S.tools, f = n => T.find(n), pick = t => [t.feed, t.plunge, t.doc];
+    return { f3: pick(f(t => t.type !== 'v' && t.d === 3.175)), f1: pick(f(t => t.type !== 'v' && t.d === 1)), f6: pick(f(t => t.type !== 'v' && t.d === 6)), v: pick(f(t => t.type === 'v')) }; });
+  assert.deepStrictEqual(mat, { f3: [500, 150, 0.95], f1: [200, 60, 0.3], f6: [500, 150, 1.2], v: [500, 150, 0.6] });
+
   assert.deepStrictEqual(errs, []);
   console.log('vcarve : OK');
   await b.close();

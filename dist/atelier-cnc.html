@@ -99,6 +99,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row" style="margin-top:6px"><label>Origine X0 Y0</label>
       <select id="origin" style="width:150px"><option value="corner">Coin avant-gauche</option><option value="center">Centre du brut</option></select></div>
     <div class="note">mm — Z0 sur le dessus du brut.</div>
+    <div class="row" style="margin-top:6px"><label>Matériau</label><select id="matSel" style="width:150px" title="Pré-remplit avance, plongée et profondeur par passe de toutes les fraises"></select></div>
   </section>
   <section class="box">
     <h2>Fraise <span><button id="bToolAdd" title="Dupliquer la fraise">+</button> <button id="bToolDel" title="Supprimer la fraise">−</button></span></h2>
@@ -294,7 +295,8 @@ const DEFAULTS = {
   tabs: { on: true, n: 4, w: 5, h: 1.5 },
   climb: false,
   ramp: { on: true, angle: 3 },
-  origin: 'corner'
+  origin: 'corner',
+  material: ''
 };
 let S = clone(DEFAULTS);
 try { const raw = localStorage.getItem(STORE); if (raw) { const o = JSON.parse(raw); S = Object.assign(clone(DEFAULTS), o); S.machine = Object.assign(clone(DEFAULTS.machine), o.machine || {}); } } catch (e) {}
@@ -850,6 +852,27 @@ function planTime(moves, plan) {
   });
   return t;
 }
+/* ====================== Matériaux ====================== */
+// Valeurs de départ prudentes pour une machine légère (broche 775) : à ajuster après un essai dans une chute.
+// Fraise plate : avance et plongée en mm/min, profondeur par passe = doc × diamètre (plafonnée) ; fraise en V : valeurs fixes.
+const MATERIALS = [
+  { id: 'tendre', name: 'Bois tendre (pin, peuplier)', flat: { feed: 800, plunge: 250, doc: 0.5, docMax: 2 }, v: { feed: 700, plunge: 200, doc: 1 } },
+  { id: 'dur', name: 'Bois dur (chêne, hêtre, noyer)', flat: { feed: 500, plunge: 150, doc: 0.3, docMax: 1.2 }, v: { feed: 500, plunge: 150, doc: 0.6 } },
+  { id: 'mdf', name: 'MDF', flat: { feed: 700, plunge: 200, doc: 0.4, docMax: 1.5 }, v: { feed: 600, plunge: 200, doc: 0.8 } },
+  { id: 'cp', name: 'Contreplaqué', flat: { feed: 600, plunge: 200, doc: 0.35, docMax: 1.5 }, v: { feed: 500, plunge: 150, doc: 0.8 } },
+  { id: 'pmma', name: 'Acrylique (PMMA coulé)', flat: { feed: 500, plunge: 100, doc: 0.2, docMax: 0.8 }, v: { feed: 400, plunge: 100, doc: 0.4 } }
+];
+// Réglages d'une fraise pour un matériau ; les petites fraises plates vont moins vite (casse)
+function materialParams(mat, T) {
+  if (T.type === 'v') return { ...mat.v };
+  const k = T.d <= 1 ? 0.4 : T.d < 2 ? 0.6 : 1, r = v => Math.max(5, Math.round(v * k / 10) * 10);
+  return { feed: r(mat.flat.feed), plunge: r(mat.flat.plunge), doc: Math.max(0.1, Math.round(Math.min(mat.flat.docMax, mat.flat.doc * T.d) * 20) / 20) };
+}
+function applyMaterial(id) {
+  const mat = MATERIALS.find(m => m.id === id); if (!mat) return false;
+  for (const T of S.tools) Object.assign(T, materialParams(mat, T));
+  return true;
+}
 /* ====================== Vue ====================== */
 const cv = $('#cv'), ctx = cv.getContext('2d');
 let view = { s: 1, ox: 0, oy: 0 }, viewMode = 'design', job = null, G = null, CAM = null, PLAN = [], stepIdx = 0; // PLAN : une étape (G-code) par fraise ; G = étape choisie
@@ -1091,12 +1114,23 @@ function offerVConvert() {
 }
 function refreshAll() {
   $('#stW').value = S.stock.w; $('#stH').value = S.stock.h; $('#stT').value = S.stock.t;
+  const ms = $('#matSel'); ms.innerHTML = '';
+  [['', '— réglages manuels'], ...MATERIALS.map(m => [m.id, m.name])].forEach(([id, n]) => { const o = document.createElement('option'); o.value = id; o.textContent = n; ms.appendChild(o); });
+  ms.value = S.material || '';
   $('#tabOn').checked = S.tabs.on; $('#tabN').value = S.tabs.n; $('#tabW').value = S.tabs.w; $('#tabH').value = S.tabs.h;
   $('#climb').value = S.climb ? '1' : '0'; $('#origin').value = S.origin;
   $('#rampOn').checked = S.ramp.on; $('#rampA').value = S.ramp.angle;
   refreshTools(); refreshShapes(); refreshPlace(); invalidate();
 }
 // matériau
+$('#matSel').addEventListener('change', e => {
+  const id = e.target.value, mat = MATERIALS.find(m => m.id === id);
+  if (mat && !confirm(`Appliquer les réglages « ${mat.name} » à toutes les fraises (avance, plongée, profondeur par passe) ?
+
+Ce sont des valeurs de départ prudentes : fais un essai dans une chute et ajuste.`)) { e.target.value = S.material || ''; return; }
+  S.material = id; if (mat) { applyMaterial(id); log(`Réglages « ${mat.name} » appliqués aux fraises.`, 'msg'); }
+  saveSettings(); refreshTools(); invalidate();
+});
 [['#stW', 'w'], ['#stH', 'h'], ['#stT', 't']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.stock[k]); if (v > 0) S.stock[k] = v; saveSettings(); invalidate(); }));
 // fraise
 $('#toolSel').addEventListener('change', e => { S.toolIdx = +e.target.value; saveSettings(); refreshTools(); offerVConvert(); invalidate(); });
