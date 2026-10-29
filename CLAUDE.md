@@ -10,7 +10,7 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 - Sécurité machine : ne jamais émettre de mouvement sans Z de dégagement, garder la liste de vérification avant gravure, arrêter le flux sur toute `error:` ou `ALARM:` pendant une gravure.
 
 ## Architecture (sections du script, dans l'ordre)
-1. **Réglages persistants** — `S` (machine, brut, fraises, attaches, sens, origine) dans `localStorage` clé `atelier-cnc-v1`. Fraises : `{name, type:'flat'|'v', d, angle, tip, feed, plunge, doc, so}`.
+1. **Réglages persistants** — `S` (machine, brut, fraises, attaches, sens, origine) dans `localStorage` clé `atelier-cnc-v1`. Le dessin en cours (SVG, placement, usinages) est sauvegardé automatiquement sous `atelier-cnc-projet` à chaque `invalidate()` et restauré au démarrage. Fraises : `{name, type:'flat'|'v', d, angle, tip, feed, plunge, doc, so}`.
 2. **Import SVG** — `importSVG()` : parse le SVG dans un conteneur caché, cumule les `transform` des ancêtres, `parsePathD()` maison (tous les cmd + arcs), discrétisation à 0,02 mm, conversion en mm via viewBox/width/height. Résultat : `shapes[{name, subpaths[{pts, closed}], op, depth}]` en coordonnées SVG (y vers le bas).
 3. **FAO** — `computeCAM()` : `toStockFn()` place/inverse en coordonnées brut (y vers le haut, origine coin avant-gauche). Clipper (échelle 1000) : union pair-impair, offsets ±r, poches par offsets successifs. Orientation des boucles inversée selon conventionnel/avalant. `loopWithTabs()` pour les attaches. Remplissage en V (`vcarveCuts`) : par passe de profondeur L, anneaux de pente tous les `VSTEP` = 0,1 mm jusqu'à o = pointe/2 + L·tan(angle/2) (profondeur (o − pointe/2)/tan), puis fond plat à L. Élagage : un point d'anneau de pente à moins de dr de l'anneau suivant est couvert par le cône suivant (`clipOpen`) ; le dernier anneau de pente reste entier. `test/vcarve.test.js` vérifie entaille et manque de matière sur une grille. Formes ignorées dans `CAM.skipped` (affichées dans la liste). Poches et V : chaque anneau démarre au point le plus proche du précédent (`rotateTo`) et porte sa zone sûre `area` ; `buildGcode` enchaîne dans la matière si le segment reste dans cette zone (`segInArea`), sinon remonte. Groupes ordonnés : on → pocket/vcarve → inside → outside.
 4. **G-code** — `buildGcode()` : coordonnées décalées par `originOff()` (centre ou coin), `moves[]` (pour l'aperçu, en coordonnées brut) et `lineMove[]` (ligne → mouvement, pour la progression).
@@ -23,7 +23,6 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 ## Pistes suivantes (analyse du 2026-10-29, par priorité)
 **1. Fiabilité**
 - Découper la source en fichiers (import SVG, FAO, G-code, machine, interface) assemblés par `build.js` en une seule page.
-- Sauvegarde automatique du projet (recharger la page perd le dessin non enregistré).
 - Étendre les tests à assertions (offsets, attaches, G-code).
 
 **2. Se rapprocher d'Easel**

@@ -906,7 +906,23 @@ function refreshPlace() {
   const s = D.place.s / 100; $('#dSize').textContent = `${f3((D.bb.x1 - D.bb.x0) * s)} × ${f3((D.bb.y1 - D.bb.y0) * s)} mm`;
 }
 let camTimer = null;
-function invalidate() { clearTimeout(camTimer); camTimer = setTimeout(recompute, 120); refreshPlace(); draw(); }
+function invalidate() { clearTimeout(camTimer); camTimer = setTimeout(recompute, 120); refreshPlace(); draw(); scheduleAutosave(); }
+// Sauvegarde automatique du dessin en cours (les réglages ont leur propre clé) : rechargé au démarrage
+const AUTOSAVE = 'atelier-cnc-projet';
+let saveTimer = null, autosaveFailed = false;
+function scheduleAutosave() { clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 500); }
+function autosave() {
+  if (!D) return;
+  try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
+  catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
+}
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth })) }; }
+function restoreAutosave() {
+  let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
+  if (!p || !p.svg) return;
+  try { loadDesign(p.svg, p.name, p); log('Dessin restauré : ' + p.name + '.', 'msg'); }
+  catch (e) { localStorage.removeItem(AUTOSAVE); log('Dessin sauvegardé illisible, ignoré : ' + e.message, 'err'); }
+}
 function recompute() {
   if (job) return;
   const warns = [];
@@ -976,7 +992,7 @@ $('#fSvg').addEventListener('change', async e => { const f = e.target.files[0]; 
 async function openSvgFile(f) { try { loadDesign(await f.text(), f.name); } catch (err) { alert(err.message); } }
 $('#bSave').onclick = () => {
   if (!D) return alert('Rien à enregistrer : importe d\'abord un SVG.');
-  const data = { app: 'atelier-cnc', v: 1, name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth })), stock: S.stock, tool: tool(), tabs: S.tabs, climb: S.climb, origin: S.origin };
+  const data = { app: 'atelier-cnc', v: 1, ...designData(), stock: S.stock, tool: tool(), tabs: S.tabs, climb: S.climb, origin: S.origin };
   download(D.name.replace(/\.svg$/i, '') + '.cnc.json', JSON.stringify(data), 'application/json');
 };
 $('#bOpen').onclick = () => $('#fProj').click();
@@ -1216,7 +1232,8 @@ new ResizeObserver(resize).observe(cv);
 refreshAll(); updateButtons();
 setTimeout(fitView, 0);
 log('Atelier CNC prêt. Importe un SVG, choisis les usinages, puis connecte la machine.', 'msg');
-window.__atelier = { get G() { return G; }, get D() { return D; }, get CAM() { return CAM; }, get job() { return job; }, machine, S, loadDesign, recompute, computeCAM };
+restoreAutosave();
+window.__atelier = { get G() { return G; }, get D() { return D; }, autosave, get CAM() { return CAM; }, get job() { return job; }, machine, S, loadDesign, recompute, computeCAM };
 </script>
 </body>
 </html>

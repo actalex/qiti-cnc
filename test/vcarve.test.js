@@ -103,6 +103,12 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
   const lst = await p.$$eval('#shapeList small', e => e.map(x => x.textContent));
   assert.ok(!lst.some(t => t.includes('ignorée')), 'liste sans forme ignorée : ' + lst);
 
+  // Sauvegarde automatique : placement et usinages retrouvés après rechargement de la page
+  await p.fill('#pX', '12'); await p.dispatchEvent('#pX', 'change'); await p.waitForTimeout(800);
+  await p.reload(); await p.waitForTimeout(400);
+  const back = await p.evaluate(() => { const D = window.__atelier.D; return D && { name: D.name, x: D.place.x, ops: D.shapes.map(s => s.op) }; });
+  assert.deepStrictEqual(back, { name: 'vcarve.svg', x: 12, ops: ['vcarve', 'on', 'none'] });
+
   assert.deepStrictEqual(errs, []);
   console.log('vcarve : OK');
   await b.close();
