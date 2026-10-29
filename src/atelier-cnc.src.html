@@ -77,6 +77,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
 <body>
 <header>
   <h1>Atelier CNC</h1>
+  <button id="bNew" title="Fermer le dessin en cours (les réglages sont conservés)">Nouveau</button>
   <button id="bImport">Importer un SVG</button>
   <button id="bOpen">Ouvrir un projet</button>
   <button id="bSave">Enregistrer le projet</button>
@@ -795,6 +796,16 @@ $$('#viewbar [data-v]').forEach(b => b.onclick = () => { viewMode = b.dataset.v;
 $('#bFit').onclick = fitView;
 // fichiers
 $('#bImport').onclick = () => $('#fSvg').click();
+// Nouveau : ferme le dessin et oublie la sauvegarde automatique ; machine, fraises et matériau restent
+$('#bNew').onclick = () => {
+  if (!D || job) return;
+  if (!confirm(`Fermer « ${D.name} » et repartir d'une page vide ?
+
+Les réglages (machine, fraises, matériau) sont conservés. Pour garder ce dessin, annule et utilise « Enregistrer le projet ».`)) return;
+  clearTimeout(saveTimer); localStorage.removeItem(AUTOSAVE);
+  D = null; sel = new Set(); stepIdx = 0; $('#designName').textContent = '';
+  refreshAll(); log('Nouveau dessin : page vide.', 'msg');
+};
 $('#fSvg').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) openSvgFile(f); });
 async function openSvgFile(f) { try { loadDesign(await f.text(), f.name); } catch (err) { alert(err.message); } }
 $('#bSave').onclick = () => {
@@ -953,15 +964,20 @@ async function connect() {
   if (machine.port) return disconnect();
   if (!('serial' in navigator)) return alert('Web Serial indisponible : ouvre la page dans Chrome ou Edge, via http://localhost.');
   try {
-    const port = await navigator.serial.requestPort();
-    await port.open({ baudRate: +S.machine.baud || 115200 });
+    const port = await navigator.serial.requestPort(), opts = { baudRate: +S.machine.baud || 115200 };
+    try { await port.open(opts); }
+    catch (e) { if (e.name !== 'InvalidStateError') throw e; await port.close(); await port.open(opts); } // resté ouvert par cette page : on le rouvre
     machine.port = port; machine.writer = port.writable.getWriter(); machine.queue = []; machine.inflight = []; machine.used = 0; machine.settingsAsked = false; machine.grbl = {}; machine.noted = {};
     log('Port ouvert à ' + S.machine.baud + ' bauds.', 'msg');
     readLoop();
     setTimeout(() => { writeRaw('\r\n\r\n'); rt(0x3f); }, 1500);
     machine.poll = setInterval(() => rt(0x3f), 250);
     $('#bConnect').textContent = 'Déconnecter'; $('#bConnect').classList.remove('pri');
-  } catch (e) { if (e.name !== 'NotFoundError') { log('Connexion impossible : ' + e.message, 'err'); alert('Connexion impossible : ' + e.message); } }
+  } catch (e) {
+    if (e.name === 'NotFoundError') return; // fenêtre de choix fermée sans port
+    const why = e.name === 'NetworkError' || /open/i.test(e.message) ? 'Le port est sans doute utilisé par un autre programme : ferme les autres onglets de l\'Atelier, Easel Driver, UGS, LightBurn, Candle…, ou débranche et rebranche le câble USB.' : '';
+    log('Connexion impossible : ' + e.message + (why ? ' ' + why : ''), 'err'); alert('Connexion impossible : ' + e.message + (why ? '\n\n' + why : ''));
+  }
 }
 async function disconnect() {
   if (job) { if (!confirm('Une gravure est en cours. Arrêter et déconnecter ?')) return; stopJob(); }

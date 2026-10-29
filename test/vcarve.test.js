@@ -203,6 +203,15 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm"
   assert.deepStrictEqual(cap, { f3: [750, 200], v: [700, 200], log: true });
   await p.evaluate(() => { delete window.__atelier.S.machine.plan; });
 
+  // Nouveau : refus = dessin gardé ; acceptation = page vide, y compris après rechargement (sauvegarde oubliée)
+  p.once('dialog', d => d.dismiss()); await p.click('#bNew'); await p.waitForTimeout(200);
+  assert.ok(await p.evaluate(() => !!window.__atelier.D), 'refus : dessin gardé');
+  p.once('dialog', d => d.accept()); await p.click('#bNew'); await p.waitForTimeout(800);
+  const vide = async () => p.evaluate(() => ({ D: window.__atelier.D, G: window.__atelier.G, name: $('#designName').textContent, t: $('#iTime').textContent }));
+  assert.deepStrictEqual(await vide(), { D: null, G: null, name: '', t: '—' });
+  await p.reload(); await p.waitForTimeout(400);
+  assert.deepStrictEqual(await vide(), { D: null, G: null, name: '', t: '—' });
+
   assert.deepStrictEqual(errs, []);
   console.log('vcarve : OK');
   await b.close();
