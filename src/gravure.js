@@ -18,8 +18,15 @@ function updateButtons() {
 $('#bCarve').onclick = () => {
   if (!G) return;
   const T = G.tool, warns = $('#warns').textContent;
-  $('#cZ').textContent = stepIdx > 0 ? 'Le zéro Z est refait avec cette fraise, et le zéro X/Y n\'a pas bougé depuis l\'étape 1.' : 'Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).';
+  $('#cZ').textContent = stepIdx > 0 ? 'Le zéro Z est refait avec cette fraise, et le zéro X/Y n\'a pas bougé depuis l\'étape 1.' : 'Le zéro Z est fait sur le dessus du matériau (papier ou plaque de sonde retirés).';
   $('#cSummary').innerHTML = (PLAN.length > 1 ? `<b>Étape ${stepIdx + 1}/${PLAN.length}</b> · ` : '') + `Durée estimée <b>${fmtTime(G.time)}</b> · profondeur max <b>${f3(-G.zMin)} mm</b> · ${G.lines.length.toLocaleString('fr')} lignes`;
+  // zéros à refaire après un démarrage de la carte (pas de homing) ; Z à refaire après chaque changement de fraise
+  const miss = [...'XYZ'].filter(a => !machine.zeroed[a]), alerts = [];
+  if (miss.length) alerts.push(`Zéro ${miss.join(', ')} pas refait depuis le démarrage de la carte${stepIdx > 0 && miss.includes('Z') && miss.length === 1 ? ' ou le changement de fraise' : ''} : sans homing, l'ancien zéro ne vaut plus.`);
+  const deep = -G.zMin - S.stock.t;
+  if (!SURF && deep > 1e-6) alerts.push(`La fraise descend ${f3(deep)} mm sous le brut, dans la table.`);
+  $('#cAlert').textContent = alerts.join(' ');
+  $('#cClamp').textContent = `Les brides et vis sont plus basses que la hauteur de dégagement (${f3(S.machine.safeZ)} mm au-dessus du brut).`;
   $('#cWarn').textContent = warns; $('#cTool').textContent = `La fraise « ${T.name} » (${isV(T) ? 'en V ' + T.angle + '°' : 'Ø ' + T.d + ' mm'}) est installée.`;
   $('#cOrigin').textContent = S.origin === 'center' ? 'Le zéro X/Y est placé au centre du brut.' : 'Le zéro X/Y est placé au coin avant-gauche du brut.';
   $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').disabled = true;
@@ -36,7 +43,7 @@ function startJob() {
   job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), pause: null, retracts, step: stepIdx };
   refreshSteps();
   $('#job').classList.remove('hide'); refreshPauseBtn();
-  log('Gravure lancée (' + job.total + ' lignes).', 'msg');
+  log('Gravure lancée (' + job.total + ' lignes).', 'msg'); keepAwake(true);
   feedJob(); pump(); updateButtons();
 }
 function updateJobUI() {
@@ -111,11 +118,19 @@ function finishJob() {
   const k = job.step, t = fmtTime((Date.now() - job.t0) / 1000);
   if (k >= PLAN.length - 1) return endJob(PLAN.length > 1 ? `Dernière étape terminée en ${t}.` : `Gravure terminée en ${t}.`);
   stepIdx = k + 1;
+  machine.zeroed.Z = false; // nouvelle fraise : son zéro Z est à refaire
   endJob(`Étape ${k + 1} terminée en ${t}. Installe « ${PLAN[k + 1].tool.name} », refais le zéro Z (sans toucher au zéro X/Y), puis lance l'étape ${k + 2}.`);
 }
 function endJob(msg) {
-  if (!job) return; job = null; log(msg, 'msg');
+  if (!job) return; job = null; log(msg, 'msg'); keepAwake(false);
   $('#job').classList.add('hide'); updateButtons(); recompute();
 }
+// écran (et donc PC) maintenu éveillé pendant une gravure : une mise en veille couperait l'envoi, broche allumée
+let wakeLock = null;
+async function keepAwake(on) {
+  try { if (on && !wakeLock && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; } }
+  catch (e) { if (on) log('Impossible d\'empêcher la mise en veille : désactive-la le temps de la gravure.', 'msg'); }
+}
+document.addEventListener('visibilitychange', () => { if (job && document.visibilityState === 'visible') keepAwake(true); }); // perdu quand l'onglet est caché
 window.addEventListener('beforeunload', e => { if (job) { e.preventDefault(); e.returnValue = ''; } });
 

@@ -206,7 +206,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     </div>
     <div class="row" style="margin-top:6px">
       <button id="bZeroXY" style="flex:1">Zéro XY ici</button>
-      <button id="bZeroZ" style="flex:1" title="Descends la pointe jusqu'à toucher le dessus du bois (ou à pincer une feuille de papier glissée dessous), puis clique">Zéro Z ici</button>
+      <button id="bZeroZ" style="flex:1" title="Glisse une feuille de papier sur le brut, descends la fraise (pas de 0,1) jusqu'à la pincer légèrement, puis clique : Z = épaisseur du papier et la fraise remonte pour le retirer">Zéro Z ici (papier)</button>
     </div>
     <div class="row">
       <button id="bGoZero" style="flex:1">Aller à X0 Y0</button>
@@ -255,6 +255,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row"><label>Temporisation démarrage broche (s)</label><input type="number" id="mDwell" step="0.5" min="0"></div>
     <div class="row"><label>Vitesse rapide pour l'estimation (mm/min)</label><input type="number" id="mRapid" step="100"></div>
     <div class="row"><label>Vitesse de jog (mm/min)</label><input type="number" id="mJog" step="100"></div>
+    <div class="row"><label>Épaisseur du papier, zéro Z manuel (mm)</label><input type="number" id="mPaper" step="0.01" min="0"></div>
     <div class="row"><label>Épaisseur de la plaque de sonde (mm)</label><input type="number" id="mProbe" step="0.05"></div>
     <div class="row"><label>Course max de la sonde (mm)</label><input type="number" id="mProbeDist" step="1"></div>
     <p class="note">Mesure l'épaisseur de ta plaque au pied à coulisse. Avec 0, le zéro Z sera placé au contact de la plaque.</p>
@@ -295,11 +296,13 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
   <div class="hd">Avant de lancer la gravure</div>
   <div class="bd">
     <div id="cSummary" class="note" style="margin-bottom:8px"></div>
+    <div id="cAlert" style="color:#c0392b;font-weight:600;margin-bottom:8px"></div>
     <div id="cWarn" style="color:var(--warn);margin-bottom:8px"></div>
     <label class="check"><input type="checkbox"> <span>Le matériau est fixé solidement sur la table.</span></label>
     <label class="check"><input type="checkbox"> <span id="cTool">La bonne fraise est installée.</span></label>
     <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
-    <label class="check"><input type="checkbox"> <span id="cZ">Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).</span></label>
+    <label class="check"><input type="checkbox"> <span id="cZ">Le zéro Z est fait sur le dessus du matériau (papier ou plaque de sonde retirés).</span></label>
+    <label class="check"><input type="checkbox"> <span id="cClamp">Les brides sont plus basses que la hauteur de dégagement.</span></label>
     <label class="check"><input type="checkbox"> <span>La vitesse de broche est réglée sur le variateur.</span></label>
     <label class="check"><input type="checkbox"> <span>Lunettes, protection auditive et aspiration en place.</span></label>
   </div>
@@ -380,7 +383,7 @@ function loadDesign(text, name, saved) {
     if (saved.place) D.place = saved.place;
   } else centerDesign();
   sel = new Set();
-  warns.forEach(w => log(w, 'msg'));
+  if (!(saved && saved.quiet)) warns.forEach(w => log(w, 'msg')); // réimport « page = brut » : déjà signalé
   $('#designName').textContent = name;
   refreshAll(); fitView(); resetHistory();
 }

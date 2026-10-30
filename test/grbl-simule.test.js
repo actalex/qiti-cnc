@@ -31,7 +31,8 @@ const launch = require('./navigateur');
       } }),
       async close() {}
     };
-    Object.defineProperty(navigator, 'serial', { value: { requestPort: async () => port, addEventListener() {} } });
+    window.__port = port;
+    Object.defineProperty(navigator, 'serial', { value: { requestPort: async () => port, addEventListener(t, f) { if (t === 'disconnect') window.__unplug = f; } } });
   });
   await p.goto('file://' + __dirname + '/../dist/atelier-cnc.html');
   await p.setInputFiles('#fSvg', __dirname + '/exemple.svg');
@@ -57,11 +58,15 @@ const launch = require('./navigateur');
   if (reg.m.w !== 450 || reg.m.h !== 455 || reg.m.rapid !== 3000 || !reg.m.plan || reg.m.plan.acc[2] !== 50 || !reg.log.includes('Réglages de la carte appliqués') || reg.log.includes('$120=') || !reg.log.includes('(USB 1a86:7523)') || reg.log.includes('Aucune réponse') || !(await p.$eval('#bHome', b => b.disabled))) { console.error('ÉCHEC réglages'); process.exitCode = 1; }
   await p.fill('#cmd', '$BAD'); await p.press('#cmd','Enter'); await p.waitForTimeout(200);
   await p.click('[data-jog="X+"]'); await p.waitForTimeout(100);
-  // zéro Z manuel : G10 L20 P1 Z0, avec le rappel de remonter avant de bouger en XY
   await p.click('#bZeroZ'); await p.waitForTimeout(200);
-  const z0 = await p.evaluate(() => ({ sent: __grbl.rx.includes('G10 L20 P1 Z0'), log: $('#log').innerText.includes('Remonte (Z+)') }));
+  // zéro Z au papier : Z = 0,1 (épaisseur du papier), puis remontée à la hauteur de sécurité pour le retirer
+  const z0 = await p.evaluate(() => { const rx = __grbl.rx, k = rx.indexOf('G10 L20 P1 Z0.1'); return { sent: k >= 0 && rx[k + 1] === 'G90 G0 Z5', log: $('#log').innerText.includes('retire le papier') }; });
   if (!z0.sent || !z0.log) { console.error('ÉCHEC zéro Z', z0); process.exitCode = 1; }
-  await p.click('#bCarve'); for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
+  await p.waitForTimeout(500); // la remontée met la machine en mouvement : attendre qu'elle soit prête
+  await p.click('#bCarve');
+  const al1 = await p.textContent('#cAlert'); // seul le zéro Z a été fait
+  if (!al1.includes('Zéro X, Y pas refait')) { console.error('ÉCHEC alerte zéros', al1); process.exitCode = 1; }
+  for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
   await p.click('#cGo');
   await p.waitForTimeout(1500); await p.screenshot({ path: __dirname + '/shot-run.png' });
   for (let k=0;k<60;k++){ const j = await p.evaluate(()=>!!window.__atelier.job); if(!j) break; await p.waitForTimeout(500); }
@@ -121,5 +126,18 @@ const launch = require('./navigateur');
   const al = await p.evaluate(n => ({ jogs: __grbl.rx.slice(n).filter(l => l.startsWith('$J')).length, msgs: $('#log').innerText.split('\n').filter(l => l.includes('machine en alarme')).length, err8: $('#log').innerText.includes('error:8'), btn: document.querySelector('[data-jog]').disabled }), nRx);
   console.log('alarme :', al);
   if (al.jogs || al.msgs !== 1 || al.err8 || !al.btn) { console.error('ÉCHEC jog en alarme'); process.exitCode = 1; }
+  // mode laser lu sur la carte : avertissement
+  const laser = await p.evaluate(() => { window.__atelier.machine.grbl[32] = 1; applyGrblSettings(); return $('#log').innerText.includes('Mode laser actif'); });
+  if (!laser) { console.error('ÉCHEC mode laser'); process.exitCode = 1; }
+  // câble débranché pendant une gravure : fin de la gravure et alerte « broche peut-être encore allumée »
+  await p.evaluate(() => { __grbl.s = 'Idle'; }); await p.waitForTimeout(400); // le test précédent l'a laissée en alarme
+  await p.click('#bZeroXY'); await p.click('#bZeroZ'); await p.waitForTimeout(600);
+  await p.click('#bCarve'); for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
+  await p.click('#cGo'); await p.waitForTimeout(400);
+  let alertMsg = ''; p.once('dialog', d => { alertMsg = d.message(); d.accept(); });
+  await p.evaluate(() => window.__unplug({ target: window.__port })); await p.waitForTimeout(500);
+  const un = await p.evaluate(() => ({ job: !!window.__atelier.job, state: $('#state').textContent }));
+  console.log('débranché :', un, alertMsg.split('\n')[0]);
+  if (un.job || !alertMsg.includes('broche tourne peut-être encore') || un.state !== 'déconnectée') { console.error('ÉCHEC débranchement'); process.exitCode = 1; }
   await b.close();
 })();

@@ -319,7 +319,7 @@ function buildGcode(step) {
   push(`; Atelier CNC — ${step.title || (D ? D.name : '')} — ${T.name} (Ø${T.d} mm)`);
   push(`; Brut ${S.stock.w} x ${S.stock.h} x ${S.stock.t} mm — origine X0 Y0 ${S.origin === 'center' ? 'au centre du brut' : 'au coin avant-gauche'}, Z0 dessus du brut`);
   if (isV(T)) push(`; Fraise en V ${T.angle}°, pointe ${T.tip} mm`);
-  push('G21 G90 G17 G94');
+  push('G21 G90 G17 G94 G54'); // mm, absolu, plan XY, avance par minute, repère de travail G54 (celui des zéros)
   push(`G0 Z${f3(safe)}`);
   push(`M3 S${Math.round(m.spindleS)}`);
   if (m.dwell > 0) { push(`G4 P${m.dwell}`); time += m.dwell; }

@@ -70,12 +70,15 @@ function relire(lines, safe) {
   const r = data.flat.d / 2, eps = 0.02, all = {};
   for (const st of data.steps) {
     const { moves, bad } = relire(st.lines, data.safe);
+    assert.ok(st.lines.some(l => /^G21 G90 G17 G94 G54\b/.test(l)), 'en-tête : mm, absolu, repère G54');
     assert.deepStrictEqual(bad, [], `${st.tool} : sécurité`);
     const T = st.type === 'v' ? data.v : data.flat;
     // Avances : jamais au-dessus de celles de la fraise ; descente pure en Z dans la matière à la vitesse de plongée
     for (const m of moves) if (m.g === 1) {
       assert.ok(m.f <= T.feed + 1e-9, `ligne ${m.line} : avance ${m.f} > ${T.feed}`);
       if (m.x === m.x0 && m.y === m.y0 && m.z < m.z0 && m.z < 0) assert.ok(m.f <= T.plunge + 1e-9, `ligne ${m.line} : plongée à ${m.f}`);
+      // toute descente dans la matière (verticale, rampe, liaison) : vitesse en Z ≤ vitesse de plongée
+      if (m.z < m.z0 && m.z < 0) { const L = Math.hypot(m.x - m.x0, m.y - m.y0, m.z - m.z0); assert.ok(m.f * (m.z0 - m.z) / L <= T.plunge + 1e-6, `ligne ${m.line} : descente en Z à ${(m.f * (m.z0 - m.z) / L).toFixed(1)} mm/min`); }
     }
     // Profondeur par passe : dans une forme, jamais plus d'une passe sous le plus profond déjà coupé
     let deepest = 0, shape = '';
@@ -192,6 +195,11 @@ function relire(lines, safe) {
     const ops = { plaque: ['outside', 6], trou: ['inside', 3], poche: ['pocket', 2], trait: ['on', 0.5], etoile: ['vcarve', 3] };
     A.D.shapes.forEach(s => { const o = ops[s.name]; s.op = o[0]; s.depth = o[1]; s.tool = s.name === 'etoile' ? v.id : flat.id; s.clear = s.name === 'etoile' ? flat.id : ''; }); A.recompute(); }, SVG);
 
+  // Liste de vérification : profondeur sous le brut (dans la table) et zéros non faits depuis le démarrage de la carte
+  const chk = await p.evaluate(() => { const A = window.__atelier, po = A.D.shapes.find(s => s.name === 'poche'); po.depth = 7; A.recompute();
+    $('#bCarve').onclick(); const t = $('#cAlert').textContent; $('#dlgCarve').close(); po.depth = 2; A.recompute(); return t; });
+  console.log('vérification :', chk);
+  assert.ok(chk.includes('1 mm sous le brut') && chk.includes('Zéro X, Y, Z pas refait'));
   // Surfaçage : zone 50 × 30 à partir de (10, 5), 1,5 mm (2 passes) ; G-code sûr, zone entièrement à −1,5 bords compris,
   // rien au-delà du rayon de la fraise ; « Quitter » rend le plan du dessin
   await p.click('#bSurf');

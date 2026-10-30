@@ -206,7 +206,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     </div>
     <div class="row" style="margin-top:6px">
       <button id="bZeroXY" style="flex:1">Zéro XY ici</button>
-      <button id="bZeroZ" style="flex:1" title="Descends la pointe jusqu'à toucher le dessus du bois (ou à pincer une feuille de papier glissée dessous), puis clique">Zéro Z ici</button>
+      <button id="bZeroZ" style="flex:1" title="Glisse une feuille de papier sur le brut, descends la fraise (pas de 0,1) jusqu'à la pincer légèrement, puis clique : Z = épaisseur du papier et la fraise remonte pour le retirer">Zéro Z ici (papier)</button>
     </div>
     <div class="row">
       <button id="bGoZero" style="flex:1">Aller à X0 Y0</button>
@@ -255,6 +255,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row"><label>Temporisation démarrage broche (s)</label><input type="number" id="mDwell" step="0.5" min="0"></div>
     <div class="row"><label>Vitesse rapide pour l'estimation (mm/min)</label><input type="number" id="mRapid" step="100"></div>
     <div class="row"><label>Vitesse de jog (mm/min)</label><input type="number" id="mJog" step="100"></div>
+    <div class="row"><label>Épaisseur du papier, zéro Z manuel (mm)</label><input type="number" id="mPaper" step="0.01" min="0"></div>
     <div class="row"><label>Épaisseur de la plaque de sonde (mm)</label><input type="number" id="mProbe" step="0.05"></div>
     <div class="row"><label>Course max de la sonde (mm)</label><input type="number" id="mProbeDist" step="1"></div>
     <p class="note">Mesure l'épaisseur de ta plaque au pied à coulisse. Avec 0, le zéro Z sera placé au contact de la plaque.</p>
@@ -295,11 +296,13 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
   <div class="hd">Avant de lancer la gravure</div>
   <div class="bd">
     <div id="cSummary" class="note" style="margin-bottom:8px"></div>
+    <div id="cAlert" style="color:#c0392b;font-weight:600;margin-bottom:8px"></div>
     <div id="cWarn" style="color:var(--warn);margin-bottom:8px"></div>
     <label class="check"><input type="checkbox"> <span>Le matériau est fixé solidement sur la table.</span></label>
     <label class="check"><input type="checkbox"> <span id="cTool">La bonne fraise est installée.</span></label>
     <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
-    <label class="check"><input type="checkbox"> <span id="cZ">Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).</span></label>
+    <label class="check"><input type="checkbox"> <span id="cZ">Le zéro Z est fait sur le dessus du matériau (papier ou plaque de sonde retirés).</span></label>
+    <label class="check"><input type="checkbox"> <span id="cClamp">Les brides sont plus basses que la hauteur de dégagement.</span></label>
     <label class="check"><input type="checkbox"> <span>La vitesse de broche est réglée sur le variateur.</span></label>
     <label class="check"><input type="checkbox"> <span>Lunettes, protection auditive et aspiration en place.</span></label>
   </div>
@@ -539,7 +542,7 @@ function loadDesign(text, name, saved) {
     if (saved.place) D.place = saved.place;
   } else centerDesign();
   sel = new Set();
-  warns.forEach(w => log(w, 'msg'));
+  if (!(saved && saved.quiet)) warns.forEach(w => log(w, 'msg')); // réimport « page = brut » : déjà signalé
   $('#designName').textContent = name;
   refreshAll(); fitView(); resetHistory();
 }
@@ -993,7 +996,7 @@ function buildGcode(step) {
   push(`; Atelier CNC — ${step.title || (D ? D.name : '')} — ${T.name} (Ø${T.d} mm)`);
   push(`; Brut ${S.stock.w} x ${S.stock.h} x ${S.stock.t} mm — origine X0 Y0 ${S.origin === 'center' ? 'au centre du brut' : 'au coin avant-gauche'}, Z0 dessus du brut`);
   if (isV(T)) push(`; Fraise en V ${T.angle}°, pointe ${T.tip} mm`);
-  push('G21 G90 G17 G94');
+  push('G21 G90 G17 G94 G54'); // mm, absolu, plan XY, avance par minute, repère de travail G54 (celui des zéros)
   push(`G0 Z${f3(safe)}`);
   push(`M3 S${Math.round(m.spindleS)}`);
   if (m.dwell > 0) { push(`G4 P${m.dwell}`); time += m.dwell; }
@@ -1495,7 +1498,7 @@ async function openSvgFile(f) {
   const r = await askImport();
   if (r.page) { // brut = page, puis réimport limité à la page et placé comme dessus
     S.stock.w = +f3(D.page.w); S.stock.h = +f3(D.page.h); saveSettings();
-    try { loadDesign(text, f.name, { pageOnly: true }); } catch (err) { return alert(err.message); }
+    try { loadDesign(text, f.name, { pageOnly: true, quiet: true }); } catch (err) { return alert(err.message); }
   }
   if (r.colors) applyColors();
   if (r.page || r.colors) { refreshAll(); fitView(); resetHistory(); }
@@ -1547,7 +1550,7 @@ center.addEventListener('dragover', e => { e.preventDefault(); $('#drop').style.
 center.addEventListener('dragleave', e => { if (e.target === center || e.target === cv) $('#drop').style.display = 'none'; });
 center.addEventListener('drop', e => { e.preventDefault(); $('#drop').style.display = 'none'; const f = e.dataTransfer.files[0]; if (f) openSvgFile(f); });
 // réglages machine
-const MF = [['#mName', 'name', 's'], ['#mW', 'w'], ['#mH', 'h'], ['#mZ', 'z'], ['#mBaud', 'baud'], ['#mSafe', 'safeZ'], ['#mS', 'spindleS'], ['#mDwell', 'dwell'], ['#mRapid', 'rapid'], ['#mJog', 'jogFeed'], ['#mProbe', 'probeT'], ['#mProbeDist', 'probeDist']];
+const MF = [['#mName', 'name', 's'], ['#mW', 'w'], ['#mH', 'h'], ['#mZ', 'z'], ['#mBaud', 'baud'], ['#mSafe', 'safeZ'], ['#mS', 'spindleS'], ['#mDwell', 'dwell'], ['#mRapid', 'rapid'], ['#mJog', 'jogFeed'], ['#mPaper', 'paperT'], ['#mProbe', 'probeT'], ['#mProbeDist', 'probeDist']];
 $('#bMachine').onclick = () => { MF.forEach(([id, k]) => $(id).value = S.machine[k]); $('#dlgMachine').showModal(); };
 $('#mCancel').onclick = () => $('#dlgMachine').close();
 $('#mOk').onclick = () => { MF.forEach(([id, k, t]) => { if (t === 's') S.machine[k] = $(id).value; else { const v = parseFloat($(id).value); if (isFinite(v) && v >= 0) S.machine[k] = v; } }); saveSettings(); $('#dlgMachine').close(); invalidate(); };
@@ -1728,13 +1731,20 @@ $('#surfQuit').onclick = () => { if (!job) setSurf(false); };
 const RX_BUF = 127;
 const ALARMS = { 1: 'fin de course matériel déclenché', 2: 'déplacement hors limites logicielles', 3: 'reset pendant un mouvement : position perdue, refais l\'origine', 4: 'sonde déjà en contact au départ', 5: 'la sonde n\'a pas touché la plaque', 6: 'homing interrompu', 7: 'porte ouverte pendant le homing', 8: 'homing : impossible de dégager le fin de course', 9: 'homing : fin de course introuvable' };
 const ERRORS = { 1: 'lettre de commande attendue', 2: 'valeur numérique invalide', 3: 'commande $ inconnue', 5: 'homing non activé ($22)', 8: 'commande refusée hors état Idle', 9: 'G-code verrouillé : alarme active (déverrouiller)', 10: 'limites logicielles sans homing', 15: 'jog hors limites', 16: 'commande de jog invalide', 20: 'commande G-code non supportée', 22: 'avance F non définie', 33: 'cible de mouvement invalide', 36: 'mots G-code inutilisés' };
-const machine = { port: null, writer: null, reader: null, state: null, sub: null, stopWait: null, grbl: {}, quietSettings: false, settingsAsked: false, jogWarn: 0, noted: {}, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
+const machine = { port: null, writer: null, reader: null, state: null, sub: null, stopWait: null, zeroed: {}, grbl: {}, quietSettings: false, settingsAsked: false, jogWarn: 0, noted: {}, wpos: null, mpos: null, wco: [0, 0, 0], ov: [100, 100, 100], queue: [], inflight: [], used: 0, wchain: Promise.resolve(), poll: null, onIdle: [] };
 function log(text, cls) { const el = $('#log'), d = document.createElement('div'); if (cls) d.className = cls; d.textContent = text; el.appendChild(d); while (el.childNodes.length > 400) el.firstChild.remove(); el.scrollTop = el.scrollHeight; }
 const enc = new TextEncoder();
 function writeRaw(data) { if (!machine.writer) return; const bytes = typeof data === 'string' ? enc.encode(data) : data; machine.wchain = machine.wchain.then(() => machine.writer.write(bytes)).catch(e => { if (!machine.writeErr) log('Écriture impossible : ' + e.message + ' (le port ne répond plus : déconnecte).', 'err'); machine.writeErr = true; }); }
 function rt(byte) { writeRaw(new Uint8Array([byte])); }
 function cleanLine(l) { return l.replace(/\(.*?\)/g, '').replace(/;.*$/, '').trim().toUpperCase(); }
-function sendLines(lines, meta) { for (const l of lines) { const c = cleanLine(l); if (c) machine.queue.push({ line: c, meta, echo: !meta }); } pump(); }
+function sendLines(lines, meta) {
+  for (const l of lines) {
+    const c = cleanLine(l); if (!c) continue;
+    if (/^G10 L20 P1\b/.test(c)) for (const a of 'XYZ') if (c.includes(a)) machine.zeroed[a] = true; // zéro de travail refait (G54)
+    machine.queue.push({ line: c, meta, echo: !meta });
+  }
+  pump();
+}
 function pump() {
   while (machine.queue.length) {
     const q = machine.queue[0], len = q.line.length + 1;
@@ -1790,7 +1800,8 @@ function handleLine(l) {
     // fin de course touché (ex. Z monté jusqu'au contacteur) : marche à suivre ; les pas perdus faussent les zéros
     if (c === 1) log('Clique « Déverrouiller », puis éloigne l\'axe du contacteur par petits pas (ex. Z− si Z était tout en haut). Refais ensuite les zéros : la position a pu glisser.', 'msg');
     if (job) abortJob('Alarme ' + c + ' : ' + (ALARMS[c] || '')); return; }
-  if (/^Grbl/i.test(l)) { machine.queue = []; machine.inflight = []; machine.used = 0; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); readGrblSettings(); return; }
+  // démarrage de la carte : sans homing, les zéros de travail ne valent plus (machine.zeroed)
+  if (/^Grbl/i.test(l)) { machine.queue = []; machine.inflight = []; machine.used = 0; machine.zeroed = {}; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); readGrblSettings(); return; }
   if (/^\$\d+=/.test(l)) { const [k, v] = l.slice(1).split('='); machine.grbl[+k] = parseFloat(v); if (!machine.quietSettings) log(l); return; }
   if (l.startsWith('[PRB:')) { log(l, 'msg'); return; }
   log(l, l.startsWith('[MSG') ? 'msg' : '');
@@ -1826,6 +1837,7 @@ function applyGrblSettings() {
   const note = (k, msg) => { if (!machine.noted[k]) { machine.noted[k] = 1; log(msg, 'msg'); } }; // une fois par connexion, pas à chaque reset
   if (ch.length) log('Réglages de la carte appliqués : ' + ch.join(', ') + '.', 'msg'); else note('read', 'Réglages de la carte lus.');
   if (planChanged && plan) log(`Estimation de durée avec les accélérations de la carte (${plan.acc.join(' / ')} mm/s²).`, 'msg');
+  if (g[32] === 1) log('Mode laser actif sur la carte ($32=1) : la broche s\'arrête ou varie selon les mouvements, dangereux pour une fraiseuse. Remets $32=0.', 'err');
   if (g[22] === 0) note('home', 'Homing désactivé ($22=0) : bouton « Origine » inactif, place les zéros à la main.');
   if (g[20] === 0) note('soft', 'Limites logicielles désactivées ($20=0) : vérifie que le dessin tient dans la course avant de graver.');
   if (ch.length || planChanged) invalidate();
@@ -1870,8 +1882,9 @@ async function connect() {
     log('Connexion impossible : ' + e.message + (why ? ' ' + why : ''), 'err'); alert('Connexion impossible : ' + e.message + (why ? '\n\n' + why : ''));
   }
 }
-async function disconnect() {
-  if (job) { if (!confirm('Une gravure est en cours. Arrêter et déconnecter ?')) return; stopJob(); }
+async function disconnect(lost) {
+  if (job && lost) { endJob('Liaison USB perdue pendant la gravure.'); alert('Liaison USB perdue pendant la gravure.\n\nLa machine finit les mouvements déjà reçus puis s\'arrête, mais la broche tourne peut-être encore : coupe-la à la main. Ensuite, refais les zéros.'); }
+  else if (job) { if (!confirm('Une gravure est en cours. Arrêter et déconnecter ?')) return; stopJob(); }
   if (machine.stopWait) await new Promise(r => { const t = setInterval(() => { if (!machine.stopWait) { clearInterval(t); r(); } }, 100); });
   clearInterval(machine.poll); const port = machine.port; machine.port = null;
   try { await machine.wchain; } catch (e) {}
@@ -1884,7 +1897,7 @@ async function disconnect() {
   $('#bConnect').textContent = 'Connecter (USB)'; $('#bConnect').classList.add('pri');
   updateButtons(); draw();
 }
-if ('serial' in navigator) navigator.serial.addEventListener('disconnect', e => { if (machine.port && e.target === machine.port) { log('La machine a été débranchée.', 'err'); disconnect(); } });
+if ('serial' in navigator) navigator.serial.addEventListener('disconnect', e => { if (machine.port && e.target === machine.port) { log('La machine a été débranchée.', 'err'); disconnect(true); } });
 else $('#serialBanner').style.display = 'block';
 const FIREFOX = /firefox/i.test(navigator.userAgent);
 if (FIREFOX && 'serial' in navigator) { $('#serialBanner').innerHTML = 'Firefox : la liaison USB avec la CNC n\'y fonctionne pas (port ouvert mais aucune donnée reçue lors des essais). Utilise <b>Edge</b> ou <b>Chrome</b> pour graver ; la FAO et l\'export du G-code fonctionnent ici.'; $('#serialBanner').style.display = 'block'; }
@@ -1911,7 +1924,12 @@ document.addEventListener('keydown', e => {
 $$('[data-zero]').forEach(b => b.onclick = () => sendLines([`G10 L20 P1 ${b.dataset.zero}0`]));
 $('#bZeroXY').onclick = () => sendLines(['G10 L20 P1 X0 Y0']);
 // zéro Z manuel (méthode de la feuille de papier) : la pointe touche le bois, il faut remonter avant tout déplacement XY
-$('#bZeroZ').onclick = () => { sendLines(['G10 L20 P1 Z0']); log('Zéro Z placé à la pointe de la fraise. Remonte (Z+) avant de déplacer en X/Y, sinon la fraise raye le bois.', 'msg'); };
+if (S.machine.paperT == null) S.machine.paperT = 0.1;
+$('#bZeroZ').onclick = () => {
+  const e = +S.machine.paperT || 0;
+  sendLines([`G10 L20 P1 Z${f3(e)}`, `G90 G0 Z${f3(S.machine.safeZ)}`]);
+  log(`Zéro Z fait${e ? ` (papier de ${f3(e)} mm déduit)` : ''} ; fraise remontée à ${f3(S.machine.safeZ)} mm : retire le papier.`, 'msg');
+};
 $('#bGoZero').onclick = () => { const z = machine.wpos && machine.wpos[2] < S.machine.safeZ ? [`G90 G0 Z${f3(S.machine.safeZ)}`] : []; sendLines([...z, 'G90 G0 X0 Y0']); };
 $('#bProbe').onclick = () => {
   if (!confirm(`Place la plaque de sonde sous la fraise et connecte la pince.\nLa fraise va descendre lentement jusqu'à ${S.machine.probeDist} mm.\n\nÉpaisseur de plaque utilisée : ${S.machine.probeT} mm.`)) return;
@@ -1942,8 +1960,15 @@ function updateButtons() {
 $('#bCarve').onclick = () => {
   if (!G) return;
   const T = G.tool, warns = $('#warns').textContent;
-  $('#cZ').textContent = stepIdx > 0 ? 'Le zéro Z est refait avec cette fraise, et le zéro X/Y n\'a pas bougé depuis l\'étape 1.' : 'Le zéro Z est fait sur le dessus du matériau (et la plaque de sonde est retirée).';
+  $('#cZ').textContent = stepIdx > 0 ? 'Le zéro Z est refait avec cette fraise, et le zéro X/Y n\'a pas bougé depuis l\'étape 1.' : 'Le zéro Z est fait sur le dessus du matériau (papier ou plaque de sonde retirés).';
   $('#cSummary').innerHTML = (PLAN.length > 1 ? `<b>Étape ${stepIdx + 1}/${PLAN.length}</b> · ` : '') + `Durée estimée <b>${fmtTime(G.time)}</b> · profondeur max <b>${f3(-G.zMin)} mm</b> · ${G.lines.length.toLocaleString('fr')} lignes`;
+  // zéros à refaire après un démarrage de la carte (pas de homing) ; Z à refaire après chaque changement de fraise
+  const miss = [...'XYZ'].filter(a => !machine.zeroed[a]), alerts = [];
+  if (miss.length) alerts.push(`Zéro ${miss.join(', ')} pas refait depuis le démarrage de la carte${stepIdx > 0 && miss.includes('Z') && miss.length === 1 ? ' ou le changement de fraise' : ''} : sans homing, l'ancien zéro ne vaut plus.`);
+  const deep = -G.zMin - S.stock.t;
+  if (!SURF && deep > 1e-6) alerts.push(`La fraise descend ${f3(deep)} mm sous le brut, dans la table.`);
+  $('#cAlert').textContent = alerts.join(' ');
+  $('#cClamp').textContent = `Les brides et vis sont plus basses que la hauteur de dégagement (${f3(S.machine.safeZ)} mm au-dessus du brut).`;
   $('#cWarn').textContent = warns; $('#cTool').textContent = `La fraise « ${T.name} » (${isV(T) ? 'en V ' + T.angle + '°' : 'Ø ' + T.d + ' mm'}) est installée.`;
   $('#cOrigin').textContent = S.origin === 'center' ? 'Le zéro X/Y est placé au centre du brut.' : 'Le zéro X/Y est placé au coin avant-gauche du brut.';
   $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').disabled = true;
@@ -1960,7 +1985,7 @@ function startJob() {
   job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), pause: null, retracts, step: stepIdx };
   refreshSteps();
   $('#job').classList.remove('hide'); refreshPauseBtn();
-  log('Gravure lancée (' + job.total + ' lignes).', 'msg');
+  log('Gravure lancée (' + job.total + ' lignes).', 'msg'); keepAwake(true);
   feedJob(); pump(); updateButtons();
 }
 function updateJobUI() {
@@ -2035,12 +2060,20 @@ function finishJob() {
   const k = job.step, t = fmtTime((Date.now() - job.t0) / 1000);
   if (k >= PLAN.length - 1) return endJob(PLAN.length > 1 ? `Dernière étape terminée en ${t}.` : `Gravure terminée en ${t}.`);
   stepIdx = k + 1;
+  machine.zeroed.Z = false; // nouvelle fraise : son zéro Z est à refaire
   endJob(`Étape ${k + 1} terminée en ${t}. Installe « ${PLAN[k + 1].tool.name} », refais le zéro Z (sans toucher au zéro X/Y), puis lance l'étape ${k + 2}.`);
 }
 function endJob(msg) {
-  if (!job) return; job = null; log(msg, 'msg');
+  if (!job) return; job = null; log(msg, 'msg'); keepAwake(false);
   $('#job').classList.add('hide'); updateButtons(); recompute();
 }
+// écran (et donc PC) maintenu éveillé pendant une gravure : une mise en veille couperait l'envoi, broche allumée
+let wakeLock = null;
+async function keepAwake(on) {
+  try { if (on && !wakeLock && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; } }
+  catch (e) { if (on) log('Impossible d\'empêcher la mise en veille : désactive-la le temps de la gravure.', 'msg'); }
+}
+document.addEventListener('visibilitychange', () => { if (job && document.visibilityState === 'visible') keepAwake(true); }); // perdu quand l'onglet est caché
 window.addEventListener('beforeunload', e => { if (job) { e.preventDefault(); e.returnValue = ''; } });
 
 /* ====================== Démarrage ====================== */

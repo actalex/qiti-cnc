@@ -185,7 +185,7 @@ async function openSvgFile(f) {
   const r = await askImport();
   if (r.page) { // brut = page, puis réimport limité à la page et placé comme dessus
     S.stock.w = +f3(D.page.w); S.stock.h = +f3(D.page.h); saveSettings();
-    try { loadDesign(text, f.name, { pageOnly: true }); } catch (err) { return alert(err.message); }
+    try { loadDesign(text, f.name, { pageOnly: true, quiet: true }); } catch (err) { return alert(err.message); }
   }
   if (r.colors) applyColors();
   if (r.page || r.colors) { refreshAll(); fitView(); resetHistory(); }
@@ -237,7 +237,7 @@ center.addEventListener('dragover', e => { e.preventDefault(); $('#drop').style.
 center.addEventListener('dragleave', e => { if (e.target === center || e.target === cv) $('#drop').style.display = 'none'; });
 center.addEventListener('drop', e => { e.preventDefault(); $('#drop').style.display = 'none'; const f = e.dataTransfer.files[0]; if (f) openSvgFile(f); });
 // réglages machine
-const MF = [['#mName', 'name', 's'], ['#mW', 'w'], ['#mH', 'h'], ['#mZ', 'z'], ['#mBaud', 'baud'], ['#mSafe', 'safeZ'], ['#mS', 'spindleS'], ['#mDwell', 'dwell'], ['#mRapid', 'rapid'], ['#mJog', 'jogFeed'], ['#mProbe', 'probeT'], ['#mProbeDist', 'probeDist']];
+const MF = [['#mName', 'name', 's'], ['#mW', 'w'], ['#mH', 'h'], ['#mZ', 'z'], ['#mBaud', 'baud'], ['#mSafe', 'safeZ'], ['#mS', 'spindleS'], ['#mDwell', 'dwell'], ['#mRapid', 'rapid'], ['#mJog', 'jogFeed'], ['#mPaper', 'paperT'], ['#mProbe', 'probeT'], ['#mProbeDist', 'probeDist']];
 $('#bMachine').onclick = () => { MF.forEach(([id, k]) => $(id).value = S.machine[k]); $('#dlgMachine').showModal(); };
 $('#mCancel').onclick = () => $('#dlgMachine').close();
 $('#mOk').onclick = () => { MF.forEach(([id, k, t]) => { if (t === 's') S.machine[k] = $(id).value; else { const v = parseFloat($(id).value); if (isFinite(v) && v >= 0) S.machine[k] = v; } }); saveSettings(); $('#dlgMachine').close(); invalidate(); };
