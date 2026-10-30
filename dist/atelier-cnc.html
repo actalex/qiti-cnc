@@ -96,7 +96,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
 </header>
 <main>
 <aside id="left">
-  <div class="banner" id="serialBanner">La connexion USB (Web Serial) n'est disponible que dans Chrome ou Edge, avec la page servie en <b>http://localhost</b>. La FAO et l'export du G-code fonctionnent partout.</div>
+  <div class="banner" id="serialBanner">La connexion USB (Web Serial) n'est disponible que dans <b>Chrome ou Edge</b>, avec la page en ligne (<b>actalex.github.io/qiti-cnc</b>) ou servie en http://localhost. La FAO et l'export du G-code fonctionnent partout.</div>
   <section class="box">
     <h2>Matériau</h2>
     <div class="grid3">
@@ -1910,7 +1910,7 @@ function watchSilence(port, afterReset) {
 }
 async function connect() {
   if (machine.port) return disconnect();
-  if (!('serial' in navigator)) return alert('Web Serial indisponible : ouvre la page dans Chrome ou Edge, via http://localhost.');
+  if (!('serial' in navigator)) return alert('Web Serial indisponible : ouvre la page dans Chrome ou Edge (en ligne sur actalex.github.io/qiti-cnc, ou via http://localhost).');
   try {
     const port = await navigator.serial.requestPort(), opts = { baudRate: +S.machine.baud || 115200 };
     try { await port.open(opts); }

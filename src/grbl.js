@@ -132,7 +132,7 @@ function watchSilence(port, afterReset) {
 }
 async function connect() {
   if (machine.port) return disconnect();
-  if (!('serial' in navigator)) return alert('Web Serial indisponible : ouvre la page dans Chrome ou Edge, via http://localhost.');
+  if (!('serial' in navigator)) return alert('Web Serial indisponible : ouvre la page dans Chrome ou Edge (en ligne sur actalex.github.io/qiti-cnc, ou via http://localhost).');
   try {
     const port = await navigator.serial.requestPort(), opts = { baudRate: +S.machine.baud || 115200 };
     try { await port.open(opts); }

@@ -4,11 +4,15 @@
 
 Pensé et testé sur une **TwoTrees TTC450 Pro**, il fonctionne avec toute machine **GRBL 1.1**.
 
-> *English: a self-contained, offline web page that turns SVG drawings into 2.5D toolpaths (contours, pockets, V-carving, tabs, multi-tool jobs) and streams them to a GRBL 1.1 CNC over Web Serial. UI in French. GPL-3.0.*
+> *English: try it at https://actalex.github.io/qiti-cnc/ (Edge or Chrome). A self-contained, offline web page that turns SVG drawings into 2.5D toolpaths (contours, pockets, V-carving, tabs, multi-tool jobs) and streams them to a GRBL 1.1 CNC over Web Serial. UI in French. GPL-3.0.*
 
 Projet indépendant, sans lien avec Inventables (Easel) ni TwoTrees. L'ergonomie s'inspire d'Easel, mais le code est écrit de zéro.
 
 ## Démarrer
+
+**En ligne, sans rien installer : [actalex.github.io/qiti-cnc](https://actalex.github.io/qiti-cnc/)**, à ouvrir dans Edge ou Chrome. La page fonctionne ensuite dans ton navigateur ; tes dessins et réglages ne quittent pas ton ordinateur.
+
+Ou en local :
 
 1. Télécharge le dépôt (bouton *Code › Download ZIP*) ou clone-le.
 2. Sous Windows, double-clique sur `lancer.bat` : il sert `dist/` sur `http://localhost:8000` et ouvre la page. Ailleurs : `python -m http.server 8000 --directory dist`.
