@@ -2,6 +2,9 @@
   "name": "qiti-cnc",
   "version": "0.2.0",
   "description": "Atelier CNC — FAO 2,5D et pilotage GRBL dans le navigateur (page HTML autonome), pour la TwoTrees TTC450 Pro",
+  "license": "GPL-3.0-or-later",
+  "author": "Gatto",
+  "repository": { "type": "git", "url": "https://github.com/actalex/qiti-cnc.git" },
   "private": true,
   "scripts": {
     "build": "node build.js",
