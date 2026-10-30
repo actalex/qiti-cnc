@@ -151,6 +151,47 @@ function relire(lines, safe) {
   assert.ok(added.info.includes('1 placée à la main'));
   assert.strictEqual(removed, 0, 'attache retirée');
 
+  // Passe de finition : ébauche décalée de 0,2 mm, puis un tour à pleine profondeur au contour exact (±r), en avalant
+  // (extérieur horaire, intérieur et poche antihoraire, y vers le haut), sans rampe, après l'ébauche de la même forme
+  const fz = await p.evaluate(() => {
+    const A = window.__atelier; for (const s of A.D.shapes) if (['plaque', 'trou', 'poche'].includes(s.name)) s.finish = true; A.S.climb = false; A.recompute();
+    const area = P => { let a = 0; for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
+    const box = cs => { const P = cs.flatMap(c => c.pts); return [Math.min(...P.map(q => q[0])), Math.min(...P.map(q => q[1])), Math.max(...P.map(q => q[0])), Math.max(...P.map(q => q[1]))]; };
+    const out = {};
+    for (const st of A.CAM.steps) for (const g of st.groups) if (['plaque', 'trou', 'poche'].includes(g.shape.name)) {
+      if (!g.cuts.some(c => c.finish)) { out[g.shape.name] = { none: true, warns: $('#warns').textContent }; continue; }
+      const fin = g.cuts.filter(c => c.finish), rough = g.cuts.filter(c => !c.finish), zmin = Math.min(...rough.flatMap(c => c.pts.map(q => q[2])));
+      out[g.shape.name] = { n: fin.length, last: g.cuts.indexOf(fin[0]) > g.cuts.indexOf(rough[rough.length - 1]), z: fin.map(c => Math.min(...c.pts.map(q => q[2]))),
+        fin: box(fin), rough: box(rough.filter(c => c.pts.some(q => Math.abs(q[2] - zmin) < 1e-6))), sens: Math.sign(area(fin[0].pts)), roughSens: Math.sign(area(rough[0].pts)) };
+    }
+    return { out, steps: A.PLAN.map(P => P.lines), warns: $('#warns').textContent };
+  });
+  console.log('finition (brut) :', JSON.stringify(Object.fromEntries(Object.entries(fz.out).map(([k, v]) => [k, v.none ? v : v.n]))));
+  fz.steps.forEach(L => assert.deepStrictEqual(relire(L, data.safe).bad, [], 'finition : sécurité'));
+  for (const [n, d, grow0, sens] of [['plaque', 6, r, -1], ['trou', 3, -r, 1], ['poche', 2, -r, 1]]) {
+    const f = fz.out[n]; console.log('finition', n, JSON.stringify({ n: f.n, z: f.z, sens: f.sens }));
+    assert.ok(f.n >= 1 && f.last, `${n} : finition après l'ébauche`);
+    f.z.forEach(z => assert.ok(Math.abs(z + d) < 1e-6, `${n} : finition à pleine profondeur`));
+    near(f.fin, grow(data.bb[n], grow0), `${n} : finition au contour exact`);
+    if (n !== 'poche') near(f.rough, grow(data.bb[n], grow0 + Math.sign(grow0) * 0.2), `${n} : ébauche à 0,2 mm`);
+    assert.strictEqual(f.sens, sens, `${n} : finition en avalant`);
+    if (n !== 'poche') assert.strictEqual(f.roughSens, -sens, `${n} : ébauche en conventionnel (réglage)`);
+  }
+  // goulot entre 2r et 2(r + 0,2) : la finition serait une saignée pleine profondeur → refusée, avec avertissement
+  const neck = await p.evaluate(() => {
+    const A = window.__atelier, saved = designData();
+    A.loadDesign(`<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm" viewBox="0 0 100 60"><path id="haltere" d="M10 10 H30 V28.3 H50 V10 H70 V40 H50 V31.7 H30 V40 H10 Z"/></svg>`, 'goulot.svg');
+    const h = A.D.shapes[0]; h.op = 'pocket'; h.depth = 2; h.finish = true; A.recompute();
+    const r = { warns: $('#warns').textContent, fin: A.CAM.steps.flatMap(s => s.groups).flatMap(g => g.cuts).filter(c => c.finish).length };
+    return r;
+  });
+  console.log('goulot :', neck);
+  assert.ok(neck.fin === 0 && neck.warns.includes('passe de finition'), 'finition refusée dans un goulot');
+  await p.evaluate(svg => { localStorage.clear(); }, null);
+  await p.evaluate(svg => { const A = window.__atelier; A.loadDesign(svg, 'gcode.svg'); A.D.place = { x: 0, y: 0, s: 100 }; const flat = A.S.tools.find(t => t.type !== 'v' && t.d === 3.175), v = A.S.tools.find(t => t.type === 'v' && t.angle === 60);
+    const ops = { plaque: ['outside', 6], trou: ['inside', 3], poche: ['pocket', 2], trait: ['on', 0.5], etoile: ['vcarve', 3] };
+    A.D.shapes.forEach(s => { const o = ops[s.name]; s.op = o[0]; s.depth = o[1]; s.tool = s.name === 'etoile' ? v.id : flat.id; s.clear = s.name === 'etoile' ? flat.id : ''; }); A.recompute(); }, SVG);
+
   // Surfaçage : zone 50 × 30 à partir de (10, 5), 1,5 mm (2 passes) ; G-code sûr, zone entièrement à −1,5 bords compris,
   // rien au-delà du rayon de la fraise ; « Quitter » rend le plan du dessin
   await p.click('#bSurf');

@@ -39,7 +39,7 @@ function refreshShapes() {
     const skipped = CAM && CAM.skipped && CAM.skipped.has(sh.id);
     const sm = d.lastChild; sm.style.color = skipped ? '#c0392b' : OPCOL[sh.op];
     const own = toolById(sh.tool);
-    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + (sh.through ? 'traversant' : sh.depth + ' mm') + (own ? ' · ' + own.name : '') : '');
+    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + (sh.through ? 'traversant' : sh.depth + ' mm') + (sh.finish && sh.op !== 'on' && sh.op !== 'vcarve' ? ' · finition' : '') + (own ? ' · ' + own.name : '') : '');
   });
   const ed = $('#selEdit');
   if (!sel.size) { ed.classList.add('hide'); refreshTabRow([]); return; }
@@ -52,6 +52,9 @@ function refreshShapes() {
   const tls = new Set(ss.map(s => s.tool || '')), cls = new Set(ss.map(s => s.clear || ''));
   $('#sTool').value = tls.size === 1 ? [...tls][0] : '*'; $('#sClear').value = cls.size === 1 ? [...cls][0] : '*';
   $('#rowClear').classList.toggle('hide', !ss.every(s => s.op === 'vcarve'));
+  const fins = ss.filter(s => s.op === 'outside' || s.op === 'inside' || s.op === 'pocket');
+  $('#rowFinish').classList.toggle('hide', fins.length !== ss.length);
+  $('#sFinish').checked = fins.length > 0 && fins.every(s => s.finish); $('#sFinish').indeterminate = fins.some(s => s.finish) && !fins.every(s => s.finish);
   refreshTabRow(ss);
 }
 function refreshPlace() {
@@ -71,7 +74,7 @@ function autosave() {
   try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
   catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
 }
-function designData() { return { name: D.name, svg: D.svgText, place: D.place, pageOnly: D.pageOnly, stack: D.stack, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, pageOnly: D.pageOnly, stack: D.stack, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, through: !!s.through, finish: !!s.finish, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
 function restoreAutosave() {
   let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
   if (!p || !p.svg) return;
@@ -152,6 +155,7 @@ $('#sOp').addEventListener('change', e => { if (!D || !e.target.value) return; f
 $('#sDepth').addEventListener('change', e => { if (!D) return; const v = num(e.target, NaN); if (!(v >= 0)) return; for (const sh of D.shapes) if (sel.has(sh.id)) { sh.depth = v; sh.through = false; } refreshShapes(); invalidate(); });
 $('#sTool').addEventListener('change', e => { if (!D || e.target.value === '*') return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.tool = e.target.value; refreshShapes(); invalidate(); });
 $('#sClear').addEventListener('change', e => { if (!D || e.target.value === '*') return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.clear = e.target.value; refreshShapes(); invalidate(); });
+$('#sFinish').addEventListener('change', e => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.finish = e.target.checked; refreshShapes(); invalidate(); });
 $('#bThrough').onclick = () => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) { sh.depth = S.stock.t; sh.through = true; } refreshShapes(); invalidate(); };
 // attaches & sens
 $('#tabOn').addEventListener('change', e => { S.tabs.on = e.target.checked; saveSettings(); invalidate(); });

@@ -32,7 +32,8 @@ function onAck(err) {
 function feedJob() {
   if (!job || job.stopping) return;
   const inQ = machine.queue.length;
-  while (job.next < job.lines.length && machine.queue.length - inQ < 200 && machine.queue.length < 400) { const c = cleanLine(job.lines[job.next++]); if (c) machine.queue.push({ line: c, meta: 'job' }); else job.acked++; }
+  const last = job.pause && job.pause.phase === 'wait' ? job.pause.at : job.lines.length - 1; // pause demandée : rien après le dégagement
+  while (job.next <= last && machine.queue.length - inQ < 200 && machine.queue.length < 400) { const k = job.next++, c = cleanLine(job.lines[k]); if (c) machine.queue.push({ line: c, meta: 'job', idx: k }); else job.acked++; }
   updateJobUI();
 }
 function parseStatus(s) {
@@ -50,6 +51,7 @@ function parseStatus(s) {
   if (machine.state === 'Idle') { const cbs = machine.onIdle.splice(0); cbs.forEach(f => f()); }
   checkStop();
   if (job && !job.stopping && job.acked >= job.total && machine.state === 'Idle' && !machine.inflight.length) finishJob();
+  else if (job && !job.stopping && job.pause && job.pause.phase === 'wait' && job.acked > job.pause.at && machine.state === 'Idle' && !machine.inflight.length) pauseReached();
   updateButtons(); if (machine.port) draw();
 }
 function handleLine(l) {

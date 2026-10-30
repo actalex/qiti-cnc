@@ -193,6 +193,17 @@ function clearCuts(region, reverse, C, zMax, oMax) {
   return { cuts, cleared: offsetPaths(start, C.d / 2) };
 }
 // Groupes de passes d'une forme : [{ shape, tool, rank, cuts }] (deux groupes si le fond d'un V est dégagé)
+// Passe de finition (sh.finish) : l'ébauche laisse FINISH mm sur les bords, puis un seul tour à pleine profondeur, en
+// avalant, plongée directe dans la rainure déjà creusée (pas de rampe). Refusée s'il y a des goulots où l'ébauche ne passe
+// pas à FINISH près du trajet de finition : ce serait une saignée pleine profondeur.
+const FINISH = 0.2;
+// Dans les angles vifs, les deux trajets s'écartent de FINISH / sin(angle / 2) sur quelques dixièmes : toléré ; un goulot
+// laisse un morceau long (le couloir entier) loin de l'ébauche.
+function finishOk(rough, fin) {
+  const b = 2 * FINISH + 0.05, band = polyDiff(offsetPaths(rough, b), offsetPaths(rough, -b));
+  return clipOpen(fin.map(p => p.concat([p[0]])), band).map(fromC).every(P => polyLen(P) < 1);
+}
+const finishCuts = (paths, rev, z, tab) => paths.map(p => { const q = fromC(p); if (rev) q.reverse(); return { pts: loopWithTabs(q, z, tab), zTop: 0, finish: true }; });
 function shapeGroups(sh, res) {
   const skip = msg => { res.warns.push(msg); res.skipped.add(sh.id); return []; };
   const T = shapeTool(sh), r = T.d / 2, th = S.stock.t, depth = depthOf(sh), tf = toStockFn();
@@ -233,17 +244,25 @@ function shapeGroups(sh, res) {
       : `« ${sh.name} » : fond plat à ${f3(zMax)} mm, la pointe en V y laisse des crêtes : choisir une fraise plate dans « Dégager le fond »`);
     return (cc ? group(cc.cuts, C, 1) : []).concat(group(vc.cuts));
   }
+  const noFinish = () => res.warns.push(`« ${sh.name} » : trop étroite par endroits pour la passe de finition, usinée sans`);
   if (sh.op === 'pocket') {
-    const start = offsetPaths(region, -r);
+    let fin = sh.finish ? offsetPaths(region, -r) : null, start = offsetPaths(region, -r - (fin ? FINISH : 0));
+    if (fin && fin.length && (!start.length || !finishOk(start, fin))) { noFinish(); fin = null; start = offsetPaths(region, -r); }
     if (!start.length) return skip(`« ${sh.name} » : trop étroite pour la fraise de ${T.d} mm`);
-    return group(pocketCuts(pocketLoops(start, T, reverse), passes, start.map(fromC)));
+    const cs = pocketCuts(pocketLoops(start, T, reverse), passes, start.map(fromC));
+    if (fin) cs.push(...finishCuts(fin, false, -depth, null)); // bords de poche en avalant
+    return group(cs);
   }
-  const loops = offsetPaths(region, sh.op === 'outside' ? r : -r).map(p => { const q = fromC(p); return reverse ? q.reverse() : q; });
+  const off = sh.op === 'outside' ? r : -r;
+  let fin = sh.finish ? offsetPaths(region, off) : null, rough = offsetPaths(region, off + Math.sign(off) * (fin ? FINISH : 0));
+  if (fin && fin.length && (!rough.length || !finishOk(rough, fin))) { noFinish(); fin = null; rough = offsetPaths(region, off); }
+  const loops = rough.map(p => { const q = fromC(p); return reverse ? q.reverse() : q; });
   if (!loops.length) return skip(`« ${sh.name} » : trop petite pour la fraise de ${T.d} mm`);
   const through = depth >= th - 1e-6;
   const at = (sh.tabs || []).map(tf);
   const tab = (through && S.tabs.on) ? { z: -(th - S.tabs.h), n: Math.max(1, Math.round(S.tabs.n)), w: S.tabs.w + T.d, at, reach: T.d } : null;
   for (const lp of loops) { let zPrev = 0; for (const z of passes) { cuts.push({ pts: loopWithTabs(lp, z, tab), zTop: zPrev }); zPrev = z; } }
+  if (fin) cuts.push(...finishCuts(fin, sh.op === 'outside', -depth, tab)); // avalant : extérieur en sens horaire, intérieur antihoraire
   return group(cuts);
 }
 // Ordre dans une étape : gravures, poches, intérieurs, puis extérieurs ; plus proche voisin dans chaque catégorie
@@ -322,7 +341,7 @@ function buildGcode(step) {
         mv(0, p0[0], p0[1], safe);
         if (app0 < safe) mv(0, p0[0], p0[1], app0);
       }
-      if (!isV(T) && S.ramp.on && p0[2] < z - 1e-6) {
+      if (!isV(T) && S.ramp.on && !c.finish && p0[2] < z - 1e-6) {
         // fraise plate : descente verticale seulement jusqu'au-dessus de la matière, puis rampe
         const z0 = Math.min(z, c.zTop); if (z0 < z - 1e-6) mv(1, p0[0], p0[1], z0, T.plunge);
         const R = p0[2] < z0 - 1e-6 && rampPts(c.pts, z0, p0[2]);

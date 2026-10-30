@@ -144,6 +144,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <div class="row hide" id="rowClear"><label title="Creuse d'abord le fond plat avec une fraise plate ; le V ne fait plus que les flancs">Dégager le fond</label><select id="sClear" style="width:160px"></select></div>
       <div class="row"><label>Profondeur (mm)</label><input type="number" id="sDepth" step="0.1" min="0"></div>
       <div class="row"><button id="bThrough" title="La profondeur suit l'épaisseur du brut, même si elle change ensuite">Traversant (= épaisseur du brut)</button></div>
+      <div class="row hide" id="rowFinish"><label title="L'ébauche laisse 0,2 mm sur les bords, puis un tour à pleine profondeur en avalant les nettoie"><input type="checkbox" id="sFinish"> Passe de finition (bords nets)</label></div>
       <div class="row" style="gap:4px"><label>Tourner</label><button id="bRotL" title="90° vers la gauche">⟲ 90°</button><button id="bRotR" title="90° vers la droite">⟳ 90°</button><input type="number" id="sRot" step="5" style="width:52px" title="Angle en degrés, positif = vers la gauche"><button id="bRot">OK</button></div>
       <div class="note">Glisse une forme sur le plan pour la déplacer.</div>
       <div id="rowTabs" class="hide" style="margin-top:6px"><div class="note" id="tabInfo"></div>
@@ -374,7 +375,7 @@ function loadDesign(text, name, saved) {
   D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 }, page: imp.page, pageOnly, stack: !!(saved && saved.stack) };
   if (saved && !saved.place && pageOnly) placeOnPage();
   else if (saved) {
-    (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, through: !!o.through, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
+    (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, through: !!o.through, finish: !!o.finish, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
     D.bb = bboxOf(D.shapes); // le placement enregistré correspond aux formes déplacées / tournées
     if (saved.place) D.place = saved.place;
   } else centerDesign();

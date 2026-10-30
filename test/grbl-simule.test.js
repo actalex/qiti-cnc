@@ -79,6 +79,24 @@ const launch = require('./navigateur');
   const stop = await p.evaluate(() => ({ resetIn: __grbl.resetIn, state: window.__atelier.machine.state, log: $('#log').innerText.split('\n').slice(-4) }));
   console.log('arrêt :', stop);
   if (stop.resetIn !== 'Hold:0' || stop.log.some(l => l.includes('ALARME')) || !stop.log.some(l => l.includes('broche coupée'))) { console.error('ÉCHEC arrêt'); process.exitCode = 1; }
+  // Pause propre : arrêt au prochain dégagement (dernière ligne envoyée = G0 Z de sécurité), broche coupée (M5) ; reprise :
+  // M3 puis la suite, jusqu'à la fin de la gravure
+  await p.waitForTimeout(500);
+  await p.click('#bCarve'); for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
+  await p.click('#cGo'); await p.waitForTimeout(400);
+  await p.click('#bPause');
+  const waitBtn = await p.textContent('#bPause');
+  for (let k = 0; k < 40; k++) { if (await p.evaluate(() => window.__atelier.job && window.__atelier.job.pause && window.__atelier.job.pause.phase === 'paused')) break; await p.waitForTimeout(250); }
+  await p.waitForTimeout(400);
+  const ps = await p.evaluate(() => { const rx = __grbl.rx, k = rx.lastIndexOf('M5'); return { k, before: rx[k - 1], after: rx.slice(k + 1), btn: $('#bPause').textContent, log: $('#log').innerText.split('\n').slice(-1)[0] }; });
+  console.log('pause :', waitBtn, '→', ps.btn, '| avant M5 :', ps.before, '| envoyé après :', ps.after.length, '|', ps.log);
+  if (waitBtn !== 'Pause immédiate' || ps.k < 0 || !/^G0 Z5(\.0+)?$/.test(ps.before) || ps.after.length || ps.btn !== 'Reprendre' || !ps.log.includes('En pause')) { console.error('ÉCHEC pause'); process.exitCode = 1; }
+  await p.click('#bPause'); await p.waitForTimeout(300);
+  const rs = await p.evaluate(k => __grbl.rx.slice(k + 1, k + 3), ps.k);
+  for (let k = 0; k < 80; k++) { if (await p.evaluate(() => !window.__atelier.job)) break; await p.waitForTimeout(250); }
+  const endLog = await p.evaluate(() => $('#log').innerText.split('\n').slice(-1)[0]);
+  console.log('reprise :', rs, '|', endLog);
+  if (!/^M3 S/.test(rs[0]) || !endLog.includes('terminée')) { console.error('ÉCHEC reprise'); process.exitCode = 1; }
   // Deux fraises : poches et intérieur à la plate, « vague » en V, puis détourage de la plaque à la plate (3 étapes)
   await p.waitForTimeout(500);
   await p.evaluate(() => { const A = window.__atelier, v = A.S.tools.find(t => t.type === 'v'); A.D.shapes[3].tool = v.id; A.recompute(); });

@@ -144,6 +144,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <div class="row hide" id="rowClear"><label title="Creuse d'abord le fond plat avec une fraise plate ; le V ne fait plus que les flancs">Dégager le fond</label><select id="sClear" style="width:160px"></select></div>
       <div class="row"><label>Profondeur (mm)</label><input type="number" id="sDepth" step="0.1" min="0"></div>
       <div class="row"><button id="bThrough" title="La profondeur suit l'épaisseur du brut, même si elle change ensuite">Traversant (= épaisseur du brut)</button></div>
+      <div class="row hide" id="rowFinish"><label title="L'ébauche laisse 0,2 mm sur les bords, puis un tour à pleine profondeur en avalant les nettoie"><input type="checkbox" id="sFinish"> Passe de finition (bords nets)</label></div>
       <div class="row" style="gap:4px"><label>Tourner</label><button id="bRotL" title="90° vers la gauche">⟲ 90°</button><button id="bRotR" title="90° vers la droite">⟳ 90°</button><input type="number" id="sRot" step="5" style="width:52px" title="Angle en degrés, positif = vers la gauche"><button id="bRot">OK</button></div>
       <div class="note">Glisse une forme sur le plan pour la déplacer.</div>
       <div id="rowTabs" class="hide" style="margin-top:6px"><div class="note" id="tabInfo"></div>
@@ -533,7 +534,7 @@ function loadDesign(text, name, saved) {
   D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 }, page: imp.page, pageOnly, stack: !!(saved && saved.stack) };
   if (saved && !saved.place && pageOnly) placeOnPage();
   else if (saved) {
-    (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, through: !!o.through, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
+    (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, through: !!o.through, finish: !!o.finish, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
     D.bb = bboxOf(D.shapes); // le placement enregistré correspond aux formes déplacées / tournées
     if (saved.place) D.place = saved.place;
   } else centerDesign();
@@ -866,6 +867,17 @@ function clearCuts(region, reverse, C, zMax, oMax) {
   return { cuts, cleared: offsetPaths(start, C.d / 2) };
 }
 // Groupes de passes d'une forme : [{ shape, tool, rank, cuts }] (deux groupes si le fond d'un V est dégagé)
+// Passe de finition (sh.finish) : l'ébauche laisse FINISH mm sur les bords, puis un seul tour à pleine profondeur, en
+// avalant, plongée directe dans la rainure déjà creusée (pas de rampe). Refusée s'il y a des goulots où l'ébauche ne passe
+// pas à FINISH près du trajet de finition : ce serait une saignée pleine profondeur.
+const FINISH = 0.2;
+// Dans les angles vifs, les deux trajets s'écartent de FINISH / sin(angle / 2) sur quelques dixièmes : toléré ; un goulot
+// laisse un morceau long (le couloir entier) loin de l'ébauche.
+function finishOk(rough, fin) {
+  const b = 2 * FINISH + 0.05, band = polyDiff(offsetPaths(rough, b), offsetPaths(rough, -b));
+  return clipOpen(fin.map(p => p.concat([p[0]])), band).map(fromC).every(P => polyLen(P) < 1);
+}
+const finishCuts = (paths, rev, z, tab) => paths.map(p => { const q = fromC(p); if (rev) q.reverse(); return { pts: loopWithTabs(q, z, tab), zTop: 0, finish: true }; });
 function shapeGroups(sh, res) {
   const skip = msg => { res.warns.push(msg); res.skipped.add(sh.id); return []; };
   const T = shapeTool(sh), r = T.d / 2, th = S.stock.t, depth = depthOf(sh), tf = toStockFn();
@@ -906,17 +918,25 @@ function shapeGroups(sh, res) {
       : `« ${sh.name} » : fond plat à ${f3(zMax)} mm, la pointe en V y laisse des crêtes : choisir une fraise plate dans « Dégager le fond »`);
     return (cc ? group(cc.cuts, C, 1) : []).concat(group(vc.cuts));
   }
+  const noFinish = () => res.warns.push(`« ${sh.name} » : trop étroite par endroits pour la passe de finition, usinée sans`);
   if (sh.op === 'pocket') {
-    const start = offsetPaths(region, -r);
+    let fin = sh.finish ? offsetPaths(region, -r) : null, start = offsetPaths(region, -r - (fin ? FINISH : 0));
+    if (fin && fin.length && (!start.length || !finishOk(start, fin))) { noFinish(); fin = null; start = offsetPaths(region, -r); }
     if (!start.length) return skip(`« ${sh.name} » : trop étroite pour la fraise de ${T.d} mm`);
-    return group(pocketCuts(pocketLoops(start, T, reverse), passes, start.map(fromC)));
+    const cs = pocketCuts(pocketLoops(start, T, reverse), passes, start.map(fromC));
+    if (fin) cs.push(...finishCuts(fin, false, -depth, null)); // bords de poche en avalant
+    return group(cs);
   }
-  const loops = offsetPaths(region, sh.op === 'outside' ? r : -r).map(p => { const q = fromC(p); return reverse ? q.reverse() : q; });
+  const off = sh.op === 'outside' ? r : -r;
+  let fin = sh.finish ? offsetPaths(region, off) : null, rough = offsetPaths(region, off + Math.sign(off) * (fin ? FINISH : 0));
+  if (fin && fin.length && (!rough.length || !finishOk(rough, fin))) { noFinish(); fin = null; rough = offsetPaths(region, off); }
+  const loops = rough.map(p => { const q = fromC(p); return reverse ? q.reverse() : q; });
   if (!loops.length) return skip(`« ${sh.name} » : trop petite pour la fraise de ${T.d} mm`);
   const through = depth >= th - 1e-6;
   const at = (sh.tabs || []).map(tf);
   const tab = (through && S.tabs.on) ? { z: -(th - S.tabs.h), n: Math.max(1, Math.round(S.tabs.n)), w: S.tabs.w + T.d, at, reach: T.d } : null;
   for (const lp of loops) { let zPrev = 0; for (const z of passes) { cuts.push({ pts: loopWithTabs(lp, z, tab), zTop: zPrev }); zPrev = z; } }
+  if (fin) cuts.push(...finishCuts(fin, sh.op === 'outside', -depth, tab)); // avalant : extérieur en sens horaire, intérieur antihoraire
   return group(cuts);
 }
 // Ordre dans une étape : gravures, poches, intérieurs, puis extérieurs ; plus proche voisin dans chaque catégorie
@@ -995,7 +1015,7 @@ function buildGcode(step) {
         mv(0, p0[0], p0[1], safe);
         if (app0 < safe) mv(0, p0[0], p0[1], app0);
       }
-      if (!isV(T) && S.ramp.on && p0[2] < z - 1e-6) {
+      if (!isV(T) && S.ramp.on && !c.finish && p0[2] < z - 1e-6) {
         // fraise plate : descente verticale seulement jusqu'au-dessus de la matière, puis rampe
         const z0 = Math.min(z, c.zTop); if (z0 < z - 1e-6) mv(1, p0[0], p0[1], z0, T.plunge);
         const R = p0[2] < z0 - 1e-6 && rampPts(c.pts, z0, p0[2]);
@@ -1329,7 +1349,7 @@ function refreshShapes() {
     const skipped = CAM && CAM.skipped && CAM.skipped.has(sh.id);
     const sm = d.lastChild; sm.style.color = skipped ? '#c0392b' : OPCOL[sh.op];
     const own = toolById(sh.tool);
-    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + (sh.through ? 'traversant' : sh.depth + ' mm') + (own ? ' · ' + own.name : '') : '');
+    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + (sh.through ? 'traversant' : sh.depth + ' mm') + (sh.finish && sh.op !== 'on' && sh.op !== 'vcarve' ? ' · finition' : '') + (own ? ' · ' + own.name : '') : '');
   });
   const ed = $('#selEdit');
   if (!sel.size) { ed.classList.add('hide'); refreshTabRow([]); return; }
@@ -1342,6 +1362,9 @@ function refreshShapes() {
   const tls = new Set(ss.map(s => s.tool || '')), cls = new Set(ss.map(s => s.clear || ''));
   $('#sTool').value = tls.size === 1 ? [...tls][0] : '*'; $('#sClear').value = cls.size === 1 ? [...cls][0] : '*';
   $('#rowClear').classList.toggle('hide', !ss.every(s => s.op === 'vcarve'));
+  const fins = ss.filter(s => s.op === 'outside' || s.op === 'inside' || s.op === 'pocket');
+  $('#rowFinish').classList.toggle('hide', fins.length !== ss.length);
+  $('#sFinish').checked = fins.length > 0 && fins.every(s => s.finish); $('#sFinish').indeterminate = fins.some(s => s.finish) && !fins.every(s => s.finish);
   refreshTabRow(ss);
 }
 function refreshPlace() {
@@ -1361,7 +1384,7 @@ function autosave() {
   try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
   catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
 }
-function designData() { return { name: D.name, svg: D.svgText, place: D.place, pageOnly: D.pageOnly, stack: D.stack, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, pageOnly: D.pageOnly, stack: D.stack, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, through: !!s.through, finish: !!s.finish, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
 function restoreAutosave() {
   let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
   if (!p || !p.svg) return;
@@ -1442,6 +1465,7 @@ $('#sOp').addEventListener('change', e => { if (!D || !e.target.value) return; f
 $('#sDepth').addEventListener('change', e => { if (!D) return; const v = num(e.target, NaN); if (!(v >= 0)) return; for (const sh of D.shapes) if (sel.has(sh.id)) { sh.depth = v; sh.through = false; } refreshShapes(); invalidate(); });
 $('#sTool').addEventListener('change', e => { if (!D || e.target.value === '*') return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.tool = e.target.value; refreshShapes(); invalidate(); });
 $('#sClear').addEventListener('change', e => { if (!D || e.target.value === '*') return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.clear = e.target.value; refreshShapes(); invalidate(); });
+$('#sFinish').addEventListener('change', e => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.finish = e.target.checked; refreshShapes(); invalidate(); });
 $('#bThrough').onclick = () => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) { sh.depth = S.stock.t; sh.through = true; } refreshShapes(); invalidate(); };
 // attaches & sens
 $('#tabOn').addEventListener('change', e => { S.tabs.on = e.target.checked; saveSettings(); invalidate(); });
@@ -1622,7 +1646,7 @@ function rotateSel(deg) {
 function moveSel(dx, dy) { const s = D.place.s / 100; transformShapes(selShapes(), [1, 0, 0, 1, dx / s, -dy / s]); refreshPlace(); draw(); }
 // historique
 let hist = [], fut = [], lastState = null;
-const stateOf = () => JSON.stringify({ place: D.place, shapes: D.shapes.map(s => ({ m: s.m, op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [] })) });
+const stateOf = () => JSON.stringify({ place: D.place, shapes: D.shapes.map(s => ({ m: s.m, op: s.op, depth: s.depth, through: !!s.through, finish: !!s.finish, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [] })) });
 function resetHistory() { hist = []; fut = []; lastState = D ? stateOf() : null; refreshUndo(); }
 function recordHistory() {
   if (!D) return; const st = stateOf();
@@ -1631,7 +1655,7 @@ function recordHistory() {
 }
 function applyState(st) {
   const o = JSON.parse(st);
-  o.shapes.forEach((x, k) => { const sh = D.shapes[k]; Object.assign(sh, { m: x.m, op: x.op, depth: x.depth, through: x.through, tool: x.tool, clear: x.clear, tabs: x.tabs }); sh.subpaths = applyM(sh.m, sh.orig); });
+  o.shapes.forEach((x, k) => { const sh = D.shapes[k]; Object.assign(sh, { m: x.m, op: x.op, depth: x.depth, through: x.through, finish: x.finish, tool: x.tool, clear: x.clear, tabs: x.tabs }); sh.subpaths = applyM(sh.m, sh.orig); });
   D.bb = bboxOf(D.shapes); D.place = o.place; lastState = st;
   refreshShapes(); refreshPlace(); invalidate(); refreshUndo();
 }
@@ -1734,7 +1758,8 @@ function onAck(err) {
 function feedJob() {
   if (!job || job.stopping) return;
   const inQ = machine.queue.length;
-  while (job.next < job.lines.length && machine.queue.length - inQ < 200 && machine.queue.length < 400) { const c = cleanLine(job.lines[job.next++]); if (c) machine.queue.push({ line: c, meta: 'job' }); else job.acked++; }
+  const last = job.pause && job.pause.phase === 'wait' ? job.pause.at : job.lines.length - 1; // pause demandée : rien après le dégagement
+  while (job.next <= last && machine.queue.length - inQ < 200 && machine.queue.length < 400) { const k = job.next++, c = cleanLine(job.lines[k]); if (c) machine.queue.push({ line: c, meta: 'job', idx: k }); else job.acked++; }
   updateJobUI();
 }
 function parseStatus(s) {
@@ -1752,6 +1777,7 @@ function parseStatus(s) {
   if (machine.state === 'Idle') { const cbs = machine.onIdle.splice(0); cbs.forEach(f => f()); }
   checkStop();
   if (job && !job.stopping && job.acked >= job.total && machine.state === 'Idle' && !machine.inflight.length) finishJob();
+  else if (job && !job.stopping && job.pause && job.pause.phase === 'wait' && job.acked > job.pause.at && machine.state === 'Idle' && !machine.inflight.length) pauseReached();
   updateButtons(); if (machine.port) draw();
 }
 function handleLine(l) {
@@ -1928,9 +1954,12 @@ $('#cCancel').onclick = () => $('#dlgCarve').close();
 $('#cGo').onclick = () => { $('#dlgCarve').close(); startJob(); };
 function startJob() {
   if (!G || !machine.port || machine.state !== 'Idle') return;
-  job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), paused: false, step: stepIdx };
+  // lignes de dégagement (G0 seul en Z jusqu'à la hauteur de sécurité) : points où une pause peut couper la broche
+  const safe = S.machine.safeZ, retracts = [];
+  G.lines.forEach((l, k) => { const m = /^G0 Z(-?[\d.]+)$/.exec(l); if (m && +m[1] >= safe - 1e-6) retracts.push(k); });
+  job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), pause: null, retracts, step: stepIdx };
   refreshSteps();
-  $('#job').classList.remove('hide'); $('#bPause').textContent = 'Pause';
+  $('#job').classList.remove('hide'); refreshPauseBtn();
   log('Gravure lancée (' + job.total + ' lignes).', 'msg');
   feedJob(); pump(); updateButtons();
 }
@@ -1939,10 +1968,40 @@ function updateJobUI() {
   const p = job.total ? job.acked / job.total : 0;
   $('#pBar').style.width = (p * 100).toFixed(1) + '%';
   $('#pTxt').textContent = `${job.acked.toLocaleString('fr')} / ${job.total.toLocaleString('fr')} lignes (${(p * 100).toFixed(0)} %)`;
-  const el = (Date.now() - job.t0) / 1000; $('#pTime').textContent = fmtTime(el) + (p > 0.03 ? ' · reste ~' + fmtTime(el / p * (1 - p)) : '');
+  const el = ((job.pause && job.pause.phase === 'paused' ? job.pause.t : Date.now()) - job.t0) / 1000; $('#pTime').textContent = fmtTime(el) + (p > 0.03 ? ' · reste ~' + fmtTime(el / p * (1 - p)) : '');
 }
 setInterval(() => { if (job) { updateJobUI(); } }, 1000);
-$('#bPause').onclick = () => { if (!job) return; job.paused = !job.paused; rt(job.paused ? 0x21 : 0x7e); $('#bPause').textContent = job.paused ? 'Reprendre' : 'Pause'; };
+// Pause propre (aspirer, refroidir, nettoyer la fraise) : on n'envoie plus rien après le prochain dégagement ; quand la
+// machine s'y est arrêtée, broche coupée (M5). Reprise : broche relancée (+ temporisation), puis la suite du programme,
+// qui repart de la hauteur de sécurité. En attendant le dégagement, « Pause immédiate » = arrêt sur place (feed hold).
+$('#bPause').onclick = () => {
+  if (!job || job.stopping) return;
+  const P = job.pause;
+  if (!P) {
+    const first = machine.queue.find(q => q.meta === 'job'), from = first ? first.idx : job.next;
+    const at = job.retracts.find(k => k >= from);
+    if (at === undefined) { log('Plus de dégagement d\'ici la fin : utilise « Pause immédiate » si besoin.', 'msg'); job.pause = { phase: 'hold0' }; }
+    else {
+      machine.queue = machine.queue.filter(q => q.meta !== 'job' || q.idx <= at); job.next = Math.min(job.next, at + 1);
+      job.pause = { phase: 'wait', at }; log('Pause demandée : la fraise va remonter au prochain dégagement, puis la broche s\'arrêtera…', 'msg');
+    }
+  } else if (P.phase === 'wait' || P.phase === 'hold0') { rt(0x21); job.pause = { phase: 'hold' }; log('Pause immédiate : machine arrêtée sur place, broche allumée.', 'msg'); }
+  else if (P.phase === 'hold') { rt(0x7e); job.pause = null; feedJob(); pump(); }
+  else if (P.phase === 'paused') {
+    const m3 = job.lines.find(l => /^M3\b/.test(l)) || `M3 S${Math.round(S.machine.spindleS)}`;
+    sendLines([m3, ...(S.machine.dwell > 0 ? [`G4 P${S.machine.dwell}`] : [])], 'pause');
+    job.t0 += Date.now() - P.t; job.pause = null; log('Reprise : broche relancée.', 'msg'); feedJob(); pump();
+  }
+  refreshPauseBtn();
+};
+function pauseReached() {
+  sendLines(['M5'], 'pause'); job.pause = { phase: 'paused', t: Date.now() };
+  log('En pause : fraise relevée, broche arrêtée. Aspire ou nettoie, puis « Reprendre ».', 'msg'); refreshPauseBtn();
+}
+function refreshPauseBtn() {
+  const P = job && job.pause;
+  $('#bPause').textContent = !P ? 'Pause' : P.phase === 'wait' || P.phase === 'hold0' ? 'Pause immédiate' : 'Reprendre';
+}
 $('#bStop').onclick = () => { if (job && confirm('Arrêter la gravure maintenant ?')) stopJob(); };
 function stopJob() { safeStop('Gravure arrêtée.'); }
 // Arrêt sûr : feed hold, puis reset seulement quand GRBL signale l'arrêt complet (Hold:0).

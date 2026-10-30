@@ -30,9 +30,12 @@ $('#cCancel').onclick = () => $('#dlgCarve').close();
 $('#cGo').onclick = () => { $('#dlgCarve').close(); startJob(); };
 function startJob() {
   if (!G || !machine.port || machine.state !== 'Idle') return;
-  job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), paused: false, step: stepIdx };
+  // lignes de dégagement (G0 seul en Z jusqu'à la hauteur de sécurité) : points où une pause peut couper la broche
+  const safe = S.machine.safeZ, retracts = [];
+  G.lines.forEach((l, k) => { const m = /^G0 Z(-?[\d.]+)$/.exec(l); if (m && +m[1] >= safe - 1e-6) retracts.push(k); });
+  job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), pause: null, retracts, step: stepIdx };
   refreshSteps();
-  $('#job').classList.remove('hide'); $('#bPause').textContent = 'Pause';
+  $('#job').classList.remove('hide'); refreshPauseBtn();
   log('Gravure lancée (' + job.total + ' lignes).', 'msg');
   feedJob(); pump(); updateButtons();
 }
@@ -41,10 +44,40 @@ function updateJobUI() {
   const p = job.total ? job.acked / job.total : 0;
   $('#pBar').style.width = (p * 100).toFixed(1) + '%';
   $('#pTxt').textContent = `${job.acked.toLocaleString('fr')} / ${job.total.toLocaleString('fr')} lignes (${(p * 100).toFixed(0)} %)`;
-  const el = (Date.now() - job.t0) / 1000; $('#pTime').textContent = fmtTime(el) + (p > 0.03 ? ' · reste ~' + fmtTime(el / p * (1 - p)) : '');
+  const el = ((job.pause && job.pause.phase === 'paused' ? job.pause.t : Date.now()) - job.t0) / 1000; $('#pTime').textContent = fmtTime(el) + (p > 0.03 ? ' · reste ~' + fmtTime(el / p * (1 - p)) : '');
 }
 setInterval(() => { if (job) { updateJobUI(); } }, 1000);
-$('#bPause').onclick = () => { if (!job) return; job.paused = !job.paused; rt(job.paused ? 0x21 : 0x7e); $('#bPause').textContent = job.paused ? 'Reprendre' : 'Pause'; };
+// Pause propre (aspirer, refroidir, nettoyer la fraise) : on n'envoie plus rien après le prochain dégagement ; quand la
+// machine s'y est arrêtée, broche coupée (M5). Reprise : broche relancée (+ temporisation), puis la suite du programme,
+// qui repart de la hauteur de sécurité. En attendant le dégagement, « Pause immédiate » = arrêt sur place (feed hold).
+$('#bPause').onclick = () => {
+  if (!job || job.stopping) return;
+  const P = job.pause;
+  if (!P) {
+    const first = machine.queue.find(q => q.meta === 'job'), from = first ? first.idx : job.next;
+    const at = job.retracts.find(k => k >= from);
+    if (at === undefined) { log('Plus de dégagement d\'ici la fin : utilise « Pause immédiate » si besoin.', 'msg'); job.pause = { phase: 'hold0' }; }
+    else {
+      machine.queue = machine.queue.filter(q => q.meta !== 'job' || q.idx <= at); job.next = Math.min(job.next, at + 1);
+      job.pause = { phase: 'wait', at }; log('Pause demandée : la fraise va remonter au prochain dégagement, puis la broche s\'arrêtera…', 'msg');
+    }
+  } else if (P.phase === 'wait' || P.phase === 'hold0') { rt(0x21); job.pause = { phase: 'hold' }; log('Pause immédiate : machine arrêtée sur place, broche allumée.', 'msg'); }
+  else if (P.phase === 'hold') { rt(0x7e); job.pause = null; feedJob(); pump(); }
+  else if (P.phase === 'paused') {
+    const m3 = job.lines.find(l => /^M3\b/.test(l)) || `M3 S${Math.round(S.machine.spindleS)}`;
+    sendLines([m3, ...(S.machine.dwell > 0 ? [`G4 P${S.machine.dwell}`] : [])], 'pause');
+    job.t0 += Date.now() - P.t; job.pause = null; log('Reprise : broche relancée.', 'msg'); feedJob(); pump();
+  }
+  refreshPauseBtn();
+};
+function pauseReached() {
+  sendLines(['M5'], 'pause'); job.pause = { phase: 'paused', t: Date.now() };
+  log('En pause : fraise relevée, broche arrêtée. Aspire ou nettoie, puis « Reprendre ».', 'msg'); refreshPauseBtn();
+}
+function refreshPauseBtn() {
+  const P = job && job.pause;
+  $('#bPause').textContent = !P ? 'Pause' : P.phase === 'wait' || P.phase === 'hold0' ? 'Pause immédiate' : 'Reprendre';
+}
 $('#bStop').onclick = () => { if (job && confirm('Arrêter la gravure maintenant ?')) stopJob(); };
 function stopJob() { safeStop('Gravure arrêtée.'); }
 // Arrêt sûr : feed hold, puis reset seulement quand GRBL signale l'arrêt complet (Hold:0).
