@@ -1455,7 +1455,10 @@ function handleLine(l) {
   if (l[0] === '<') return parseStatus(l);
   if (l === 'ok') return onAck(null);
   if (l.startsWith('error:')) return onAck(l.slice(6));
-  if (l.startsWith('ALARM:')) { const c = +l.slice(6); log(`ALARME ${c} — ${ALARMS[c] || ''}`, 'err'); if (job) abortJob('Alarme ' + c + ' : ' + (ALARMS[c] || '')); return; }
+  if (l.startsWith('ALARM:')) { const c = +l.slice(6); log(`ALARME ${c} — ${ALARMS[c] || ''}`, 'err');
+    // fin de course touché (ex. Z monté jusqu'au contacteur) : marche à suivre ; les pas perdus faussent les zéros
+    if (c === 1) log('Clique « Déverrouiller », puis éloigne l\'axe du contacteur par petits pas (ex. Z− si Z était tout en haut). Refais ensuite les zéros : la position a pu glisser.', 'msg');
+    if (job) abortJob('Alarme ' + c + ' : ' + (ALARMS[c] || '')); return; }
   if (/^Grbl/i.test(l)) { machine.queue = []; machine.inflight = []; machine.used = 0; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); readGrblSettings(); return; }
   if (/^\$\d+=/.test(l)) { const [k, v] = l.slice(1).split('='); machine.grbl[+k] = parseFloat(v); if (!machine.quietSettings) log(l); return; }
   if (l.startsWith('[PRB:')) { log(l, 'msg'); return; }
