@@ -151,6 +151,27 @@ function relire(lines, safe) {
   assert.ok(added.info.includes('1 placée à la main'));
   assert.strictEqual(removed, 0, 'attache retirée');
 
+  // Surfaçage : zone 50 × 30 à partir de (10, 5), 1,5 mm (2 passes) ; G-code sûr, zone entièrement à −1,5 bords compris,
+  // rien au-delà du rayon de la fraise ; « Quitter » rend le plan du dessin
+  await p.click('#bSurf');
+  for (const [id, v] of [['#sfX', 10], ['#sfY', 5], ['#sfW', 50], ['#sfH', 30], ['#sfD', 1.5], ['#sfO', 40]]) await p.fill(id, String(v));
+  await p.click('#sfOk'); await p.waitForTimeout(200);
+  const sf = await p.evaluate(() => {
+    const A = window.__atelier, G = A.PLAN[0], M = heightMap(A.PLAN), hAt = (x, y) => M.H[Math.floor(y / M.res) * M.nx + Math.floor(x / M.res)];
+    let lo = 0, hi = -9; for (let y = 5.05; y <= 34.95; y += 0.2) for (let x = 10.05; x <= 59.95; x += 0.2) { const h = hAt(x, y); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+    const r = G.tool.d / 2;
+    return { n: A.PLAN.length, title: G.lines[0], lines: G.lines, safe: A.S.machine.safeZ, lo, hi, outside: [hAt(10 - r - 0.3, 20), hAt(35, 35 + r + 0.3), hAt(80, 50)], bar: !$('#surfBar').classList.contains('hide'), dx: G.tool.d };
+  });
+  const sfr = relire(sf.lines, sf.safe);
+  console.log('surfaçage :', sf.title, { lo: sf.lo, hi: sf.hi, outside: sf.outside });
+  assert.deepStrictEqual(sfr.bad, [], 'surfaçage : sécurité');
+  assert.ok(sf.n === 1 && sf.bar && sf.title.includes('Surfaçage 50 × 30 mm'));
+  assert.ok(Math.abs(sf.lo + 1.5) < 1e-6 && Math.abs(sf.hi + 1.5) < 1e-6, `zone pas uniformément à −1,5 : ${sf.lo} … ${sf.hi}`);
+  assert.deepStrictEqual(sf.outside, [0, 0, 0], 'rien au-delà du rayon');
+  assert.strictEqual(new Set(sfr.moves.filter(m => m.g === 1 && m.z < 0 && m.z === m.z0).map(m => m.z)).size, 2, 'deux passes');
+  await p.click('#surfQuit'); await p.waitForTimeout(200);
+  assert.strictEqual(await p.evaluate(() => window.__atelier.PLAN.length), 3, 'retour au dessin');
+
   assert.deepStrictEqual(errs, []);
   console.log('gcode : OK');
   await b.close();

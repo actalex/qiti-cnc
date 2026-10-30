@@ -295,7 +295,7 @@ function buildGcode(step) {
     x = nx; y = ny; z = nz; if (z < zMin) zMin = z;
     push(parts.join(' '));
   };
-  push(`; Atelier CNC — ${D ? D.name : ''} — ${T.name} (Ø${T.d} mm)`);
+  push(`; Atelier CNC — ${step.title || (D ? D.name : '')} — ${T.name} (Ø${T.d} mm)`);
   push(`; Brut ${S.stock.w} x ${S.stock.h} x ${S.stock.t} mm — origine X0 Y0 ${S.origin === 'center' ? 'au centre du brut' : 'au coin avant-gauche'}, Z0 dessus du brut`);
   if (isV(T)) push(`; Fraise en V ${T.angle}°, pointe ${T.tip} mm`);
   push('G21 G90 G17 G94');

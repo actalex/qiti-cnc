@@ -80,8 +80,8 @@ function recompute() {
   if (job) return;
   const warns = [];
   try {
-    CAM = computeCAM(); warns.push(...CAM.warns);
-    PLAN = CAM.steps.map(st => buildGcode(st));
+    if (SURF) { CAM = { steps: [], warns: [], skipped: new Set() }; PLAN = [buildGcode(surfaceStep())]; warns.push(...surfaceWarns()); }
+    else { CAM = computeCAM(); warns.push(...CAM.warns); PLAN = CAM.steps.map(st => buildGcode(st)); }
   } catch (e) { PLAN = []; warns.push('Erreur de calcul : ' + e.message); console.error(e); }
   stepIdx = Math.min(stepIdx, Math.max(0, PLAN.length - 1)); G = PLAN[stepIdx] || null;
   if (D) {
@@ -203,7 +203,7 @@ function download(name, text, type) { const a = document.createElement('a'); a.h
 $('#bExport').onclick = () => {
   if (!G) return;
   const suffix = PLAN.length > 1 ? `-etape${stepIdx + 1}-` + G.tool.name.replace(/[^\w.-]+/g, '_') : '';
-  download((D ? D.name.replace(/\.svg$/i, '') : 'projet') + suffix + '.nc', G.lines.join('\n') + '\n', 'text/plain');
+  download((SURF ? 'surfacage' : D ? D.name.replace(/\.svg$/i, '') : 'projet') + suffix + '.nc', G.lines.join('\n') + '\n', 'text/plain');
 };
 // Étapes : une par fraise, gravées l'une après l'autre (changement de fraise et zéro Z entre deux)
 function refreshSteps() {

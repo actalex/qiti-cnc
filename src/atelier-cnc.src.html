@@ -36,6 +36,7 @@ header button:hover:not(:disabled){background:#4a463f;border-color:#5a564e}
 #viewbar{position:absolute;top:10px;left:10px;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:3px}
 #viewbar button{border:0}
 #viewbar button.on{background:#22201c;color:#fff}
+#surfBar{position:absolute;top:10px;right:10px;display:flex;gap:6px;align-items:center;background:#fff3cd;border:1px solid #f0d78c;border-radius:8px;padding:4px 8px;font-size:13px}
 #info{position:absolute;bottom:10px;left:10px;right:10px;display:flex;gap:14px;flex-wrap:wrap;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
 #info b{font-weight:600}
 #warns{color:var(--warn)}
@@ -174,6 +175,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <button data-v="paths">Trajectoires</button>
     <button id="bFit" title="Recadrer">⤢</button>
   </div>
+  <div id="surfBar" class="hide"><span id="surfTxt"></span><button id="surfEdit">Modifier</button><button id="surfQuit">Quitter</button></div>
   <div id="info">
     <span>Temps estimé : <b id="iTime">—</b></span>
     <span>Lignes G-code : <b id="iLines">—</b></span>
@@ -218,7 +220,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <h2>Gravure</h2>
     <select id="stepSel" class="hide" style="width:100%;margin-bottom:6px" title="Une étape par fraise"></select>
     <button id="bCarve" class="pri big" disabled>Graver</button>
-    <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button></div>
+    <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button><button id="bSurf" title="Aplanir le dessus du brut ou la table à la fraise plate">Surfaçage…</button></div>
     <div id="job" class="hide">
       <div class="prog"><i id="pBar"></i></div>
       <div class="row note"><span id="pTxt" style="flex:1"></span><span id="pTime"></span></div>
@@ -253,6 +255,21 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <p class="note">Mesure l'épaisseur de ta plaque au pied à coulisse. Avec 0, le zéro Z sera placé au contact de la plaque.</p>
   </div>
   <div class="ft"><button id="mCancel">Annuler</button><button id="mOk" class="pri">Enregistrer</button></div>
+</dialog>
+
+<dialog id="dlgSurf">
+  <div class="hd">Surfaçage</div>
+  <div class="bd">
+    <p class="note" style="margin-top:0">Aplanit une zone rectangulaire en allers-retours à la fraise plate. Le centre de la fraise passe sur les bords de la zone : elle déborde de son rayon tout autour. Zone mesurée depuis le zéro X/Y (coin avant-gauche du brut).</p>
+    <div class="row"><label>Zone X / Y (mm)</label><input type="number" id="sfX" step="1"><input type="number" id="sfY" step="1"></div>
+    <div class="row"><label>Largeur / hauteur (mm)</label><input type="number" id="sfW" step="1" min="1"><input type="number" id="sfH" step="1" min="1"></div>
+    <div class="row"><button id="sfStock">Zone = brut</button></div>
+    <div class="row"><label>Profondeur totale (mm)</label><input type="number" id="sfD" step="0.1" min="0.05"></div>
+    <div class="row"><label>Fraise (plate)</label><select id="sfTool" style="width:200px"></select></div>
+    <div class="row"><label>Recouvrement (%)</label><input type="number" id="sfO" step="5" min="5" max="90"></div>
+    <p class="note">La profondeur par passe, l'avance et la plongée sont celles de la fraise. La plus grosse fraise plate va le plus vite.</p>
+  </div>
+  <div class="ft"><button id="sfCancel">Annuler</button><button id="sfOk" class="pri">Préparer le surfaçage</button></div>
 </dialog>
 
 <dialog id="dlgCarve">
@@ -331,6 +348,7 @@ function bboxOf(shapes) {
   return b;
 }
 function loadDesign(text, name, saved) {
+  if (SURF) { SURF = false; $('#surfBar').classList.add('hide'); } // un nouveau dessin quitte le mode surfaçage
   const { shapes, warns } = importSVG(text, name);
   D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
   if (saved) {
@@ -359,6 +377,7 @@ function toStockFn() {
 /*INCLUDE:relief.js*/
 /*INCLUDE:panneaux.js*/
 /*INCLUDE:attaches.js*/
+/*INCLUDE:surfacage.js*/
 /*INCLUDE:grbl.js*/
 /*INCLUDE:gravure.js*/
 /* ====================== Démarrage ====================== */

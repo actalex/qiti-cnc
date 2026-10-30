@@ -36,6 +36,7 @@ header button:hover:not(:disabled){background:#4a463f;border-color:#5a564e}
 #viewbar{position:absolute;top:10px;left:10px;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:3px}
 #viewbar button{border:0}
 #viewbar button.on{background:#22201c;color:#fff}
+#surfBar{position:absolute;top:10px;right:10px;display:flex;gap:6px;align-items:center;background:#fff3cd;border:1px solid #f0d78c;border-radius:8px;padding:4px 8px;font-size:13px}
 #info{position:absolute;bottom:10px;left:10px;right:10px;display:flex;gap:14px;flex-wrap:wrap;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
 #info b{font-weight:600}
 #warns{color:var(--warn)}
@@ -174,6 +175,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <button data-v="paths">Trajectoires</button>
     <button id="bFit" title="Recadrer">⤢</button>
   </div>
+  <div id="surfBar" class="hide"><span id="surfTxt"></span><button id="surfEdit">Modifier</button><button id="surfQuit">Quitter</button></div>
   <div id="info">
     <span>Temps estimé : <b id="iTime">—</b></span>
     <span>Lignes G-code : <b id="iLines">—</b></span>
@@ -218,7 +220,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <h2>Gravure</h2>
     <select id="stepSel" class="hide" style="width:100%;margin-bottom:6px" title="Une étape par fraise"></select>
     <button id="bCarve" class="pri big" disabled>Graver</button>
-    <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button></div>
+    <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button><button id="bSurf" title="Aplanir le dessus du brut ou la table à la fraise plate">Surfaçage…</button></div>
     <div id="job" class="hide">
       <div class="prog"><i id="pBar"></i></div>
       <div class="row note"><span id="pTxt" style="flex:1"></span><span id="pTime"></span></div>
@@ -253,6 +255,21 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <p class="note">Mesure l'épaisseur de ta plaque au pied à coulisse. Avec 0, le zéro Z sera placé au contact de la plaque.</p>
   </div>
   <div class="ft"><button id="mCancel">Annuler</button><button id="mOk" class="pri">Enregistrer</button></div>
+</dialog>
+
+<dialog id="dlgSurf">
+  <div class="hd">Surfaçage</div>
+  <div class="bd">
+    <p class="note" style="margin-top:0">Aplanit une zone rectangulaire en allers-retours à la fraise plate. Le centre de la fraise passe sur les bords de la zone : elle déborde de son rayon tout autour. Zone mesurée depuis le zéro X/Y (coin avant-gauche du brut).</p>
+    <div class="row"><label>Zone X / Y (mm)</label><input type="number" id="sfX" step="1"><input type="number" id="sfY" step="1"></div>
+    <div class="row"><label>Largeur / hauteur (mm)</label><input type="number" id="sfW" step="1" min="1"><input type="number" id="sfH" step="1" min="1"></div>
+    <div class="row"><button id="sfStock">Zone = brut</button></div>
+    <div class="row"><label>Profondeur totale (mm)</label><input type="number" id="sfD" step="0.1" min="0.05"></div>
+    <div class="row"><label>Fraise (plate)</label><select id="sfTool" style="width:200px"></select></div>
+    <div class="row"><label>Recouvrement (%)</label><input type="number" id="sfO" step="5" min="5" max="90"></div>
+    <p class="note">La profondeur par passe, l'avance et la plongée sont celles de la fraise. La plus grosse fraise plate va le plus vite.</p>
+  </div>
+  <div class="ft"><button id="sfCancel">Annuler</button><button id="sfOk" class="pri">Préparer le surfaçage</button></div>
 </dialog>
 
 <dialog id="dlgCarve">
@@ -488,6 +505,7 @@ function bboxOf(shapes) {
   return b;
 }
 function loadDesign(text, name, saved) {
+  if (SURF) { SURF = false; $('#surfBar').classList.add('hide'); } // un nouveau dessin quitte le mode surfaçage
   const { shapes, warns } = importSVG(text, name);
   D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
   if (saved) {
@@ -806,7 +824,7 @@ function buildGcode(step) {
     x = nx; y = ny; z = nz; if (z < zMin) zMin = z;
     push(parts.join(' '));
   };
-  push(`; Atelier CNC — ${D ? D.name : ''} — ${T.name} (Ø${T.d} mm)`);
+  push(`; Atelier CNC — ${step.title || (D ? D.name : '')} — ${T.name} (Ø${T.d} mm)`);
   push(`; Brut ${S.stock.w} x ${S.stock.h} x ${S.stock.t} mm — origine X0 Y0 ${S.origin === 'center' ? 'au centre du brut' : 'au coin avant-gauche'}, Z0 dessus du brut`);
   if (isV(T)) push(`; Fraise en V ${T.angle}°, pointe ${T.tip} mm`);
   push('G21 G90 G17 G94');
@@ -955,7 +973,7 @@ function draw() {
   ctx.strokeStyle = '#27ae60'; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, oy - 30); ctx.stroke();
   ctx.fillStyle = '#22201c'; ctx.font = '11px system-ui'; ctx.fillText('X0 Y0', ox + 4, oy + 14);
   if (G && (viewMode === 'carve' || viewMode === 'paths')) drawMoves();
-  if (D && viewMode !== 'carve' && !(viewMode === 'relief' && G)) drawShapes(viewMode === 'paths' ? 0.35 : 1);
+  if (D && !SURF && viewMode !== 'carve' && !(viewMode === 'relief' && G)) drawShapes(viewMode === 'paths' ? 0.35 : 1);
   if (job && G) drawProgress();
   if (machine.wpos) {
     const [tx, ty] = W2S(machine.wpos[0] + originOff()[0], machine.wpos[1] + originOff()[1]);
@@ -1186,8 +1204,8 @@ function recompute() {
   if (job) return;
   const warns = [];
   try {
-    CAM = computeCAM(); warns.push(...CAM.warns);
-    PLAN = CAM.steps.map(st => buildGcode(st));
+    if (SURF) { CAM = { steps: [], warns: [], skipped: new Set() }; PLAN = [buildGcode(surfaceStep())]; warns.push(...surfaceWarns()); }
+    else { CAM = computeCAM(); warns.push(...CAM.warns); PLAN = CAM.steps.map(st => buildGcode(st)); }
   } catch (e) { PLAN = []; warns.push('Erreur de calcul : ' + e.message); console.error(e); }
   stepIdx = Math.min(stepIdx, Math.max(0, PLAN.length - 1)); G = PLAN[stepIdx] || null;
   if (D) {
@@ -1309,7 +1327,7 @@ function download(name, text, type) { const a = document.createElement('a'); a.h
 $('#bExport').onclick = () => {
   if (!G) return;
   const suffix = PLAN.length > 1 ? `-etape${stepIdx + 1}-` + G.tool.name.replace(/[^\w.-]+/g, '_') : '';
-  download((D ? D.name.replace(/\.svg$/i, '') : 'projet') + suffix + '.nc', G.lines.join('\n') + '\n', 'text/plain');
+  download((SURF ? 'surfacage' : D ? D.name.replace(/\.svg$/i, '') : 'projet') + suffix + '.nc', G.lines.join('\n') + '\n', 'text/plain');
 };
 // Étapes : une par fraise, gravées l'une après l'autre (changement de fraise et zéro Z entre deux)
 function refreshSteps() {
@@ -1395,6 +1413,60 @@ $('#bTabEdit').onclick = () => {
   refreshShapes(); draw();
 };
 $('#bTabAuto').onclick = () => { const sh = D && D.shapes.find(s => sel.has(s.id)); if (!sh) return; sh.tabs = []; refreshShapes(); invalidate(); };
+/* ====================== Surfaçage ====================== */
+// Aplanir le dessus du brut ou la table (martyr) : balayage en zigzag d'une zone rectangulaire à la fraise plate,
+// en passes de profondeur. Mode à part : tant que SURF est actif, le plan (PLAN) est le surfaçage au lieu du dessin ;
+// aperçu, relief, liste de vérification, gravure et export servent tels quels. Réglages gardés dans S.surf.
+let SURF = false;
+const flatTools = () => S.tools.filter(t => !isV(t));
+function surfParams() {
+  const flats = flatTools(), big = flats.slice().sort((a, b) => b.d - a.d)[0];
+  S.surf = Object.assign({ x: 0, y: 0, w: S.stock.w, h: S.stock.h, depth: 0.5, over: 40, tool: big ? big.id : '' }, S.surf || {});
+  if (!toolById(S.surf.tool) || isV(toolById(S.surf.tool))) S.surf.tool = big ? big.id : '';
+  return S.surf;
+}
+// Zone en coordonnées brut (coin avant-gauche) ; le centre de la fraise passe sur les bords : elle déborde de son rayon
+// autour de la zone, pour que les bords soient aplanis aussi.
+function surfaceStep() {
+  const P = surfParams(), T = toolById(P.tool);
+  const pitch = Math.max(0.1, T.d * (1 - Math.min(90, Math.max(5, P.over)) / 100));
+  const rows = Math.max(1, Math.ceil(P.h / pitch - 1e-9)), dy = P.h / rows, cuts = []; let zPrev = 0;
+  for (const z of depthPasses(P.depth, T.doc)) {
+    const pts = [];
+    for (let i = 0; i <= rows; i++) { const y = P.y + i * dy, a = [P.x, y, z], b = [P.x + P.w, y, z]; pts.push(...(i % 2 ? [b, a] : [a, b])); }
+    cuts.push({ pts, zTop: zPrev }); zPrev = z;
+  }
+  return { tool: T, title: `Surfaçage ${P.w} × ${P.h} mm, ${P.depth} mm`, groups: [{ shape: { name: 'surfaçage' }, tool: T, rank: 1, cuts }] };
+}
+function surfaceWarns() {
+  const P = surfParams(), T = toolById(P.tool), w = [];
+  if (!T) return ['Surfaçage : aucune fraise plate'];
+  if (P.w + T.d > S.machine.w || P.h + T.d > S.machine.h) w.push('Surfaçage : la zone (plus le diamètre de la fraise) dépasse la course de la machine');
+  if (P.depth > T.doc * 4) w.push(`Surfaçage : ${Math.ceil(P.depth / T.doc)} passes, c'est beaucoup pour un surfaçage (en général 0,2 à 1 mm au total)`);
+  return w;
+}
+function openSurf() {
+  const P = surfParams(), sel = $('#sfTool'); sel.innerHTML = '';
+  for (const t of flatTools()) { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; sel.appendChild(o); }
+  sel.value = P.tool;
+  [['#sfX', 'x'], ['#sfY', 'y'], ['#sfW', 'w'], ['#sfH', 'h'], ['#sfD', 'depth'], ['#sfO', 'over']].forEach(([id, k]) => $(id).value = P[k]);
+  $('#dlgSurf').showModal();
+}
+function readSurf() {
+  const P = surfParams(), v = (id, d) => { const x = parseFloat(String($(id).value).replace(',', '.')); return isFinite(x) ? x : d; };
+  Object.assign(P, { x: v('#sfX', P.x), y: v('#sfY', P.y), w: Math.max(1, v('#sfW', P.w)), h: Math.max(1, v('#sfH', P.h)), depth: Math.max(0.05, v('#sfD', P.depth)), over: v('#sfO', P.over), tool: $('#sfTool').value });
+}
+function setSurf(on) {
+  SURF = on; $('#surfBar').classList.toggle('hide', !on); stepIdx = 0;
+  if (on) { const P = surfParams(); $('#surfTxt').textContent = `Surfaçage ${P.w} × ${P.h} mm à ${P.depth} mm — ${toolById(P.tool).name}`; }
+  recompute(); draw();
+}
+$('#bSurf').onclick = () => { if (!job) openSurf(); };
+$('#sfStock').onclick = () => { $('#sfX').value = 0; $('#sfY').value = 0; $('#sfW').value = S.stock.w; $('#sfH').value = S.stock.h; };
+$('#sfCancel').onclick = () => $('#dlgSurf').close();
+$('#sfOk').onclick = () => { readSurf(); saveSettings(); $('#dlgSurf').close(); setSurf(true); if (viewMode === 'design') $('#viewbar [data-v=paths]').click(); };
+$('#surfEdit').onclick = () => { if (!job) openSurf(); };
+$('#surfQuit').onclick = () => { if (!job) setSurf(false); };
 /* ====================== GRBL / Web Serial ====================== */
 const RX_BUF = 127;
 const ALARMS = { 1: 'fin de course matériel déclenché', 2: 'déplacement hors limites logicielles', 3: 'reset pendant un mouvement : position perdue, refais l\'origine', 4: 'sonde déjà en contact au départ', 5: 'la sonde n\'a pas touché la plaque', 6: 'homing interrompu', 7: 'porte ouverte pendant le homing', 8: 'homing : impossible de dégager le fin de course', 9: 'homing : fin de course introuvable' };
@@ -1596,6 +1668,7 @@ function updateButtons() {
   const ready = machine.port && machine.state === 'Idle' && !job;
   $('#bCarve').disabled = !(G && ready);
   $('#bExport').disabled = !G;
+  $('#bSurf').disabled = !!job;
   ['#bUnlock', '#bHome', '#bZeroXY', '#bZeroZ', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
   $('#bUnlock').disabled = !machine.port || (!!job && machine.state !== 'Alarm');
   const noHome = machine.grbl[22] === 0;
