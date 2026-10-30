@@ -58,6 +58,7 @@ function drawShapes(alpha) {
     ctx.lineWidth = isSel ? 2.5 : 1.3; ctx.strokeStyle = isSel ? '#e74c3c' : OPCOL[sh.op]; ctx.setLineDash(sh.op === 'none' ? [4, 3] : []); ctx.stroke();
   }
   ctx.setLineDash([]); ctx.globalAlpha = 1;
+  drawTabMarkers();
 }
 function drawMoves() {
   if (viewMode === 'carve') {
@@ -102,8 +103,8 @@ window.addEventListener('mousemove', e => {
   if (drag.moved) { view.ox = drag.ox + dx; view.oy = drag.oy + dy; cv.style.cursor = 'grabbing'; draw(); }
 });
 window.addEventListener('mouseup', e => {
-  if (!drag) return; const d = drag; drag = null; cv.style.cursor = 'crosshair';
-  if (!d.moved && e.target === cv) pick(e.offsetX, e.offsetY, e.shiftKey || e.ctrlKey || e.metaKey);
+  if (!drag) return; const d = drag; drag = null; cv.style.cursor = tabEdit !== null ? 'copy' : 'crosshair';
+  if (!d.moved && e.target === cv) { if (tabEdit !== null) tabClick(e.offsetX, e.offsetY); else pick(e.offsetX, e.offsetY, e.shiftKey || e.ctrlKey || e.metaKey); }
 });
 cv.addEventListener('wheel', e => {
   e.preventDefault(); const k = Math.exp(-e.deltaY * 0.0015), [wx, wy] = S2W(e.offsetX, e.offsetY);

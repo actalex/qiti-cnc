@@ -42,7 +42,7 @@ function refreshShapes() {
     sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + sh.depth + ' mm' + (own ? ' · ' + own.name : '') : '');
   });
   const ed = $('#selEdit');
-  if (!sel.size) { ed.classList.add('hide'); return; }
+  if (!sel.size) { ed.classList.add('hide'); refreshTabRow([]); return; }
   ed.classList.remove('hide');
   const ss = D.shapes.filter(s => sel.has(s.id));
   $('#selCount').textContent = ss.length === 1 ? ss[0].name : ss.length + ' formes sélectionnées';
@@ -51,6 +51,7 @@ function refreshShapes() {
   const tls = new Set(ss.map(s => s.tool || '')), cls = new Set(ss.map(s => s.clear || ''));
   $('#sTool').value = tls.size === 1 ? [...tls][0] : '*'; $('#sClear').value = cls.size === 1 ? [...cls][0] : '*';
   $('#rowClear').classList.toggle('hide', !ss.every(s => s.op === 'vcarve'));
+  refreshTabRow(ss);
 }
 function refreshPlace() {
   if (!D) { $('#dSize').textContent = ''; return; }
@@ -68,7 +69,7 @@ function autosave() {
   try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
   catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
 }
-function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '' })) }; }
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [] })) }; }
 function restoreAutosave() {
   let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
   if (!p || !p.svg) return;

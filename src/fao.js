@@ -131,12 +131,33 @@ function loopWithTabs(pts, z, tab) {
   if (!tab || z >= tab.z - 1e-9) return P.map(p => [p[0], p[1], z]);
   const segL = []; let L = 0;
   for (let k = 1; k < P.length; k++) { const l = Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]); segL.push(l); L += l; }
-  let n = tab.n; if (L < n * tab.w * 3) n = Math.floor(L / (tab.w * 3));
-  if (n < 1) return P.map(p => [p[0], p[1], z]);
-  const iv = []; for (let k = 0; k < n; k++) { const c = (k + 0.5) * L / n; iv.push([c - tab.w / 2, c + tab.w / 2]); }
+  // centres des attaches le long de la boucle : placées à la main (points projetés sur cette boucle s'ils en sont
+  // assez proches) ou réparties régulièrement
+  let centers = [];
+  if (tab.at && tab.at.length) {
+    for (const q of tab.at) {
+      let best = Infinity, sb = 0, s0 = 0;
+      for (let k = 1; k < P.length; k++) {
+        const a = P[k - 1], b = P[k], dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+        const t = l2 ? Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / l2)) : 0;
+        const d = Math.hypot(q[0] - a[0] - t * dx, q[1] - a[1] - t * dy); if (d < best) { best = d; sb = s0 + t * segL[k - 1]; }
+        s0 += segL[k - 1];
+      }
+      if (best <= tab.reach) centers.push(sb);
+    }
+  } else {
+    let n = tab.n; if (L < n * tab.w * 3) n = Math.floor(L / (tab.w * 3));
+    for (let k = 0; k < n; k++) centers.push((k + 0.5) * L / n);
+  }
+  if (!centers.length) return P.map(p => [p[0], p[1], z]);
+  const iv = [];
+  for (const c of centers) { // une attache à cheval sur le début de la boucle est coupée en deux morceaux
+    const a = c - tab.w / 2, b = c + tab.w / 2; iv.push([Math.max(0, a), Math.min(L, b)]);
+    if (a < 0) iv.push([L + a, L]); if (b > L) iv.push([0, b - L]);
+  }
   const inTab = s => iv.some(([a, b]) => s > a && s < b);
   const bps = iv.flat().sort((a, b) => a - b);
-  const out = [[P[0][0], P[0][1], z]]; let s = 0;
+  const out = [[P[0][0], P[0][1], inTab(1e-6) ? tab.z : z]]; let s = 0;
   for (let k = 1; k < P.length; k++) {
     const l = segL[k - 1], a = P[k - 1], b = P[k];
     for (const bp of bps) if (bp > s + 1e-9 && bp < s + l - 1e-9) {
@@ -218,7 +239,8 @@ function shapeGroups(sh, res) {
   const loops = offsetPaths(region, sh.op === 'outside' ? r : -r).map(p => { const q = fromC(p); return reverse ? q.reverse() : q; });
   if (!loops.length) return skip(`« ${sh.name} » : trop petite pour la fraise de ${T.d} mm`);
   const through = depth >= th - 1e-6;
-  const tab = (through && S.tabs.on) ? { z: -(th - S.tabs.h), n: Math.max(1, Math.round(S.tabs.n)), w: S.tabs.w + T.d } : null;
+  const at = (sh.tabs || []).map(tf);
+  const tab = (through && S.tabs.on) ? { z: -(th - S.tabs.h), n: Math.max(1, Math.round(S.tabs.n)), w: S.tabs.w + T.d, at, reach: T.d } : null;
   for (const lp of loops) { let zPrev = 0; for (const z of passes) { cuts.push({ pts: loopWithTabs(lp, z, tab), zTop: zPrev }); zPrev = z; } }
   return group(cuts);
 }

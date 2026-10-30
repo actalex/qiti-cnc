@@ -118,6 +118,39 @@ function relire(lines, safe) {
   console.log('relief :', rel);
   assert.deepStrictEqual({ poche: rel.poche, trouCentre: rel.trouCentre, trouBord: rel.trouBord, plaqueBord: rel.plaqueBord, brut: rel.brut }, { poche: -2, trouCentre: 0, trouBord: -3, plaqueBord: -6, brut: 0 });
 
+  // Attaches à la main : deux points du contour de la plaque (milieu du bord gauche, milieu du bord du haut) ;
+  // à chaque passe sous l'attache, deux plateaux centrés en face de ces points sur le trajet décalé
+  const man = await p.evaluate(() => {
+    const A = window.__atelier, pl = A.D.shapes.find(s => s.name === 'plaque'); pl.tabs = [[20, 30], [50, 10]]; A.recompute();
+    return { lines: A.PLAN.at(-1).lines, safe: A.S.machine.safeZ, saved: designData().ops.find(o => o.tabs.length).tabs };
+  });
+  assert.deepStrictEqual(man.saved, [[20, 30], [50, 10]], 'attaches enregistrées avec le dessin');
+  const mm = relire(man.lines, man.safe).moves.filter(m => m.g === 1 && m.shape === 'plaque'), plats = []; let pc = null;
+  for (const m of mm) {
+    const vert = m.x === m.x0 && m.y === m.y0;
+    if (vert && m.z0 < -4.5 - 1e-6 && Math.abs(m.z + 4.5) < 1e-6) plats.push(pc = { x: 0, y: 0, L: 0 });
+    else if (pc && !vert && Math.abs(m.z + 4.5) < 1e-6) { const L = Math.hypot(m.x - m.x0, m.y - m.y0); pc.x += (m.x + m.x0) / 2 * L; pc.y += (m.y + m.y0) / 2 * L; pc.L += L; }
+    else pc = null;
+  }
+  const ctr = plats.map(t => [+(t.x / t.L).toFixed(2), +(t.y / t.L).toFixed(2)]), want = [[-r, 20], [30, 40 + r]];
+  console.log('attaches à la main :', JSON.stringify(ctr));
+  assert.strictEqual(plats.length, 2 * passes, 'deux plateaux par passe');
+  ctr.forEach(c => assert.ok(want.some(w => Math.hypot(c[0] - w[0], c[1] - w[1]) < 0.3), `attache mal placée : ${c}`));
+  // Interface : sélection, « Placer à la main », clic près du contour = ajout, clic sur l'attache = retrait
+  await p.click('#viewbar [data-v=design]');
+  await p.evaluate(() => { const A = window.__atelier; A.D.shapes.find(s => s.name === 'plaque').tabs = []; A.recompute(); fitView(); });
+  await p.click('#shapeList > div:nth-child(1)'); await p.click('#bTabEdit');
+  const scr = await p.evaluate(() => { const [a, b] = W2S(30, 39.7), r = $('#cv').getBoundingClientRect(); return [r.x + a, r.y + b]; }); // 0,3 mm à côté du bord du haut
+  await p.mouse.click(...scr); await p.waitForTimeout(100);
+  const added = await p.evaluate(() => ({ tabs: window.__atelier.D.shapes[0].tabs, info: $('#tabInfo').textContent }));
+  await p.mouse.click(...scr); await p.waitForTimeout(100);
+  const removed = await p.evaluate(() => window.__atelier.D.shapes[0].tabs.length);
+  await p.click('#bTabEdit');
+  console.log('clics :', JSON.stringify(added), removed);
+  assert.ok(added.tabs.length === 1 && Math.abs(added.tabs[0][1] - 10) < 1e-6 && Math.abs(added.tabs[0][0] - 50) < 0.5, 'attache ajoutée sur le bord');
+  assert.ok(added.info.includes('1 placée à la main'));
+  assert.strictEqual(removed, 0, 'attache retirée');
+
   assert.deepStrictEqual(errs, []);
   console.log('gcode : OK');
   await b.close();
