@@ -105,6 +105,7 @@ function watchSilence(port, afterReset) {
   setTimeout(async () => {
     if (machine.port !== port || machine.rx) return;
     $('#state').textContent = 'muette';
+    if (!(port.getInfo && port.getInfo().usbVendorId)) { log('Ce port n\'est pas un port USB (Bluetooth ?) : déconnecte et choisis le port USB de la CNC.', 'err'); return; }
     if (afterReset || !port.setSignals) { log('La carte ne répond toujours pas. Vérifie que c\'est bien le port USB de la CNC (pas un port Bluetooth) et que la machine est sous tension ; sinon éteins et rallume la machine.', 'err'); return; }
     log('Aucune réponse de la carte sur ce port.', 'err');
     if (!confirm('La carte ne répond pas : elle est peut-être figée.\n\nLa redémarrer par l\'USB ? C\'est comme l\'éteindre et la rallumer : si elle bougeait, elle s\'arrête net, et les zéros sont à refaire.')) { log('Vérifie que c\'est bien le port USB de la CNC (pas un port Bluetooth), puis déconnecte et réessaie.', 'msg'); return; }
@@ -154,6 +155,8 @@ async function disconnect() {
 }
 if ('serial' in navigator) navigator.serial.addEventListener('disconnect', e => { if (machine.port && e.target === machine.port) { log('La machine a été débranchée.', 'err'); disconnect(); } });
 else $('#serialBanner').style.display = 'block';
+const FIREFOX = /firefox/i.test(navigator.userAgent);
+if (FIREFOX && 'serial' in navigator) { $('#serialBanner').innerHTML = 'Firefox : la liaison USB avec la CNC n\'y fonctionne pas (port ouvert mais aucune donnée reçue lors des essais). Utilise <b>Edge</b> ou <b>Chrome</b> pour graver ; la FAO et l\'export du G-code fonctionnent ici.'; $('#serialBanner').style.display = 'block'; }
 $('#bConnect').onclick = connect;
 $('#bUnlock').onclick = () => sendLines(['$X']);
 $('#bHalt').onclick = () => job ? stopJob() : safeStop(null);
@@ -176,6 +179,8 @@ document.addEventListener('keydown', e => {
 });
 $$('[data-zero]').forEach(b => b.onclick = () => sendLines([`G10 L20 P1 ${b.dataset.zero}0`]));
 $('#bZeroXY').onclick = () => sendLines(['G10 L20 P1 X0 Y0']);
+// zéro Z manuel (méthode de la feuille de papier) : la pointe touche le bois, il faut remonter avant tout déplacement XY
+$('#bZeroZ').onclick = () => { sendLines(['G10 L20 P1 Z0']); log('Zéro Z placé à la pointe de la fraise. Remonte (Z+) avant de déplacer en X/Y, sinon la fraise raye le bois.', 'msg'); };
 $('#bGoZero').onclick = () => { const z = machine.wpos && machine.wpos[2] < S.machine.safeZ ? [`G90 G0 Z${f3(S.machine.safeZ)}`] : []; sendLines([...z, 'G90 G0 X0 Y0']); };
 $('#bProbe').onclick = () => {
   if (!confirm(`Place la plaque de sonde sous la fraise et connecte la pince.\nLa fraise va descendre lentement jusqu'à ${S.machine.probeDist} mm.\n\nÉpaisseur de plaque utilisée : ${S.machine.probeT} mm.`)) return;

@@ -199,9 +199,12 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     </div>
     <div class="row" style="margin-top:6px">
       <button id="bZeroXY" style="flex:1">Zéro XY ici</button>
-      <button id="bGoZero" style="flex:1">Aller à X0 Y0</button>
+      <button id="bZeroZ" style="flex:1" title="Descends la pointe jusqu'à toucher le dessus du bois (ou à pincer une feuille de papier glissée dessous), puis clique">Zéro Z ici</button>
     </div>
-    <div class="row"><button id="bProbe" style="flex:1">Sonde Z (plaque de contact)</button></div>
+    <div class="row">
+      <button id="bGoZero" style="flex:1">Aller à X0 Y0</button>
+      <button id="bProbe" style="flex:1">Sonde Z (plaque)</button>
+    </div>
     <div class="jog">
       <span></span><button data-jog="Y+">Y+</button><span></span><button data-jog="Z+">Z+</button>
       <button data-jog="X-">X−</button><button data-jog="Y-">Y−</button><button data-jog="X+">X+</button><button data-jog="Z-">Z−</button>
@@ -1499,6 +1502,7 @@ function watchSilence(port, afterReset) {
   setTimeout(async () => {
     if (machine.port !== port || machine.rx) return;
     $('#state').textContent = 'muette';
+    if (!(port.getInfo && port.getInfo().usbVendorId)) { log('Ce port n\'est pas un port USB (Bluetooth ?) : déconnecte et choisis le port USB de la CNC.', 'err'); return; }
     if (afterReset || !port.setSignals) { log('La carte ne répond toujours pas. Vérifie que c\'est bien le port USB de la CNC (pas un port Bluetooth) et que la machine est sous tension ; sinon éteins et rallume la machine.', 'err'); return; }
     log('Aucune réponse de la carte sur ce port.', 'err');
     if (!confirm('La carte ne répond pas : elle est peut-être figée.\n\nLa redémarrer par l\'USB ? C\'est comme l\'éteindre et la rallumer : si elle bougeait, elle s\'arrête net, et les zéros sont à refaire.')) { log('Vérifie que c\'est bien le port USB de la CNC (pas un port Bluetooth), puis déconnecte et réessaie.', 'msg'); return; }
@@ -1548,6 +1552,8 @@ async function disconnect() {
 }
 if ('serial' in navigator) navigator.serial.addEventListener('disconnect', e => { if (machine.port && e.target === machine.port) { log('La machine a été débranchée.', 'err'); disconnect(); } });
 else $('#serialBanner').style.display = 'block';
+const FIREFOX = /firefox/i.test(navigator.userAgent);
+if (FIREFOX && 'serial' in navigator) { $('#serialBanner').innerHTML = 'Firefox : la liaison USB avec la CNC n\'y fonctionne pas (port ouvert mais aucune donnée reçue lors des essais). Utilise <b>Edge</b> ou <b>Chrome</b> pour graver ; la FAO et l\'export du G-code fonctionnent ici.'; $('#serialBanner').style.display = 'block'; }
 $('#bConnect').onclick = connect;
 $('#bUnlock').onclick = () => sendLines(['$X']);
 $('#bHalt').onclick = () => job ? stopJob() : safeStop(null);
@@ -1570,6 +1576,8 @@ document.addEventListener('keydown', e => {
 });
 $$('[data-zero]').forEach(b => b.onclick = () => sendLines([`G10 L20 P1 ${b.dataset.zero}0`]));
 $('#bZeroXY').onclick = () => sendLines(['G10 L20 P1 X0 Y0']);
+// zéro Z manuel (méthode de la feuille de papier) : la pointe touche le bois, il faut remonter avant tout déplacement XY
+$('#bZeroZ').onclick = () => { sendLines(['G10 L20 P1 Z0']); log('Zéro Z placé à la pointe de la fraise. Remonte (Z+) avant de déplacer en X/Y, sinon la fraise raye le bois.', 'msg'); };
 $('#bGoZero').onclick = () => { const z = machine.wpos && machine.wpos[2] < S.machine.safeZ ? [`G90 G0 Z${f3(S.machine.safeZ)}`] : []; sendLines([...z, 'G90 G0 X0 Y0']); };
 $('#bProbe').onclick = () => {
   if (!confirm(`Place la plaque de sonde sous la fraise et connecte la pince.\nLa fraise va descendre lentement jusqu'à ${S.machine.probeDist} mm.\n\nÉpaisseur de plaque utilisée : ${S.machine.probeT} mm.`)) return;
@@ -1585,7 +1593,7 @@ function updateButtons() {
   const ready = machine.port && machine.state === 'Idle' && !job;
   $('#bCarve').disabled = !(G && ready);
   $('#bExport').disabled = !G;
-  ['#bUnlock', '#bHome', '#bZeroXY', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
+  ['#bUnlock', '#bHome', '#bZeroXY', '#bZeroZ', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
   $('#bUnlock').disabled = !machine.port || (!!job && machine.state !== 'Alarm');
   const noHome = machine.grbl[22] === 0;
   if (noHome) $('#bHome').disabled = true;

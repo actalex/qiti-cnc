@@ -23,16 +23,16 @@ Prévu pour une **fraise en V 30°**, dont les traits se terminent en arête ava
 6. À vérifier sous l'aperçu : **une seule étape**, **aucun avertissement ⚠**, environ 9 min. Vue « Trajectoires » : tout reste dans la chute.
 
 ## 2. Machine et zéros
-1. Connecte. La console doit afficher « Réglages de la carte… », et l'état doit être **Prête**. Si l'état est **Alarme**, clique « Déverrouiller ».
+1. Ouvre la page dans **Edge** (pas Firefox) et connecte-toi en choisissant le port USB (pas le Bluetooth). La console doit afficher « Réglages de la carte… », et l'état doit être **Prête**. Si l'état est **Alarme**, clique « Déverrouiller ».
 2. Fixe la chute. Installe la fraise en V, broche arrêtée.
 3. **Zéro X/Y** : amène la pointe au coin avant-gauche de la chute, puis clique « Zéro XY ici ».
-4. **Zéro Z, méthode du papier** : pose la feuille sur la chute et descends par pas de 0,1 jusqu'à ce que la feuille frotte quand tu la bouges. Clique **Z=0** et retire la feuille.
+4. **Zéro Z, méthode du papier** : pose la feuille sur la chute et descends par pas de 0,1 jusqu'à ce que la feuille frotte quand tu la bouges. Clique **Zéro Z ici** et retire la feuille.
 5. Remonte de quelques mm (Z+).
 
 ## 3. Passe à l'air (conseillée, 9 min)
-1. Monte de **10 mm exactement** (pas de 10, Z+ une fois), puis clique **Z=0** : le zéro est maintenant 10 mm au-dessus du bois.
+1. Monte de **10 mm exactement** (pas de 10, Z+ une fois), puis clique **Zéro Z ici** : le zéro est maintenant 10 mm au-dessus du bois.
 2. Lance « Graver », broche à l'arrêt ou au ralenti. Regarde si le dessin tombe bien au milieu de la chute.
-3. À la fin, descends de 10 mm exactement (Z− une fois avec le pas de 10), puis clique **Z=0** : tu retrouves le zéro du bois.
+3. À la fin, descends de 10 mm exactement (Z− une fois avec le pas de 10), puis clique **Zéro Z ici** : tu retrouves le zéro du bois.
    Si une alarme apparaît entre-temps, la position est perdue : refais les zéros X/Y et Z.
 
 ## 4. Gravure

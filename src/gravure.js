@@ -3,7 +3,7 @@ function updateButtons() {
   const ready = machine.port && machine.state === 'Idle' && !job;
   $('#bCarve').disabled = !(G && ready);
   $('#bExport').disabled = !G;
-  ['#bUnlock', '#bHome', '#bZeroXY', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
+  ['#bUnlock', '#bHome', '#bZeroXY', '#bZeroZ', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
   $('#bUnlock').disabled = !machine.port || (!!job && machine.state !== 'Alarm');
   const noHome = machine.grbl[22] === 0;
   if (noHome) $('#bHome').disabled = true;

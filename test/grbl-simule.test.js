@@ -56,6 +56,10 @@ const launch = require('./navigateur');
   if (reg.m.w !== 450 || reg.m.h !== 455 || reg.m.rapid !== 3000 || !reg.m.plan || reg.m.plan.acc[2] !== 50 || !reg.log.includes('Réglages de la carte appliqués') || reg.log.includes('$120=') || !reg.log.includes('(USB 1a86:7523)') || reg.log.includes('Aucune réponse') || !(await p.$eval('#bHome', b => b.disabled))) { console.error('ÉCHEC réglages'); process.exitCode = 1; }
   await p.fill('#cmd', '$BAD'); await p.press('#cmd','Enter'); await p.waitForTimeout(200);
   await p.click('[data-jog="X+"]'); await p.waitForTimeout(100);
+  // zéro Z manuel : G10 L20 P1 Z0, avec le rappel de remonter avant de bouger en XY
+  await p.click('#bZeroZ'); await p.waitForTimeout(200);
+  const z0 = await p.evaluate(() => ({ sent: __grbl.rx.includes('G10 L20 P1 Z0'), log: $('#log').innerText.includes('Remonte (Z+)') }));
+  if (!z0.sent || !z0.log) { console.error('ÉCHEC zéro Z', z0); process.exitCode = 1; }
   await p.click('#bCarve'); for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
   await p.click('#cGo');
   await p.waitForTimeout(1500); await p.screenshot({ path: __dirname + '/shot-run.png' });
