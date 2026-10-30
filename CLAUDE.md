@@ -4,7 +4,7 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 
 ## Règles
 - Interface et messages **en français**.
-- Éditer **`src/`** uniquement (`atelier-cnc.src.html` = HTML, CSS, utilitaires, réglages, projet, démarrage ; sections insérées par `/*INCLUDE:x.js*/` : `svg.js` import SVG, `fao.js` FAO + G-code, `temps.js` estimation, `materiaux.js`, `vue.js` canvas, `panneaux.js` panneaux latéraux, `grbl.js` Web Serial, `gravure.js` déroulement d'une gravure), puis `npm run build` (régénère `dist/atelier-cnc.html`, à committer aussi). Garder chaque fichier court : sortir une section dans son propre fichier plutôt que d'allonger.
+- Éditer **`src/`** uniquement (`atelier-cnc.src.html` = HTML, CSS, utilitaires, réglages, projet, démarrage ; sections insérées par `/*INCLUDE:x.js*/` : `svg.js` import SVG, `fao.js` FAO + G-code, `temps.js` estimation, `materiaux.js`, `vue.js` canvas, `relief.js` vue « Relief » (carte de hauteurs balayée par la forme réelle des fraises, ombrée, en cache par `PLAN`), `panneaux.js` panneaux latéraux, `grbl.js` Web Serial, `gravure.js` déroulement d'une gravure), puis `npm run build` (régénère `dist/atelier-cnc.html`, à committer aussi). Garder chaque fichier court : sortir une section dans son propre fichier plutôt que d'allonger.
 - Tout reste dans un seul fichier (HTML + CSS + JS vanilla, pas de framework, pas de CDN : la page doit marcher hors ligne). Seule dépendance : Clipper, intégrée au build.
 - Après chaque modification : `npm test` (Playwright, ou Edge à défaut : `test/vcarve.test.js` vérifie les profondeurs, `test/grbl-simule.test.js` simule GRBL) et vérifier les captures `test/shot-*.png`.
 - Sécurité machine : ne jamais émettre de mouvement sans Z de dégagement, jamais de G0 sous Z0 (approche rapide jusqu'à 0,5 mm au-dessus du brut, puis G1), garder la liste de vérification avant gravure, arrêter le flux sur toute `error:` ou `ALARM:` pendant une gravure.
@@ -25,7 +25,7 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 - Tests à assertions : `test/gcode.test.js` relit le G-code comme la machine (sécurité, profondeurs, décalages, attaches) ; à étendre (origine au centre, échelle, sens avalant).
 
 **2. Se rapprocher d'Easel**
-- Aperçu 3D réaliste (carte de hauteurs).
+- Relief vu de dessus fait (`relief.js`) ; reste une vue inclinée/orbitale à partir de la même carte de hauteurs.
 - Attaches placées à la main en cliquant sur le contour.
 - Édition sur le plan de travail : déplacer, redimensionner, tourner, aligner, annuler.
 - Texte avec polices intégrées (bibliothèque de lecture de polices intégrée au build, comme Clipper).

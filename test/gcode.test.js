@@ -56,7 +56,12 @@ function relire(lines, safe) {
     A.recompute();
     const tf = toStockFn(), bb = {};
     for (const s of A.D.shapes) { const P = s.subpaths.flatMap(sp => sp.pts.map(tf)); bb[s.name] = [Math.min(...P.map(q => q[0])), Math.min(...P.map(q => q[1])), Math.max(...P.map(q => q[0])), Math.max(...P.map(q => q[1]))]; }
-    return { safe: S.machine.safeZ, bb, flat: { d: flat.d, doc: flat.doc, feed: flat.feed, plunge: flat.plunge }, v: { doc: v.doc, feed: v.feed, plunge: v.plunge },
+    // relief (carte de hauteurs) : quelques points dont la hauteur est connue
+    const M = heightMap(A.PLAN), hAt = (x, y) => M.H[Math.floor(y / M.res) * M.nx + Math.floor(x / M.res)];
+    const c = n => [(bb[n][0] + bb[n][2]) / 2, (bb[n][1] + bb[n][3]) / 2], r = flat.d / 2;
+    const relief = { poche: hAt(...c('poche')), trouCentre: hAt(...c('trou')), trouBord: hAt(bb.trou[0] + 0.5, c('trou')[1]),
+      plaqueBord: Math.min(...Array.from({ length: 30 }, (_, k) => hAt(bb.plaque[2] + r, bb.plaque[1] + 5 + k))), brut: hAt(95, 55) };
+    return { relief, safe: S.machine.safeZ, bb, flat: { d: flat.d, doc: flat.doc, feed: flat.feed, plunge: flat.plunge }, v: { doc: v.doc, feed: v.feed, plunge: v.plunge },
       steps: A.PLAN.map(P => ({ tool: P.tool.name, type: P.tool.type || 'flat', lines: P.lines })), warns: $('#warns').textContent };
   }, SVG);
   console.log('étapes :', data.steps.map(s => `${s.tool} (${s.lines.length} lignes)`), data.warns || '(aucun avertissement)');
@@ -107,6 +112,11 @@ function relire(lines, safe) {
   console.log(`attaches : ${runs.length} plateaux sur ${passes} passes sous l'attache,`, runs.map(t => t.L.toFixed(2)).join(' '));
   assert.strictEqual(runs.length, 4 * passes, 'plateaux par attache et par passe');
   runs.forEach(t => assert.ok(Math.abs(t.L - (5 + data.flat.d)) < 0.05, `longueur d'attache ${t.L}`));
+
+  // Relief : poche à −2, intérieur de 3 mm = anneau le long du bord (centre intact), extérieur traversant (−6), brut intact
+  const rel = Object.fromEntries(Object.entries(data.relief).map(([k, v]) => [k, +v.toFixed(2)]));
+  console.log('relief :', rel);
+  assert.deepStrictEqual({ poche: rel.poche, trouCentre: rel.trouCentre, trouBord: rel.trouBord, plaqueBord: rel.plaqueBord, brut: rel.brut }, { poche: -2, trouCentre: 0, trouBord: -3, plaqueBord: -6, brut: 0 });
 
   assert.deepStrictEqual(errs, []);
   console.log('gcode : OK');

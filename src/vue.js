@@ -32,6 +32,7 @@ function draw() {
   for (let gx = 10; gx < S.stock.w; gx += 10) { const [a] = W2S(gx, 0); ctx.moveTo(a, sy0); ctx.lineTo(a, sy1); }
   for (let gy = 10; gy < S.stock.h; gy += 10) { const [, b] = W2S(0, gy); ctx.moveTo(sx0, b); ctx.lineTo(sx1, b); }
   ctx.stroke();
+  if (viewMode === 'relief' && G) drawRelief();
   ctx.strokeStyle = '#b89a66'; ctx.strokeRect(sx0, sy0, sx1 - sx0, sy1 - sy0);
   // origine
   const [ox, oy] = W2S(...originOff());
@@ -39,7 +40,7 @@ function draw() {
   ctx.strokeStyle = '#27ae60'; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, oy - 30); ctx.stroke();
   ctx.fillStyle = '#22201c'; ctx.font = '11px system-ui'; ctx.fillText('X0 Y0', ox + 4, oy + 14);
   if (G && (viewMode === 'carve' || viewMode === 'paths')) drawMoves();
-  if (D && viewMode !== 'carve') drawShapes(viewMode === 'paths' ? 0.35 : 1);
+  if (D && viewMode !== 'carve' && !(viewMode === 'relief' && G)) drawShapes(viewMode === 'paths' ? 0.35 : 1);
   if (job && G) drawProgress();
   if (machine.wpos) {
     const [tx, ty] = W2S(machine.wpos[0] + originOff()[0], machine.wpos[1] + originOff()[1]);

@@ -168,6 +168,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
   <div id="viewbar">
     <button data-v="design" class="on">Dessin</button>
     <button data-v="carve">Aperçu fraisage</button>
+    <button data-v="relief" title="La pièce telle qu'elle sortira, calculée avec la forme réelle des fraises">Relief</button>
     <button data-v="paths">Trajectoires</button>
     <button id="bFit" title="Recadrer">⤢</button>
   </div>
@@ -350,6 +351,7 @@ function toStockFn() {
 /*INCLUDE:temps.js*/
 /*INCLUDE:materiaux.js*/
 /*INCLUDE:vue.js*/
+/*INCLUDE:relief.js*/
 /*INCLUDE:panneaux.js*/
 /*INCLUDE:grbl.js*/
 /*INCLUDE:gravure.js*/
