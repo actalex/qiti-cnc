@@ -4,7 +4,7 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 
 ## Règles
 - Interface et messages **en français**.
-- Éditer **`src/`** uniquement (`atelier-cnc.src.html` + fichiers JS insérés par `/*INCLUDE:x.js*/`, ex. `fao.js` = FAO + G-code), puis `npm run build` (régénère `dist/atelier-cnc.html`, à committer aussi). Garder chaque fichier court : sortir une section dans son propre fichier plutôt que d'allonger.
+- Éditer **`src/`** uniquement (`atelier-cnc.src.html` = HTML, CSS, utilitaires, réglages, projet, démarrage ; sections insérées par `/*INCLUDE:x.js*/` : `svg.js` import SVG, `fao.js` FAO + G-code, `temps.js` estimation, `materiaux.js`, `vue.js` canvas, `panneaux.js` panneaux latéraux, `grbl.js` Web Serial, `gravure.js` déroulement d'une gravure), puis `npm run build` (régénère `dist/atelier-cnc.html`, à committer aussi). Garder chaque fichier court : sortir une section dans son propre fichier plutôt que d'allonger.
 - Tout reste dans un seul fichier (HTML + CSS + JS vanilla, pas de framework, pas de CDN : la page doit marcher hors ligne). Seule dépendance : Clipper, intégrée au build.
 - Après chaque modification : `npm test` (Playwright, ou Edge à défaut : `test/vcarve.test.js` vérifie les profondeurs, `test/grbl-simule.test.js` simule GRBL) et vérifier les captures `test/shot-*.png`.
 - Sécurité machine : ne jamais émettre de mouvement sans Z de dégagement, garder la liste de vérification avant gravure, arrêter le flux sur toute `error:` ou `ALARM:` pendant une gravure.
@@ -22,7 +22,6 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 
 ## Pistes suivantes (analyse du 2026-10-29, par priorité)
 **1. Fiabilité**
-- Continuer le découpage de la source (`fao.js` fait) : import SVG, machine GRBL, gravure, interface.
 - Étendre les tests à assertions (offsets, attaches, G-code).
 
 **2. Se rapprocher d'Easel**
