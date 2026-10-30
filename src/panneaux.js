@@ -71,7 +71,7 @@ function autosave() {
   try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
   catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
 }
-function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, pageOnly: D.pageOnly, stack: D.stack, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
 function restoreAutosave() {
   let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
   if (!p || !p.svg) return;
@@ -176,8 +176,15 @@ Les réglages (machine, fraises, matériau) sont conservés. Pour garder ce dess
 };
 $('#fSvg').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) openSvgFile(f); });
 async function openSvgFile(f) {
-  try { loadDesign(await f.text(), f.name); } catch (err) { return alert(err.message); }
-  if (await askColors()) { applyColors(); refreshShapes(); invalidate(); resetHistory(); }
+  let text;
+  try { text = await f.text(); loadDesign(text, f.name); } catch (err) { return alert(err.message); }
+  const r = await askImport();
+  if (r.page) { // brut = page, puis réimport limité à la page et placé comme dessus
+    S.stock.w = +f3(D.page.w); S.stock.h = +f3(D.page.h); saveSettings();
+    try { loadDesign(text, f.name, { pageOnly: true }); } catch (err) { return alert(err.message); }
+  }
+  if (r.colors) applyColors();
+  if (r.page || r.colors) { refreshAll(); fitView(); resetHistory(); }
   offerVConvert();
 }
 $('#bSave').onclick = () => {

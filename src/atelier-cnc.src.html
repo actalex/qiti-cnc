@@ -277,8 +277,11 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
 </dialog>
 
 <dialog id="dlgColors">
-  <div class="hd">Usinages d'après les couleurs</div>
+  <div class="hd">Import du dessin</div>
   <div class="bd">
+    <div id="impPageRow" style="margin-bottom:8px"><label><input type="checkbox" id="impPage"> La page Inkscape est le brut</label>
+      <div class="note" id="impPageInfo"></div>
+      <div class="note">Le brut prend la taille de la page, le dessin y reste placé comme dans Inkscape, et ce qui est entièrement hors de la page est ignoré.</div></div>
     <div id="colSum" style="line-height:1.6"></div>
     <div id="colWarn" style="color:var(--warn);margin-top:6px"></div>
     <div class="row" style="margin-top:8px"><label>Épaisseur du brut (mm)</label><input type="number" id="colT" step="0.1" min="0.1"></div>
@@ -364,10 +367,13 @@ function bboxOf(shapes) {
 }
 function loadDesign(text, name, saved) {
   if (SURF) { SURF = false; $('#surfBar').classList.add('hide'); } // un nouveau dessin quitte le mode surfaçage
-  const { shapes, warns } = importSVG(text, name);
-  shapes.forEach(initShapeGeom);
-  D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
-  if (saved) {
+  const imp = importSVG(text, name), warns = imp.warns, pageOnly = !!(saved && saved.pageOnly && imp.page);
+  const shapes = pageOnly ? pageShapes(imp.shapes, imp.page) : imp.shapes; // la page Inkscape est le brut : hors page ignoré
+  if (!shapes.length) throw new Error('Aucune forme dans la page du SVG.');
+  shapes.forEach((sh, k) => { sh.id = k; initShapeGeom(sh); });
+  D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 }, page: imp.page, pageOnly, stack: !!(saved && saved.stack) };
+  if (saved && !saved.place && pageOnly) placeOnPage();
+  else if (saved) {
     (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, through: !!o.through, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
     D.bb = bboxOf(D.shapes); // le placement enregistré correspond aux formes déplacées / tournées
     if (saved.place) D.place = saved.place;
@@ -388,6 +394,7 @@ function toStockFn() {
 }
 
 /*INCLUDE:couleurs.js*/
+/*INCLUDE:import.js*/
 /*INCLUDE:fao.js*/
 /*INCLUDE:temps.js*/
 /*INCLUDE:materiaux.js*/

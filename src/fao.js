@@ -216,7 +216,9 @@ function shapeGroups(sh, res) {
   }
   const closedSubs = subs.filter(s => s.closed);
   if (!closedSubs.length) return skip(`« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`);
-  const region = unionEO(closedSubs.map(s => toC(s.pts)));
+  let region = unionEO(closedSubs.map(s => toC(s.pts)));
+  const occ = occluders(sh, tf);
+  if (occ.length) { region = polyDiff(region, unionEO(occ)); if (!region.length) return skip(`« ${sh.name} » : entièrement recouverte par d'autres formes`); }
   const reverse = sh.op === 'outside' ? S.climb : !S.climb;
   if (sh.op === 'vcarve') {
     const k = Math.tan((T.angle || 60) * Math.PI / 360), tip2 = (T.tip || 0) / 2;

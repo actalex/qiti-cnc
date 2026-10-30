@@ -277,8 +277,11 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
 </dialog>
 
 <dialog id="dlgColors">
-  <div class="hd">Usinages d'après les couleurs</div>
+  <div class="hd">Import du dessin</div>
   <div class="bd">
+    <div id="impPageRow" style="margin-bottom:8px"><label><input type="checkbox" id="impPage"> La page Inkscape est le brut</label>
+      <div class="note" id="impPageInfo"></div>
+      <div class="note">Le brut prend la taille de la page, le dessin y reste placé comme dans Inkscape, et ce qui est entièrement hors de la page est ignoré.</div></div>
     <div id="colSum" style="line-height:1.6"></div>
     <div id="colWarn" style="color:var(--warn);margin-top:6px"></div>
     <div class="row" style="margin-top:8px"><label>Épaisseur du brut (mm)</label><input type="number" id="colT" step="0.1" min="0.1"></div>
@@ -507,7 +510,9 @@ function importSVG(text, name) {
       shapes.push({ id: shapes.length, name: el.getAttribute('inkscape:label') || el.id || (el.tagName.toLowerCase() + ' ' + (idx + 1)), subpaths: out, closed, op: closed ? 'outside' : 'on', depth: 1, paint: paintOf(el, svg) });
     });
     if (!shapes.length) throw new Error('Aucune forme exploitable dans ce SVG.' + (warns.length ? ' ' + warns.join(' ') : ''));
-    return { shapes, warns };
+    // page Inkscape en mm (coordonnées du dessin : origine en haut à gauche), si le SVG la définit
+    const page = vb ? { w: vb[2] * sx, h: vb[3] * sy } : wmm && hmm ? { w: wmm, h: hmm } : null;
+    return { shapes, warns, page };
   } finally { host.remove(); }
 }
 
@@ -521,10 +526,13 @@ function bboxOf(shapes) {
 }
 function loadDesign(text, name, saved) {
   if (SURF) { SURF = false; $('#surfBar').classList.add('hide'); } // un nouveau dessin quitte le mode surfaçage
-  const { shapes, warns } = importSVG(text, name);
-  shapes.forEach(initShapeGeom);
-  D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
-  if (saved) {
+  const imp = importSVG(text, name), warns = imp.warns, pageOnly = !!(saved && saved.pageOnly && imp.page);
+  const shapes = pageOnly ? pageShapes(imp.shapes, imp.page) : imp.shapes; // la page Inkscape est le brut : hors page ignoré
+  if (!shapes.length) throw new Error('Aucune forme dans la page du SVG.');
+  shapes.forEach((sh, k) => { sh.id = k; initShapeGeom(sh); });
+  D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 }, page: imp.page, pageOnly, stack: !!(saved && saved.stack) };
+  if (saved && !saved.place && pageOnly) placeOnPage();
+  else if (saved) {
     (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, through: !!o.through, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
     D.bb = bboxOf(D.shapes); // le placement enregistré correspond aux formes déplacées / tournées
     if (saved.place) D.place = saved.place;
@@ -552,20 +560,29 @@ function toStockFn() {
 // « Traversant » (sh.through) suit l'épaisseur du brut si elle change ensuite.
 const depthOf = sh => sh.through ? S.stock.t : sh.depth;
 // noirceur 0 (blanc) … 1 (noir) d'une peinture calculée par le navigateur, transparence comprise ; null si aucune
-function darkness(paint, alpha) {
+// inv : couleur inversée (filtre Inkscape « Inverser » sur la forme ou un groupe parent, en nombre impair)
+function darkness(paint, alpha, inv) {
   const m = /^rgba?\(([^)]+)\)$/.exec(paint || ''); if (!m) return null; // none, dégradé (url(…))
   const [r, g, b, a = 1] = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
   const k = a * alpha; if (!(k > 0)) return null;
-  return k * (1 - (0.299 * r + 0.587 * g + 0.114 * b) / 255); // luma : gris 127 -> 50,2 %
+  const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255; // luma : gris 127 -> 50,2 %
+  return k * (inv ? L : 1 - L);
+}
+// filtre « Inverser » d'Inkscape (Filtres › Couleur) : matrice qui remplace chaque composante par 1 − composante
+function isInvertFilter(f) {
+  return !!f && [...f.querySelectorAll('feColorMatrix')].some(m => /^-1\s+0\s+0\s+0\s+1\s+0\s+-1\s+0\s+0\s+1\s+0\s+0\s+-1\s+0\s+1\b/.test((m.getAttribute('values') || '').trim()));
 }
 function paintOf(el, svg) {
-  const cs = getComputedStyle(el); let op = 1;
-  for (let p = el; p && p !== svg; p = p.parentElement) op *= parseFloat(getComputedStyle(p).opacity) || 0;
-  const sw = parseFloat(cs.strokeWidth);
+  const cs = getComputedStyle(el); let op = 1, inv = 0, other = 0;
+  for (let p = el; p && p !== svg; p = p.parentElement) {
+    const pc = getComputedStyle(p); op *= parseFloat(pc.opacity) || 0;
+    const id = /url\("?#([^")]+)"?\)/.exec(pc.filter || ''); if (id) { if (isInvertFilter(svg.querySelector('#' + CSS.escape(id[1])))) inv++; else other++; }
+  }
+  const sw = parseFloat(cs.strokeWidth), odd = inv % 2 === 1;
   return {
-    fill: darkness(cs.fill, op * (parseFloat(cs.fillOpacity) || 0)),
-    stroke: sw > 0 ? darkness(cs.stroke, op * (parseFloat(cs.strokeOpacity) || 0)) : null,
-    gradient: /url\(/.test(cs.fill + cs.stroke)
+    fill: darkness(cs.fill, op * (parseFloat(cs.fillOpacity) || 0), odd),
+    stroke: sw > 0 ? darkness(cs.stroke, op * (parseFloat(cs.strokeOpacity) || 0), odd) : null,
+    gradient: /url\(/.test(cs.fill + cs.stroke), inverted: inv > 0, filtered: other > 0
   };
 }
 const WHITE = 0.02, BLACK = 0.98;
@@ -600,29 +617,59 @@ function colorSummary(shapes, plan, th) {
   // SVG sans couleurs voulues (logo, clipart, formes noires par défaut) : tout deviendrait traversant
   if (po.filter(p => p.through).length >= 2 && !plan.some(p => p.op !== 'none' && !p.through)) warn.push('Toutes les formes remplies sont noires : elles seraient toutes traversantes. Si ce SVG n\'a pas été colorié pour l\'atelier (logo, clipart), choisis « Ignorer les couleurs ».');
   if (shapes.some(s => s.paint && s.paint.gradient)) warn.push('Les dégradés ne sont pas interprétés (formes concernées non usinées).');
+  const inv = shapes.filter(s => s.paint && s.paint.inverted).length, flt = shapes.filter(s => s.paint && s.paint.filtered).length;
+  if (inv) L.push(`filtre « Inverser » d'Inkscape pris en compte sur ${inv} forme(s) : couleurs lues comme affichées`);
+  if (flt) warn.push(`${flt} forme(s) ont un autre filtre Inkscape : l'atelier lit leur couleur réelle, pas leur apparence (Filtres › Retirer les filtres).`);
   return { lines: L, warn };
-}
-// fenêtre de l'import : résumé, épaisseur modifiable (les profondeurs en dépendent), Appliquer / Ignorer
-function askColors() {
-  if (!D || !D.shapes.some(s => s.paint && (s.paint.fill != null || s.paint.stroke != null))) return Promise.resolve(false);
-  return new Promise(resolve => {
-    const show = () => {
-      const th = S.stock.t, sm = colorSummary(D.shapes, colorPlan(D.shapes, th), th);
-      $('#colSum').innerHTML = sm.lines.map(l => '• ' + l.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join('<br>');
-      $('#colWarn').textContent = sm.warn.join(' ');
-    };
-    $('#colT').value = S.stock.t; show();
-    $('#colT').oninput = () => { const v = parseFloat(String($('#colT').value).replace(',', '.')); if (v > 0) { S.stock.t = v; show(); } };
-    const done = ok => { $('#dlgColors').close(); saveSettings(); $('#stT').value = S.stock.t; resolve(ok); };
-    $('#colOk').onclick = () => done(true); $('#colNo').onclick = () => done(false);
-    $('#dlgColors').oncancel = e => { e.preventDefault(); done(false); };
-    $('#dlgColors').showModal();
-  });
 }
 function applyColors() {
   const plan = colorPlan(D.shapes, S.stock.t);
   D.shapes.forEach((sh, k) => { const p = plan[k]; sh.op = p.op; sh.through = !!p.through; sh.depth = p.through ? S.stock.t : (p.depth || 1); });
+  D.stack = true;
   log('Usinages déduits des couleurs du SVG : profondeurs modifiables forme par forme.', 'msg');
+}
+const hasPaint = sh => sh.paint && (sh.paint.fill != null || sh.paint.stroke != null);
+// Recouvrement (couleurs appliquées) : comme à l'écran, une forme remplie posée par-dessus (plus loin dans le fichier),
+// même blanche, retire sa surface des poches et remplissages en V situés dessous.
+function occluders(sh, tf) {
+  if (!D.stack || (sh.op !== 'pocket' && sh.op !== 'vcarve')) return [];
+  const k = D.shapes.indexOf(sh), out = [];
+  for (const o of D.shapes.slice(k + 1)) if (o.closed && o.paint && o.paint.fill != null) for (const s of o.subpaths) if (s.closed) out.push(toC(s.pts.map(tf)));
+  return out;
+}
+/* ====================== Fenêtre d'import ====================== */
+// À l'import d'un SVG : « la page Inkscape est le brut » (taille du brut = page, dessin placé comme sur la page, formes
+// entièrement hors page ignorées) et usinages d'après les couleurs (couleurs.js). Les profondeurs dépendant de
+// l'épaisseur, elle est modifiable ici. D.pageOnly est enregistré avec le projet : le filtre est refait au rechargement.
+const pageBox = page => ({ x0: 0, y0: 0, x1: page.w, y1: page.h });
+const inBox = (b, p) => !(b.x1 < p.x0 || b.x0 > p.x1 || b.y1 < p.y0 || b.y0 > p.y1);
+const insideBox = (b, p) => b.x0 >= p.x0 - 1e-6 && b.x1 <= p.x1 + 1e-6 && b.y0 >= p.y0 - 1e-6 && b.y1 <= p.y1 + 1e-6;
+// formes gardées avec la page comme brut : celles qui touchent la page (les autres sont ignorées)
+function pageShapes(shapes, page) { const p = pageBox(page); return shapes.filter(s => inBox(bboxOf([s]), p)); }
+// placement : le coin bas-gauche de la page = coin avant-gauche du brut (y du dessin vers le bas)
+function placeOnPage() { D.place = { x: D.bb.x0, y: D.page.h - D.bb.y1, s: 100 }; }
+function askImport() {
+  const page = D.page, paint = D.shapes.some(hasPaint);
+  if (!page && !paint) return Promise.resolve({ page: false, colors: false });
+  return new Promise(resolve => {
+    const pg = $('#impPage');
+    const show = () => {
+      const usePage = page && pg.checked, shapes = usePage ? pageShapes(D.shapes, page) : D.shapes, th = S.stock.t;
+      const out = D.shapes.length - shapes.length, over = usePage ? shapes.filter(s => !insideBox(bboxOf([s]), pageBox(page))).length : 0;
+      $('#impPageInfo').textContent = !page ? '' : `${f3(page.w)} × ${f3(page.h)} mm` + (out ? ` — ${out} forme(s) hors de la page ignorée(s)` : ' — tout le dessin est dans la page') + (over ? ` ; ${over} dépasse(nt) du bord` : '');
+      const sm = colorSummary(shapes, colorPlan(shapes, th), th);
+      $('#colSum').innerHTML = paint ? sm.lines.map(l => '• ' + l.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join('<br>') : 'Pas de couleurs à interpréter.';
+      $('#colWarn').textContent = paint ? sm.warn.join(' ') : '';
+    };
+    $('#impPageRow').classList.toggle('hide', !page); pg.checked = !!page; pg.onchange = show;
+    $('#colNo').classList.toggle('hide', !paint); $('#colOk').textContent = paint ? 'Appliquer les couleurs' : 'OK';
+    $('#colT').value = S.stock.t; show();
+    $('#colT').oninput = () => { const v = parseFloat(String($('#colT').value).replace(',', '.')); if (v > 0) { S.stock.t = v; show(); } };
+    const done = colors => { $('#dlgColors').close(); saveSettings(); $('#stT').value = S.stock.t; resolve({ page: !!(page && pg.checked), colors: colors && paint }); };
+    $('#colOk').onclick = () => done(true); $('#colNo').onclick = () => done(false);
+    $('#dlgColors').oncancel = e => { e.preventDefault(); done(false); };
+    $('#dlgColors').showModal();
+  });
 }
 /* ====================== FAO ====================== */
 const CL = window.ClipperLib, SC = 1000;
@@ -842,7 +889,9 @@ function shapeGroups(sh, res) {
   }
   const closedSubs = subs.filter(s => s.closed);
   if (!closedSubs.length) return skip(`« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`);
-  const region = unionEO(closedSubs.map(s => toC(s.pts)));
+  let region = unionEO(closedSubs.map(s => toC(s.pts)));
+  const occ = occluders(sh, tf);
+  if (occ.length) { region = polyDiff(region, unionEO(occ)); if (!region.length) return skip(`« ${sh.name} » : entièrement recouverte par d'autres formes`); }
   const reverse = sh.op === 'outside' ? S.climb : !S.climb;
   if (sh.op === 'vcarve') {
     const k = Math.tan((T.angle || 60) * Math.PI / 360), tip2 = (T.tip || 0) / 2;
@@ -1312,7 +1361,7 @@ function autosave() {
   try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
   catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
 }
-function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, pageOnly: D.pageOnly, stack: D.stack, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
 function restoreAutosave() {
   let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
   if (!p || !p.svg) return;
@@ -1417,8 +1466,15 @@ Les réglages (machine, fraises, matériau) sont conservés. Pour garder ce dess
 };
 $('#fSvg').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) openSvgFile(f); });
 async function openSvgFile(f) {
-  try { loadDesign(await f.text(), f.name); } catch (err) { return alert(err.message); }
-  if (await askColors()) { applyColors(); refreshShapes(); invalidate(); resetHistory(); }
+  let text;
+  try { text = await f.text(); loadDesign(text, f.name); } catch (err) { return alert(err.message); }
+  const r = await askImport();
+  if (r.page) { // brut = page, puis réimport limité à la page et placé comme dessus
+    S.stock.w = +f3(D.page.w); S.stock.h = +f3(D.page.h); saveSettings();
+    try { loadDesign(text, f.name, { pageOnly: true }); } catch (err) { return alert(err.message); }
+  }
+  if (r.colors) applyColors();
+  if (r.page || r.colors) { refreshAll(); fitView(); resetHistory(); }
   offerVConvert();
 }
 $('#bSave').onclick = () => {

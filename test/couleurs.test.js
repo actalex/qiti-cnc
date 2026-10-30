@@ -57,6 +57,41 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="140mm" height="80mm"
   console.log('exemple.svg :', s2.warn);
   assert.ok(s2.warn.includes('Toutes les formes remplies sont noires'));
   assert.deepStrictEqual(Object.values(await ops()).filter(v => v.startsWith('pocket')), [], 'couleurs ignorées');
+  // Page = brut, filtre « Inverser », recouvrement : page 100 × 50 ; « fond » noir avec un îlot blanc et une poche grise
+  // posés dessus ; « inverse » blanc + Inverser = noir affiché ; « cadreInv » contour noir dans un groupe inversé = blanc ;
+  // « dehors » entièrement hors page (ignoré), « bord » à cheval (gardé)
+  const SVG2 = `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm" viewBox="0 0 100 50">
+    <defs><filter id="inv"><feColorMatrix type="hueRotate" values="180"/><feColorMatrix values="-1 0 0 0 1 0 -1 0 0 1 0 0 -1 0 1 -0.21 -0.72 -0.07 2 0"/></filter></defs>
+    <rect id="fond" x="10" y="10" width="40" height="30" fill="#000"/>
+    <rect id="ilot" x="20" y="18" width="10" height="10" fill="#fff"/>
+    <rect id="grise" x="35" y="18" width="10" height="10" fill="#7f7f7f"/>
+    <rect id="inverse" x="60" y="10" width="15" height="10" fill="#fff" style="filter:url(#inv)"/>
+    <g style="filter:url(#inv)"><rect id="cadreInv" x="60" y="30" width="15" height="10" fill="none" stroke="#000"/></g>
+    <rect id="dehors" x="10" y="80" width="10" height="10" fill="#000"/>
+    <rect id="bord" x="90" y="10" width="20" height="10" fill="#7f7f7f"/>
+  </svg>`;
+  await p.evaluate(() => { window.__atelier.S.stock.t = 6; });
+  await p.setInputFiles('#fSvg', { name: 'page.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(SVG2) });
+  await p.waitForSelector('#dlgColors[open]');
+  const pg = await p.evaluate(() => ({ checked: $('#impPage').checked, info: $('#impPageInfo').innerText, sum: $('#colSum').innerText }));
+  console.log('page :', pg);
+  assert.ok(pg.checked && pg.info.includes('100 × 50 mm') && pg.info.includes('1 forme(s) hors de la page') && pg.info.includes('1 dépasse'));
+  assert.ok(pg.sum.includes('« Inverser »'));
+  await p.click('#colOk'); await p.waitForTimeout(600);
+  const o2 = await ops(); console.log(o2);
+  assert.deepStrictEqual(o2, { fond: 'pocket:T', ilot: 'none', grise: 'pocket:3', inverse: 'pocket:T', cadreInv: 'none', bord: 'pocket:3' });
+  const pl = await p.evaluate(() => { const A = window.__atelier, tf = toStockFn(), f = A.D.shapes.find(s => s.name === 'fond'), P = f.subpaths[0].pts.map(tf);
+    const M = heightMap(A.PLAN), h = (x, y) => +M.H[Math.floor(y / M.res) * M.nx + Math.floor(x / M.res)].toFixed(2);
+    return { stock: [A.S.stock.w, A.S.stock.h], fond: [Math.min(...P.map(q => q[0])), Math.min(...P.map(q => q[1]))].map(v => +v.toFixed(3)),
+      ilot: h(25, 27), autourIlot: h(15, 27), grise: h(40, 27) }; });
+  console.log('page = brut, recouvrement :', pl);
+  // fond : x 10, bas à 50 − 40 = 10 ; îlot (dessus, blanc) intact ; poche grise posée dessus à 3 mm au lieu de traversant
+  assert.deepStrictEqual(pl, { stock: [100, 50], fond: [10, 10], ilot: 0, autourIlot: -6, grise: -3 });
+  // rechargement : page et recouvrement retrouvés
+  await p.waitForTimeout(700); await p.reload(); await p.waitForTimeout(600);
+  assert.deepStrictEqual(Object.keys(await ops()), Object.keys(o2), 'formes hors page toujours ignorées');
+  assert.strictEqual(await p.evaluate(() => { const M = heightMap(window.__atelier.PLAN); return +M.H[Math.floor(27 / M.res) * M.nx + Math.floor(25 / M.res)].toFixed(2); }), 0, 'îlot après rechargement');
+
   assert.deepStrictEqual(errs, []);
   console.log('couleurs : OK');
   await b.close();

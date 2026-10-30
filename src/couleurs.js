@@ -6,20 +6,29 @@
 // « Traversant » (sh.through) suit l'épaisseur du brut si elle change ensuite.
 const depthOf = sh => sh.through ? S.stock.t : sh.depth;
 // noirceur 0 (blanc) … 1 (noir) d'une peinture calculée par le navigateur, transparence comprise ; null si aucune
-function darkness(paint, alpha) {
+// inv : couleur inversée (filtre Inkscape « Inverser » sur la forme ou un groupe parent, en nombre impair)
+function darkness(paint, alpha, inv) {
   const m = /^rgba?\(([^)]+)\)$/.exec(paint || ''); if (!m) return null; // none, dégradé (url(…))
   const [r, g, b, a = 1] = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
   const k = a * alpha; if (!(k > 0)) return null;
-  return k * (1 - (0.299 * r + 0.587 * g + 0.114 * b) / 255); // luma : gris 127 -> 50,2 %
+  const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255; // luma : gris 127 -> 50,2 %
+  return k * (inv ? L : 1 - L);
+}
+// filtre « Inverser » d'Inkscape (Filtres › Couleur) : matrice qui remplace chaque composante par 1 − composante
+function isInvertFilter(f) {
+  return !!f && [...f.querySelectorAll('feColorMatrix')].some(m => /^-1\s+0\s+0\s+0\s+1\s+0\s+-1\s+0\s+0\s+1\s+0\s+0\s+-1\s+0\s+1\b/.test((m.getAttribute('values') || '').trim()));
 }
 function paintOf(el, svg) {
-  const cs = getComputedStyle(el); let op = 1;
-  for (let p = el; p && p !== svg; p = p.parentElement) op *= parseFloat(getComputedStyle(p).opacity) || 0;
-  const sw = parseFloat(cs.strokeWidth);
+  const cs = getComputedStyle(el); let op = 1, inv = 0, other = 0;
+  for (let p = el; p && p !== svg; p = p.parentElement) {
+    const pc = getComputedStyle(p); op *= parseFloat(pc.opacity) || 0;
+    const id = /url\("?#([^")]+)"?\)/.exec(pc.filter || ''); if (id) { if (isInvertFilter(svg.querySelector('#' + CSS.escape(id[1])))) inv++; else other++; }
+  }
+  const sw = parseFloat(cs.strokeWidth), odd = inv % 2 === 1;
   return {
-    fill: darkness(cs.fill, op * (parseFloat(cs.fillOpacity) || 0)),
-    stroke: sw > 0 ? darkness(cs.stroke, op * (parseFloat(cs.strokeOpacity) || 0)) : null,
-    gradient: /url\(/.test(cs.fill + cs.stroke)
+    fill: darkness(cs.fill, op * (parseFloat(cs.fillOpacity) || 0), odd),
+    stroke: sw > 0 ? darkness(cs.stroke, op * (parseFloat(cs.strokeOpacity) || 0), odd) : null,
+    gradient: /url\(/.test(cs.fill + cs.stroke), inverted: inv > 0, filtered: other > 0
   };
 }
 const WHITE = 0.02, BLACK = 0.98;
@@ -54,27 +63,23 @@ function colorSummary(shapes, plan, th) {
   // SVG sans couleurs voulues (logo, clipart, formes noires par défaut) : tout deviendrait traversant
   if (po.filter(p => p.through).length >= 2 && !plan.some(p => p.op !== 'none' && !p.through)) warn.push('Toutes les formes remplies sont noires : elles seraient toutes traversantes. Si ce SVG n\'a pas été colorié pour l\'atelier (logo, clipart), choisis « Ignorer les couleurs ».');
   if (shapes.some(s => s.paint && s.paint.gradient)) warn.push('Les dégradés ne sont pas interprétés (formes concernées non usinées).');
+  const inv = shapes.filter(s => s.paint && s.paint.inverted).length, flt = shapes.filter(s => s.paint && s.paint.filtered).length;
+  if (inv) L.push(`filtre « Inverser » d'Inkscape pris en compte sur ${inv} forme(s) : couleurs lues comme affichées`);
+  if (flt) warn.push(`${flt} forme(s) ont un autre filtre Inkscape : l'atelier lit leur couleur réelle, pas leur apparence (Filtres › Retirer les filtres).`);
   return { lines: L, warn };
-}
-// fenêtre de l'import : résumé, épaisseur modifiable (les profondeurs en dépendent), Appliquer / Ignorer
-function askColors() {
-  if (!D || !D.shapes.some(s => s.paint && (s.paint.fill != null || s.paint.stroke != null))) return Promise.resolve(false);
-  return new Promise(resolve => {
-    const show = () => {
-      const th = S.stock.t, sm = colorSummary(D.shapes, colorPlan(D.shapes, th), th);
-      $('#colSum').innerHTML = sm.lines.map(l => '• ' + l.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join('<br>');
-      $('#colWarn').textContent = sm.warn.join(' ');
-    };
-    $('#colT').value = S.stock.t; show();
-    $('#colT').oninput = () => { const v = parseFloat(String($('#colT').value).replace(',', '.')); if (v > 0) { S.stock.t = v; show(); } };
-    const done = ok => { $('#dlgColors').close(); saveSettings(); $('#stT').value = S.stock.t; resolve(ok); };
-    $('#colOk').onclick = () => done(true); $('#colNo').onclick = () => done(false);
-    $('#dlgColors').oncancel = e => { e.preventDefault(); done(false); };
-    $('#dlgColors').showModal();
-  });
 }
 function applyColors() {
   const plan = colorPlan(D.shapes, S.stock.t);
   D.shapes.forEach((sh, k) => { const p = plan[k]; sh.op = p.op; sh.through = !!p.through; sh.depth = p.through ? S.stock.t : (p.depth || 1); });
+  D.stack = true;
   log('Usinages déduits des couleurs du SVG : profondeurs modifiables forme par forme.', 'msg');
+}
+const hasPaint = sh => sh.paint && (sh.paint.fill != null || sh.paint.stroke != null);
+// Recouvrement (couleurs appliquées) : comme à l'écran, une forme remplie posée par-dessus (plus loin dans le fichier),
+// même blanche, retire sa surface des poches et remplissages en V situés dessous.
+function occluders(sh, tf) {
+  if (!D.stack || (sh.op !== 'pocket' && sh.op !== 'vcarve')) return [];
+  const k = D.shapes.indexOf(sh), out = [];
+  for (const o of D.shapes.slice(k + 1)) if (o.closed && o.paint && o.paint.fill != null) for (const s of o.subpaths) if (s.closed) out.push(toC(s.pts.map(tf)));
+  return out;
 }

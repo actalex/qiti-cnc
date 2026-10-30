@@ -151,7 +151,9 @@ function importSVG(text, name) {
       shapes.push({ id: shapes.length, name: el.getAttribute('inkscape:label') || el.id || (el.tagName.toLowerCase() + ' ' + (idx + 1)), subpaths: out, closed, op: closed ? 'outside' : 'on', depth: 1, paint: paintOf(el, svg) });
     });
     if (!shapes.length) throw new Error('Aucune forme exploitable dans ce SVG.' + (warns.length ? ' ' + warns.join(' ') : ''));
-    return { shapes, warns };
+    // page Inkscape en mm (coordonnées du dessin : origine en haut à gauche), si le SVG la définit
+    const page = vb ? { w: vb[2] * sx, h: vb[3] * sy } : wmm && hmm ? { w: wmm, h: hmm } : null;
+    return { shapes, warns, page };
   } finally { host.remove(); }
 }
 
