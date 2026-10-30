@@ -144,6 +144,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <div class="row hide" id="rowClear"><label title="Creuse d'abord le fond plat avec une fraise plate ; le V ne fait plus que les flancs">Dégager le fond</label><select id="sClear" style="width:160px"></select></div>
       <div class="row"><label>Profondeur (mm)</label><input type="number" id="sDepth" step="0.1" min="0"></div>
       <div class="row"><button id="bThrough">= épaisseur (découpe traversante)</button></div>
+      <div class="row" style="gap:4px"><label>Tourner</label><button id="bRotL" title="90° vers la gauche">⟲ 90°</button><button id="bRotR" title="90° vers la droite">⟳ 90°</button><input type="number" id="sRot" step="5" style="width:52px" title="Angle en degrés, positif = vers la gauche"><button id="bRot">OK</button></div>
+      <div class="note">Glisse une forme sur le plan pour la déplacer.</div>
       <div id="rowTabs" class="hide" style="margin-top:6px"><div class="note" id="tabInfo"></div>
         <div class="row" style="gap:6px"><button id="bTabEdit">Placer à la main</button><button id="bTabAuto">Automatiques</button></div></div>
     </div>
@@ -174,6 +176,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <button data-v="relief" title="La pièce telle qu'elle sortira, calculée avec la forme réelle des fraises">Relief</button>
     <button data-v="paths">Trajectoires</button>
     <button id="bFit" title="Recadrer">⤢</button>
+    <button id="bUndo" title="Annuler (Ctrl+Z)" disabled>↶</button>
+    <button id="bRedo" title="Rétablir (Ctrl+Y)" disabled>↷</button>
   </div>
   <div id="surfBar" class="hide"><span id="surfTxt"></span><button id="surfEdit">Modifier</button><button id="surfQuit">Quitter</button></div>
   <div id="info">
@@ -350,15 +354,17 @@ function bboxOf(shapes) {
 function loadDesign(text, name, saved) {
   if (SURF) { SURF = false; $('#surfBar').classList.add('hide'); } // un nouveau dessin quitte le mode surfaçage
   const { shapes, warns } = importSVG(text, name);
+  shapes.forEach(initShapeGeom);
   D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
   if (saved) {
+    (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
+    D.bb = bboxOf(D.shapes); // le placement enregistré correspond aux formes déplacées / tournées
     if (saved.place) D.place = saved.place;
-    (saved.ops || []).forEach((o, k) => { if (D.shapes[k] && o) { Object.assign(D.shapes[k], { op: o.op, depth: o.depth, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); } });
   } else centerDesign();
   sel = new Set();
   warns.forEach(w => log(w, 'msg'));
   $('#designName').textContent = name;
-  refreshAll(); fitView();
+  refreshAll(); fitView(); resetHistory();
 }
 function centerDesign() {
   if (!D) return;
@@ -377,6 +383,7 @@ function toStockFn() {
 /*INCLUDE:relief.js*/
 /*INCLUDE:panneaux.js*/
 /*INCLUDE:attaches.js*/
+/*INCLUDE:edition.js*/
 /*INCLUDE:surfacage.js*/
 /*INCLUDE:grbl.js*/
 /*INCLUDE:gravure.js*/

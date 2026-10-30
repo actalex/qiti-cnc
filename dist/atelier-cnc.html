@@ -144,6 +144,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <div class="row hide" id="rowClear"><label title="Creuse d'abord le fond plat avec une fraise plate ; le V ne fait plus que les flancs">Dégager le fond</label><select id="sClear" style="width:160px"></select></div>
       <div class="row"><label>Profondeur (mm)</label><input type="number" id="sDepth" step="0.1" min="0"></div>
       <div class="row"><button id="bThrough">= épaisseur (découpe traversante)</button></div>
+      <div class="row" style="gap:4px"><label>Tourner</label><button id="bRotL" title="90° vers la gauche">⟲ 90°</button><button id="bRotR" title="90° vers la droite">⟳ 90°</button><input type="number" id="sRot" step="5" style="width:52px" title="Angle en degrés, positif = vers la gauche"><button id="bRot">OK</button></div>
+      <div class="note">Glisse une forme sur le plan pour la déplacer.</div>
       <div id="rowTabs" class="hide" style="margin-top:6px"><div class="note" id="tabInfo"></div>
         <div class="row" style="gap:6px"><button id="bTabEdit">Placer à la main</button><button id="bTabAuto">Automatiques</button></div></div>
     </div>
@@ -174,6 +176,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <button data-v="relief" title="La pièce telle qu'elle sortira, calculée avec la forme réelle des fraises">Relief</button>
     <button data-v="paths">Trajectoires</button>
     <button id="bFit" title="Recadrer">⤢</button>
+    <button id="bUndo" title="Annuler (Ctrl+Z)" disabled>↶</button>
+    <button id="bRedo" title="Rétablir (Ctrl+Y)" disabled>↷</button>
   </div>
   <div id="surfBar" class="hide"><span id="surfTxt"></span><button id="surfEdit">Modifier</button><button id="surfQuit">Quitter</button></div>
   <div id="info">
@@ -507,15 +511,17 @@ function bboxOf(shapes) {
 function loadDesign(text, name, saved) {
   if (SURF) { SURF = false; $('#surfBar').classList.add('hide'); } // un nouveau dessin quitte le mode surfaçage
   const { shapes, warns } = importSVG(text, name);
+  shapes.forEach(initShapeGeom);
   D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
   if (saved) {
+    (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
+    D.bb = bboxOf(D.shapes); // le placement enregistré correspond aux formes déplacées / tournées
     if (saved.place) D.place = saved.place;
-    (saved.ops || []).forEach((o, k) => { if (D.shapes[k] && o) { Object.assign(D.shapes[k], { op: o.op, depth: o.depth, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); } });
   } else centerDesign();
   sel = new Set();
   warns.forEach(w => log(w, 'msg'));
   $('#designName').textContent = name;
-  refreshAll(); fitView();
+  refreshAll(); fitView(); resetHistory();
 }
 function centerDesign() {
   if (!D) return;
@@ -1029,14 +1035,30 @@ function drawProgress() {
 }
 // interactions
 let drag = null;
-cv.addEventListener('mousedown', e => { drag = { x: e.offsetX, y: e.offsetY, ox: view.ox, oy: view.oy, moved: false }; });
+// clic sur une forme (vue Dessin ou Trajectoires) : la sélectionne et la glisse ; ailleurs, ou bouton du milieu : déplace la vue
+const canEditShapes = () => D && !SURF && tabEdit === null && !job && (viewMode === 'design' || viewMode === 'paths');
+cv.addEventListener('mousedown', e => {
+  const hit = e.button === 0 && canEditShapes() ? hitShape(e.offsetX, e.offsetY) : null;
+  if (hit) {
+    const wasSel = sel.has(hit.id), mod = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (!wasSel) { if (!mod) sel.clear(); sel.add(hit.id); refreshShapes(); draw(); }
+    drag = { mode: 'move', x: e.offsetX, y: e.offsetY, last: S2W(e.offsetX, e.offsetY), moved: false, hit, wasSel, mod }; return;
+  }
+  drag = { x: e.offsetX, y: e.offsetY, ox: view.ox, oy: view.oy, moved: false };
+});
 window.addEventListener('mousemove', e => {
   if (!drag) return; const r = cv.getBoundingClientRect(), dx = e.clientX - r.left - drag.x, dy = e.clientY - r.top - drag.y;
   if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-  if (drag.moved) { view.ox = drag.ox + dx; view.oy = drag.oy + dy; cv.style.cursor = 'grabbing'; draw(); }
+  if (drag.moved && drag.mode === 'move') { const w = S2W(drag.x + dx, drag.y + dy); moveSel(w[0] - drag.last[0], w[1] - drag.last[1]); drag.last = w; cv.style.cursor = 'move'; }
+  else if (drag.moved) { view.ox = drag.ox + dx; view.oy = drag.oy + dy; cv.style.cursor = 'grabbing'; draw(); }
 });
 window.addEventListener('mouseup', e => {
   if (!drag) return; const d = drag; drag = null; cv.style.cursor = tabEdit !== null ? 'copy' : 'crosshair';
+  if (d.mode === 'move') {
+    if (d.moved) invalidate();
+    else { if (d.mod && d.wasSel) sel.delete(d.hit.id); else if (!d.mod) { sel.clear(); sel.add(d.hit.id); } refreshShapes(); draw(); }
+    return;
+  }
   if (!d.moved && e.target === cv) { if (tabEdit !== null) tabClick(e.offsetX, e.offsetY); else pick(e.offsetX, e.offsetY, e.shiftKey || e.ctrlKey || e.metaKey); }
 });
 cv.addEventListener('wheel', e => {
@@ -1047,6 +1069,12 @@ function pointInPoly(x, y, pts) { let c = false; for (let i = 0, j = pts.length 
 function segDist(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy; let t = l ? ((px - a[0]) * dx + (py - a[1]) * dy) / l : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
 function pick(sx, sy, add) {
   if (!D) return;
+  const hit = hitShape(sx, sy);
+  if (!add) sel.clear();
+  if (hit) { if (add && sel.has(hit.id)) sel.delete(hit.id); else sel.add(hit.id); }
+  refreshShapes(); draw();
+}
+function hitShape(sx, sy) {
   const [x, y] = S2W(sx, sy), tf = toStockFn(), tolW = 6 / view.s; let hit = null, best = Infinity;
   for (const sh of D.shapes) {
     const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
@@ -1056,9 +1084,7 @@ function pick(sx, sy, add) {
     const score = dmin < tolW ? dmin : (inside ? tolW + 1 : Infinity);
     if (score < best) { best = score; hit = sh; }
   }
-  if (!add) sel.clear();
-  if (hit) { if (add && sel.has(hit.id)) sel.delete(hit.id); else sel.add(hit.id); }
-  refreshShapes(); draw();
+  return hit;
 }
 
 /* ====================== Relief ====================== */
@@ -1179,7 +1205,7 @@ function refreshShapes() {
 }
 function refreshPlace() {
   if (!D) { $('#dSize').textContent = ''; return; }
-  $('#pX').value = D.place.x; $('#pY').value = D.place.y; $('#pS').value = D.place.s;
+  $('#pX').value = +D.place.x.toFixed(2); $('#pY').value = +D.place.y.toFixed(2); $('#pS').value = D.place.s;
   const s = D.place.s / 100; $('#dSize').textContent = `${f3((D.bb.x1 - D.bb.x0) * s)} × ${f3((D.bb.y1 - D.bb.y0) * s)} mm`;
 }
 let camTimer = null;
@@ -1189,11 +1215,12 @@ const AUTOSAVE = 'atelier-cnc-projet';
 let saveTimer = null, autosaveFailed = false;
 function scheduleAutosave() { clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 500); }
 function autosave() {
+  recordHistory(); // un état d'annulation par sauvegarde (les gestes rapprochés n'en font qu'un)
   if (!D) return;
   try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
   catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
 }
-function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [] })) }; }
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
 function restoreAutosave() {
   let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
   if (!p || !p.svg) return;
@@ -1413,6 +1440,60 @@ $('#bTabEdit').onclick = () => {
   refreshShapes(); draw();
 };
 $('#bTabAuto').onclick = () => { const sh = D && D.shapes.find(s => sel.has(s.id)); if (!sh) return; sh.tabs = []; refreshShapes(); invalidate(); };
+/* ====================== Édition sur le plan de travail ====================== */
+// Chaque forme garde sa géométrie importée (sh.orig) et une matrice cumulée sh.m = [a, b, c, d, e, f] (convention SVG,
+// coordonnées du dessin, y vers le bas) : sh.subpaths = m · orig. Après une modification, rebase() recalcule
+// l'encombrement D.bb et compense D.place : les autres formes ne bougent pas sur le brut, et D.place reste le coin
+// bas-gauche du dessin. Annuler / rétablir : un état par sauvegarde automatique (les gestes rapprochés n'en font qu'un).
+const ID = [1, 0, 0, 1, 0, 0];
+const mul = (M, m) => [M[0] * m[0] + M[2] * m[1], M[1] * m[0] + M[3] * m[1], M[0] * m[2] + M[2] * m[3], M[1] * m[2] + M[3] * m[3], M[0] * m[4] + M[2] * m[5] + M[4], M[1] * m[4] + M[3] * m[5] + M[5]];
+const apply = (m, p) => [m[0] * p[0] + m[2] * p[1] + m[4], m[1] * p[0] + m[3] * p[1] + m[5]];
+const applyM = (m, subs) => subs.map(s => ({ closed: s.closed, pts: s.pts.map(p => apply(m, p)) }));
+function initShapeGeom(sh) { sh.orig = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(p => p.slice()) })); sh.m = ID.slice(); }
+function rebase() {
+  const s = D.place.s / 100, old = D.bb, nb = bboxOf(D.shapes);
+  D.place.x += (nb.x0 - old.x0) * s; D.place.y += (old.y1 - nb.y1) * s; D.bb = nb; // pas d'arrondi : il s'accumulerait à chaque geste
+}
+function transformShapes(shs, M) {
+  for (const sh of shs) { sh.m = mul(M, sh.m); sh.subpaths = applyM(sh.m, sh.orig); if (sh.tabs) sh.tabs = sh.tabs.map(p => apply(M, p)); }
+  rebase();
+}
+const selShapes = () => D ? D.shapes.filter(s => sel.has(s.id)) : [];
+// rotation de la sélection autour du centre de son encombrement ; angle > 0 = sens inverse des aiguilles d'une montre à l'écran
+function rotateSel(deg) {
+  const ss = selShapes(); if (!ss.length || job) return;
+  const b = bboxOf(ss), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, a = -deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); // y vers le bas
+  transformShapes(ss, [c, s, -s, c, cx - c * cx + s * cy, cy - s * cx - c * cy]);
+  refreshPlace(); invalidate();
+}
+// déplacement à la souris (mm sur le brut) ; le calcul FAO attend le relâchement
+function moveSel(dx, dy) { const s = D.place.s / 100; transformShapes(selShapes(), [1, 0, 0, 1, dx / s, -dy / s]); refreshPlace(); draw(); }
+// historique
+let hist = [], fut = [], lastState = null;
+const stateOf = () => JSON.stringify({ place: D.place, shapes: D.shapes.map(s => ({ m: s.m, op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [] })) });
+function resetHistory() { hist = []; fut = []; lastState = D ? stateOf() : null; refreshUndo(); }
+function recordHistory() {
+  if (!D) return; const st = stateOf();
+  if (lastState !== null && st !== lastState) { hist.push(lastState); if (hist.length > 100) hist.shift(); fut = []; }
+  lastState = st; refreshUndo();
+}
+function applyState(st) {
+  const o = JSON.parse(st);
+  o.shapes.forEach((x, k) => { const sh = D.shapes[k]; Object.assign(sh, { m: x.m, op: x.op, depth: x.depth, tool: x.tool, clear: x.clear, tabs: x.tabs }); sh.subpaths = applyM(sh.m, sh.orig); });
+  D.bb = bboxOf(D.shapes); D.place = o.place; lastState = st;
+  refreshShapes(); refreshPlace(); invalidate(); refreshUndo();
+}
+function undo() { if (!D || job) return; recordHistory(); if (!hist.length) return; fut.push(lastState); applyState(hist.pop()); }
+function redo() { if (!D || job) return; recordHistory(); if (!fut.length) return; hist.push(lastState); applyState(fut.pop()); }
+function refreshUndo() { $('#bUndo').disabled = !hist.length && !(D && lastState !== null && stateOf() !== lastState); $('#bRedo').disabled = !fut.length; }
+$('#bUndo').onclick = undo; $('#bRedo').onclick = redo;
+$('#bRotL').onclick = () => rotateSel(90); $('#bRotR').onclick = () => rotateSel(-90);
+$('#bRot').onclick = () => { const v = parseFloat(String($('#sRot').value).replace(',', '.')); if (isFinite(v) && v) rotateSel(v); };
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,select,textarea') || document.querySelector('dialog[open]') || !(e.ctrlKey || e.metaKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); } else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); }
+});
 /* ====================== Surfaçage ====================== */
 // Aplanir le dessus du brut ou la table (martyr) : balayage en zigzag d'une zone rectangulaire à la fraise plate,
 // en passes de profondeur. Mode à part : tant que SURF est actif, le plan (PLAN) est le surfaçage au lieu du dessin ;

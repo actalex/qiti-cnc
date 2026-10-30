@@ -96,14 +96,30 @@ function drawProgress() {
 }
 // interactions
 let drag = null;
-cv.addEventListener('mousedown', e => { drag = { x: e.offsetX, y: e.offsetY, ox: view.ox, oy: view.oy, moved: false }; });
+// clic sur une forme (vue Dessin ou Trajectoires) : la sélectionne et la glisse ; ailleurs, ou bouton du milieu : déplace la vue
+const canEditShapes = () => D && !SURF && tabEdit === null && !job && (viewMode === 'design' || viewMode === 'paths');
+cv.addEventListener('mousedown', e => {
+  const hit = e.button === 0 && canEditShapes() ? hitShape(e.offsetX, e.offsetY) : null;
+  if (hit) {
+    const wasSel = sel.has(hit.id), mod = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (!wasSel) { if (!mod) sel.clear(); sel.add(hit.id); refreshShapes(); draw(); }
+    drag = { mode: 'move', x: e.offsetX, y: e.offsetY, last: S2W(e.offsetX, e.offsetY), moved: false, hit, wasSel, mod }; return;
+  }
+  drag = { x: e.offsetX, y: e.offsetY, ox: view.ox, oy: view.oy, moved: false };
+});
 window.addEventListener('mousemove', e => {
   if (!drag) return; const r = cv.getBoundingClientRect(), dx = e.clientX - r.left - drag.x, dy = e.clientY - r.top - drag.y;
   if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-  if (drag.moved) { view.ox = drag.ox + dx; view.oy = drag.oy + dy; cv.style.cursor = 'grabbing'; draw(); }
+  if (drag.moved && drag.mode === 'move') { const w = S2W(drag.x + dx, drag.y + dy); moveSel(w[0] - drag.last[0], w[1] - drag.last[1]); drag.last = w; cv.style.cursor = 'move'; }
+  else if (drag.moved) { view.ox = drag.ox + dx; view.oy = drag.oy + dy; cv.style.cursor = 'grabbing'; draw(); }
 });
 window.addEventListener('mouseup', e => {
   if (!drag) return; const d = drag; drag = null; cv.style.cursor = tabEdit !== null ? 'copy' : 'crosshair';
+  if (d.mode === 'move') {
+    if (d.moved) invalidate();
+    else { if (d.mod && d.wasSel) sel.delete(d.hit.id); else if (!d.mod) { sel.clear(); sel.add(d.hit.id); } refreshShapes(); draw(); }
+    return;
+  }
   if (!d.moved && e.target === cv) { if (tabEdit !== null) tabClick(e.offsetX, e.offsetY); else pick(e.offsetX, e.offsetY, e.shiftKey || e.ctrlKey || e.metaKey); }
 });
 cv.addEventListener('wheel', e => {
@@ -114,6 +130,12 @@ function pointInPoly(x, y, pts) { let c = false; for (let i = 0, j = pts.length 
 function segDist(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy; let t = l ? ((px - a[0]) * dx + (py - a[1]) * dy) / l : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
 function pick(sx, sy, add) {
   if (!D) return;
+  const hit = hitShape(sx, sy);
+  if (!add) sel.clear();
+  if (hit) { if (add && sel.has(hit.id)) sel.delete(hit.id); else sel.add(hit.id); }
+  refreshShapes(); draw();
+}
+function hitShape(sx, sy) {
   const [x, y] = S2W(sx, sy), tf = toStockFn(), tolW = 6 / view.s; let hit = null, best = Infinity;
   for (const sh of D.shapes) {
     const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
@@ -123,8 +145,6 @@ function pick(sx, sy, add) {
     const score = dmin < tolW ? dmin : (inside ? tolW + 1 : Infinity);
     if (score < best) { best = score; hit = sh; }
   }
-  if (!add) sel.clear();
-  if (hit) { if (add && sel.has(hit.id)) sel.delete(hit.id); else sel.add(hit.id); }
-  refreshShapes(); draw();
+  return hit;
 }
 

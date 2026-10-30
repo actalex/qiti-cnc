@@ -55,7 +55,7 @@ function refreshShapes() {
 }
 function refreshPlace() {
   if (!D) { $('#dSize').textContent = ''; return; }
-  $('#pX').value = D.place.x; $('#pY').value = D.place.y; $('#pS').value = D.place.s;
+  $('#pX').value = +D.place.x.toFixed(2); $('#pY').value = +D.place.y.toFixed(2); $('#pS').value = D.place.s;
   const s = D.place.s / 100; $('#dSize').textContent = `${f3((D.bb.x1 - D.bb.x0) * s)} × ${f3((D.bb.y1 - D.bb.y0) * s)} mm`;
 }
 let camTimer = null;
@@ -65,11 +65,12 @@ const AUTOSAVE = 'atelier-cnc-projet';
 let saveTimer = null, autosaveFailed = false;
 function scheduleAutosave() { clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 500); }
 function autosave() {
+  recordHistory(); // un état d'annulation par sauvegarde (les gestes rapprochés n'en font qu'un)
   if (!D) return;
   try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
   catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
 }
-function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [] })) }; }
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
 function restoreAutosave() {
   let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
   if (!p || !p.svg) return;
