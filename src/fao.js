@@ -287,14 +287,16 @@ function buildGcode(step) {
       const p0 = c.pts[0];
       const here = Math.hypot(p0[0] - x, p0[1] - y) < 1e-3 && z <= c.zTop + 1e-6 && z < safe;
       // liaison dans la matière si elle est sûre et plus rapide que remonter, traverser en rapide et redescendre
-      const dl = Math.hypot(p0[0] - x, p0[1] - y), app0 = Math.min(safe, c.zTop + 0.5);
+      // approche rapide jusqu'à 0,5 mm au-dessus du brut seulement : le fond de la passe précédente n'est pas garanti vide
+      // sous chaque point (élagage, dégagement) ; en dessous, descente en G1 à la vitesse de plongée
+      const dl = Math.hypot(p0[0] - x, p0[1] - y), app0 = Math.min(safe, Math.max(0, c.zTop) + 0.5);
       const tRetract = (2 * safe - z - app0 + dl) / m.rapid + Math.max(0, app0 - z) / T.plunge;
       const link = !here && last && last.g === g && last.c.area && z < safe && dl / T.feed <= tRetract && segInArea(last.c.area, [x, y], p0);
       if (link) mv(1, p0[0], p0[1], z, T.feed);
       else if (!here) {
         if (z < safe) mv(0, x, y, safe);
         mv(0, p0[0], p0[1], safe);
-        const app = c.zTop + 0.5; if (app < safe) mv(0, p0[0], p0[1], app);
+        if (app0 < safe) mv(0, p0[0], p0[1], app0);
       }
       if (!isV(T) && S.ramp.on && p0[2] < z - 1e-6) {
         // fraise plate : descente verticale seulement jusqu'au-dessus de la matière, puis rampe
