@@ -81,6 +81,12 @@ function restoreAutosave() {
   try { loadDesign(p.svg, p.name, p); log('Dessin restauré : ' + p.name + '.', 'msg'); }
   catch (e) { localStorage.removeItem(AUTOSAVE); log('Dessin sauvegardé illisible, ignoré : ' + e.message, 'err'); }
 }
+// avertissements identiques sur plusieurs formes regroupés : « a », « b » et 12 autres : même message
+function groupWarns(warns) {
+  const by = new Map();
+  for (const w of new Set(warns)) { const m = /^(« [^»]* »)(.*)$/.exec(w), k = m ? m[2] : w; if (!by.has(k)) by.set(k, []); if (m) by.get(k).push(m[1]); }
+  return [...by].map(([k, names]) => !names.length ? k : names.slice(0, 2).join(', ') + (names.length > 2 ? ` et ${names.length - 2} autre(s)` : '') + k);
+}
 function recompute() {
   if (job) return;
   const warns = [];
@@ -99,7 +105,7 @@ function recompute() {
   $('#iLines').textContent = G ? sum(g => g.lines.length).toLocaleString('fr') : '—';
   $('#iDepth').textContent = G ? f3(-Math.min(...PLAN.map(g => g.zMin))) + ' mm' : '—';
   refreshSteps();
-  $('#warns').textContent = warns.length ? '⚠ ' + [...new Set(warns)].join(' · ') : '';
+  $('#warns').textContent = warns.length ? '⚠ ' + groupWarns(warns).join(' · ') : '';
   refreshShapes(); updateButtons(); draw();
 }
 // Passage à une fraise en V : proposer de convertir les usinages qu'elle ne sait pas faire

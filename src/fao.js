@@ -205,7 +205,7 @@ function finishOk(rough, fin) {
 }
 const finishCuts = (paths, rev, z, tab) => paths.map(p => { const q = fromC(p); if (rev) q.reverse(); return { pts: loopWithTabs(q, z, tab), zTop: 0, finish: true }; });
 function shapeGroups(sh, res) {
-  const skip = msg => { res.warns.push(msg); res.skipped.add(sh.id); return []; };
+  const skip = msg => { res.warns.push(msg); res.skipped.add(sh.id); (sh.members || []).forEach(id => res.skipped.add(id)); return []; };
   const T = shapeTool(sh), r = T.d / 2, th = S.stock.t, depth = depthOf(sh), tf = toStockFn();
   const doc = Math.max(0.05, T.doc), order = { on: 0, pocket: 1, vcarve: 1, inside: 2, outside: 3 };
   if (depth > th + 1e-6) res.warns.push(`« ${sh.name} » : profondeur ${depth} mm > épaisseur du brut`);
@@ -225,11 +225,9 @@ function shapeGroups(sh, res) {
     }
     return group(cuts);
   }
-  const closedSubs = subs.filter(s => s.closed);
-  if (!closedSubs.length) return skip(`« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`);
-  let region = unionEO(closedSubs.map(s => toC(s.pts)));
-  const occ = occluders(sh, tf);
-  if (occ.length) { region = polyDiff(region, unionEO(occ)); if (!region.length) return skip(`« ${sh.name} » : entièrement recouverte par d'autres formes`); }
+  if (!sh._region && !subs.some(s => s.closed)) return skip(`« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`);
+  const region = sh._region || shapeRegion(sh, tf); // zone fusionnée (fusion.js) ou zone de la forme, moins ce qui la recouvre
+  if (!region.length) return skip(`« ${sh.name} » : entièrement recouverte par d'autres formes`);
   const reverse = sh.op === 'outside' ? S.climb : !S.climb;
   if (sh.op === 'vcarve') {
     const k = Math.tan((T.angle || 60) * Math.PI / 360), tip2 = (T.tip || 0) / 2;
@@ -285,7 +283,7 @@ function computeCAM() {
   const res = { steps: [], warns: [], skipped: new Set() };
   if (!D) return res;
   const byKey = new Map();
-  for (const sh of D.shapes) if (sh.op !== 'none' && depthOf(sh) > 0) for (const g of shapeGroups(sh, res)) {
+  for (const sh of mergeShapes(D.shapes.filter(s => s.op !== 'none' && depthOf(s) > 0), toStockFn())) for (const g of shapeGroups(sh, res)) {
     const out = g.rank === 3 ? 1 : 0, key = g.tool.id + (out ? ':out' : '');
     if (!byKey.has(key)) byKey.set(key, { tool: g.tool, out, groups: [] }); byKey.get(key).groups.push(g);
   }

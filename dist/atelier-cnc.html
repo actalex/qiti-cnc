@@ -882,7 +882,7 @@ function finishOk(rough, fin) {
 }
 const finishCuts = (paths, rev, z, tab) => paths.map(p => { const q = fromC(p); if (rev) q.reverse(); return { pts: loopWithTabs(q, z, tab), zTop: 0, finish: true }; });
 function shapeGroups(sh, res) {
-  const skip = msg => { res.warns.push(msg); res.skipped.add(sh.id); return []; };
+  const skip = msg => { res.warns.push(msg); res.skipped.add(sh.id); (sh.members || []).forEach(id => res.skipped.add(id)); return []; };
   const T = shapeTool(sh), r = T.d / 2, th = S.stock.t, depth = depthOf(sh), tf = toStockFn();
   const doc = Math.max(0.05, T.doc), order = { on: 0, pocket: 1, vcarve: 1, inside: 2, outside: 3 };
   if (depth > th + 1e-6) res.warns.push(`« ${sh.name} » : profondeur ${depth} mm > épaisseur du brut`);
@@ -902,11 +902,9 @@ function shapeGroups(sh, res) {
     }
     return group(cuts);
   }
-  const closedSubs = subs.filter(s => s.closed);
-  if (!closedSubs.length) return skip(`« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`);
-  let region = unionEO(closedSubs.map(s => toC(s.pts)));
-  const occ = occluders(sh, tf);
-  if (occ.length) { region = polyDiff(region, unionEO(occ)); if (!region.length) return skip(`« ${sh.name} » : entièrement recouverte par d'autres formes`); }
+  if (!sh._region && !subs.some(s => s.closed)) return skip(`« ${sh.name} » est un tracé ouvert : seul « Sur la ligne » est possible`);
+  const region = sh._region || shapeRegion(sh, tf); // zone fusionnée (fusion.js) ou zone de la forme, moins ce qui la recouvre
+  if (!region.length) return skip(`« ${sh.name} » : entièrement recouverte par d'autres formes`);
   const reverse = sh.op === 'outside' ? S.climb : !S.climb;
   if (sh.op === 'vcarve') {
     const k = Math.tan((T.angle || 60) * Math.PI / 360), tip2 = (T.tip || 0) / 2;
@@ -962,7 +960,7 @@ function computeCAM() {
   const res = { steps: [], warns: [], skipped: new Set() };
   if (!D) return res;
   const byKey = new Map();
-  for (const sh of D.shapes) if (sh.op !== 'none' && depthOf(sh) > 0) for (const g of shapeGroups(sh, res)) {
+  for (const sh of mergeShapes(D.shapes.filter(s => s.op !== 'none' && depthOf(s) > 0), toStockFn())) for (const g of shapeGroups(sh, res)) {
     const out = g.rank === 3 ? 1 : 0, key = g.tool.id + (out ? ':out' : '');
     if (!byKey.has(key)) byKey.set(key, { tool: g.tool, out, groups: [] }); byKey.get(key).groups.push(g);
   }
@@ -1040,6 +1038,45 @@ function buildGcode(step) {
   return { lines: L, moves, lineMove, time, zMin, tool: T };
 }
 
+/* ====================== Fusion des poches ====================== */
+// Dessins « modulaires » (formes qui se chevauchent, ponts blancs posés dessus) : au calcul, les poches et remplissages
+// en V qui se touchent et ont les mêmes réglages (usinage, profondeur, fraise, dégagement, finition) sont usinés comme une
+// seule forme, sans arrondi de fraise à chaque raccord. Les formes restent séparées dans la liste (déplaçables, réglables).
+// Zone d'une forme (coordonnées brut, Clipper) : pair-impair dans la forme, moins ce qui est posé dessus (recouvrement)
+function shapeRegion(sh, tf) {
+  const closed = sh.subpaths.filter(s => s.closed); if (!closed.length) return [];
+  const region = unionEO(closed.map(s => toC(s.pts.map(tf)))), occ = occluders(sh, tf);
+  return occ.length ? polyDiff(region, unionEO(occ)) : region;
+}
+// union découpée en morceaux disjoints : un contour extérieur et ses trous (les îlots dans un trou forment leur morceau)
+function components(paths) {
+  const c = new CL.Clipper(); c.AddPaths(paths, CL.PolyType.ptSubject, true);
+  const tree = new CL.PolyTree(); c.Execute(CL.ClipType.ctUnion, tree, CL.PolyFillType.pftNonZero, CL.PolyFillType.pftNonZero);
+  const out = [], walk = n => { for (const o of n.Childs()) { const comp = [o.Contour()]; for (const h of o.Childs()) { comp.push(h.Contour()); walk(h); } out.push(comp); } };
+  walk(tree); return out;
+}
+// formes à usiner : les poches / V fusionnables regroupées par morceau ; une forme virtuelle porte la zone fusionnée
+function mergeShapes(shapes, tf) {
+  const work = [], byKey = new Map();
+  for (const sh of shapes) {
+    if ((sh.op !== 'pocket' && sh.op !== 'vcarve') || !sh.closed) { work.push(sh); continue; }
+    const key = [sh.op, depthOf(sh), shapeTool(sh).id, sh.clear || '', !!sh.finish].join('|');
+    if (!byKey.has(key)) byKey.set(key, []); byKey.get(key).push(sh);
+  }
+  for (const list of byKey.values()) {
+    if (list.length < 2) { work.push(...list); continue; }
+    const regs = list.map(sh => ({ sh, reg: shapeRegion(sh, tf) }));
+    work.push(...regs.filter(x => !x.reg.length).map(x => x.sh)); // entièrement recouvertes : signalées par shapeGroups
+    const live = regs.filter(x => x.reg.length);
+    // chaque morceau est usiné une fois avec sa zone exacte (une forme coupée en deux par un pont blanc donne deux morceaux)
+    const inComp = (pt, comp) => CL.Clipper.PointInPolygon(pt, comp[0]) !== 0 && comp.slice(1).every(h => CL.Clipper.PointInPolygon(pt, h) !== 1);
+    for (const comp of components(live.flatMap(x => x.reg))) {
+      const mem = live.filter(x => x.reg.some(p => inComp(p[0], comp))).map(x => x.sh), f = mem[0] || list[0];
+      work.push({ ...f, name: mem.length > 1 ? `${f.name} + ${mem.length - 1} forme(s)` : f.name, subpaths: [], members: mem.map(s => s.id), _region: comp });
+    }
+  }
+  return work;
+}
 /* ====================== Estimation de durée ====================== */
 // Durée d'un G-code à la manière du planificateur GRBL : vitesse de jonction par déviation ($11), accélération
 // ($120-$122) et vitesse max ($110-$112) par axe, ramenées à la direction du mouvement ; arrêt au début et à la fin.
@@ -1394,6 +1431,12 @@ function restoreAutosave() {
   try { loadDesign(p.svg, p.name, p); log('Dessin restauré : ' + p.name + '.', 'msg'); }
   catch (e) { localStorage.removeItem(AUTOSAVE); log('Dessin sauvegardé illisible, ignoré : ' + e.message, 'err'); }
 }
+// avertissements identiques sur plusieurs formes regroupés : « a », « b » et 12 autres : même message
+function groupWarns(warns) {
+  const by = new Map();
+  for (const w of new Set(warns)) { const m = /^(« [^»]* »)(.*)$/.exec(w), k = m ? m[2] : w; if (!by.has(k)) by.set(k, []); if (m) by.get(k).push(m[1]); }
+  return [...by].map(([k, names]) => !names.length ? k : names.slice(0, 2).join(', ') + (names.length > 2 ? ` et ${names.length - 2} autre(s)` : '') + k);
+}
 function recompute() {
   if (job) return;
   const warns = [];
@@ -1412,7 +1455,7 @@ function recompute() {
   $('#iLines').textContent = G ? sum(g => g.lines.length).toLocaleString('fr') : '—';
   $('#iDepth').textContent = G ? f3(-Math.min(...PLAN.map(g => g.zMin))) + ' mm' : '—';
   refreshSteps();
-  $('#warns').textContent = warns.length ? '⚠ ' + [...new Set(warns)].join(' · ') : '';
+  $('#warns').textContent = warns.length ? '⚠ ' + groupWarns(warns).join(' · ') : '';
   refreshShapes(); updateButtons(); draw();
 }
 // Passage à une fraise en V : proposer de convertir les usinages qu'elle ne sait pas faire

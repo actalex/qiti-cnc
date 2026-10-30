@@ -92,6 +92,23 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="140mm" height="80mm"
   assert.deepStrictEqual(Object.keys(await ops()), Object.keys(o2), 'formes hors page toujours ignorées');
   assert.strictEqual(await p.evaluate(() => { const M = heightMap(window.__atelier.PLAN); return +M.H[Math.floor(27 / M.res) * M.nx + Math.floor(25 / M.res)].toFixed(2); }), 0, 'îlot après rechargement');
 
+  // Fusion (dessin modulaire) : A et B bout à bout (même profondeur) = une seule poche, sans mur au raccord ;
+  // C coupé en deux par un pont blanc posé dessus = deux morceaux, chacun usiné une fois ; D plus profond : à part
+  const fu = await p.evaluate(() => {
+    const A = window.__atelier;
+    A.loadDesign(`<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="40mm" viewBox="0 0 100 40">
+      <rect id="A" x="10" y="10" width="15" height="6" fill="#000"/><rect id="B" x="25" y="10" width="15" height="6" fill="#000"/>
+      <rect id="C" x="50" y="10" width="30" height="6" fill="#000"/><rect id="pont" x="64" y="8" width="2" height="10" fill="#fff"/>
+      <rect id="D" x="10" y="25" width="15" height="6" fill="#000"/></svg>`, 'fusion.svg', { pageOnly: true });
+    applyColors(); for (const s of A.D.shapes) if (s.op === 'pocket') { s.through = false; s.depth = s.name === 'D' ? 2 : 1; } A.recompute();
+    const groups = A.CAM.steps.flatMap(s => s.groups).map(g => g.shape.name).sort();
+    const M = heightMap(A.PLAN), h = (x, y) => +M.H[Math.floor(y / M.res) * M.nx + Math.floor(x / M.res)].toFixed(2);
+    // y brut = 40 − y SVG : bande à y 24…30 ; raccord A|B à x 25 ; pont du C à x 64…66
+    return { groups, raccord: h(25, 27), pont: h(65, 27), c1: h(57, 27), c2: h(73, 27) };
+  });
+  console.log('fusion :', fu);
+  assert.deepStrictEqual(fu, { groups: ['A + 1 forme(s)', 'C', 'C', 'D'], raccord: -1, pont: 0, c1: -1, c2: -1 });
+
   assert.deepStrictEqual(errs, []);
   console.log('couleurs : OK');
   await b.close();
