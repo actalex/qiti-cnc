@@ -143,7 +143,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <div class="row"><label>Fraise</label><select id="sTool" style="width:160px"></select></div>
       <div class="row hide" id="rowClear"><label title="Creuse d'abord le fond plat avec une fraise plate ; le V ne fait plus que les flancs">Dégager le fond</label><select id="sClear" style="width:160px"></select></div>
       <div class="row"><label>Profondeur (mm)</label><input type="number" id="sDepth" step="0.1" min="0"></div>
-      <div class="row"><button id="bThrough">= épaisseur (découpe traversante)</button></div>
+      <div class="row"><button id="bThrough" title="La profondeur suit l'épaisseur du brut, même si elle change ensuite">Traversant (= épaisseur du brut)</button></div>
       <div class="row" style="gap:4px"><label>Tourner</label><button id="bRotL" title="90° vers la gauche">⟲ 90°</button><button id="bRotR" title="90° vers la droite">⟳ 90°</button><input type="number" id="sRot" step="5" style="width:52px" title="Angle en degrés, positif = vers la gauche"><button id="bRot">OK</button></div>
       <div class="note">Glisse une forme sur le plan pour la déplacer.</div>
       <div id="rowTabs" class="hide" style="margin-top:6px"><div class="note" id="tabInfo"></div>
@@ -276,6 +276,17 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
   <div class="ft"><button id="sfCancel">Annuler</button><button id="sfOk" class="pri">Préparer le surfaçage</button></div>
 </dialog>
 
+<dialog id="dlgColors">
+  <div class="hd">Usinages d'après les couleurs</div>
+  <div class="bd">
+    <div id="colSum" style="line-height:1.6"></div>
+    <div id="colWarn" style="color:var(--warn);margin-top:6px"></div>
+    <div class="row" style="margin-top:8px"><label>Épaisseur du brut (mm)</label><input type="number" id="colT" step="0.1" min="0.1"></div>
+    <p class="note">Rempli = poche, contour seul = gravure sur la ligne ; contour noir fermé = découpe. Profondeur = noirceur × épaisseur, figée en mm ; noir = traversant (suit l'épaisseur). L'épaisseur du trait est ignorée. Tout reste modifiable forme par forme.</p>
+  </div>
+  <div class="ft"><button id="colNo">Ignorer les couleurs</button><button id="colOk" class="pri">Appliquer</button></div>
+</dialog>
+
 <dialog id="dlgCarve">
   <div class="hd">Avant de lancer la gravure</div>
   <div class="bd">
@@ -357,7 +368,7 @@ function loadDesign(text, name, saved) {
   shapes.forEach(initShapeGeom);
   D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
   if (saved) {
-    (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
+    (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, through: !!o.through, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
     D.bb = bboxOf(D.shapes); // le placement enregistré correspond aux formes déplacées / tournées
     if (saved.place) D.place = saved.place;
   } else centerDesign();
@@ -376,6 +387,7 @@ function toStockFn() {
   return p => [(p[0] - b.x0) * s + px, (b.y1 - p[1]) * s + py];
 }
 
+/*INCLUDE:couleurs.js*/
 /*INCLUDE:fao.js*/
 /*INCLUDE:temps.js*/
 /*INCLUDE:materiaux.js*/

@@ -148,7 +148,7 @@ function importSVG(text, name) {
       }
       if (!out.length) return;
       const closed = out.every(s => s.closed);
-      shapes.push({ id: shapes.length, name: el.getAttribute('inkscape:label') || el.id || (el.tagName.toLowerCase() + ' ' + (idx + 1)), subpaths: out, closed, op: closed ? 'outside' : 'on', depth: 1 });
+      shapes.push({ id: shapes.length, name: el.getAttribute('inkscape:label') || el.id || (el.tagName.toLowerCase() + ' ' + (idx + 1)), subpaths: out, closed, op: closed ? 'outside' : 'on', depth: 1, paint: paintOf(el, svg) });
     });
     if (!shapes.length) throw new Error('Aucune forme exploitable dans ce SVG.' + (warns.length ? ' ' + warns.join(' ') : ''));
     return { shapes, warns };

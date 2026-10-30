@@ -28,7 +28,7 @@ function rotateSel(deg) {
 function moveSel(dx, dy) { const s = D.place.s / 100; transformShapes(selShapes(), [1, 0, 0, 1, dx / s, -dy / s]); refreshPlace(); draw(); }
 // historique
 let hist = [], fut = [], lastState = null;
-const stateOf = () => JSON.stringify({ place: D.place, shapes: D.shapes.map(s => ({ m: s.m, op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [] })) });
+const stateOf = () => JSON.stringify({ place: D.place, shapes: D.shapes.map(s => ({ m: s.m, op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [] })) });
 function resetHistory() { hist = []; fut = []; lastState = D ? stateOf() : null; refreshUndo(); }
 function recordHistory() {
   if (!D) return; const st = stateOf();
@@ -37,7 +37,7 @@ function recordHistory() {
 }
 function applyState(st) {
   const o = JSON.parse(st);
-  o.shapes.forEach((x, k) => { const sh = D.shapes[k]; Object.assign(sh, { m: x.m, op: x.op, depth: x.depth, tool: x.tool, clear: x.clear, tabs: x.tabs }); sh.subpaths = applyM(sh.m, sh.orig); });
+  o.shapes.forEach((x, k) => { const sh = D.shapes[k]; Object.assign(sh, { m: x.m, op: x.op, depth: x.depth, through: x.through, tool: x.tool, clear: x.clear, tabs: x.tabs }); sh.subpaths = applyM(sh.m, sh.orig); });
   D.bb = bboxOf(D.shapes); D.place = o.place; lastState = st;
   refreshShapes(); refreshPlace(); invalidate(); refreshUndo();
 }

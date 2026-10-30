@@ -143,7 +143,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <div class="row"><label>Fraise</label><select id="sTool" style="width:160px"></select></div>
       <div class="row hide" id="rowClear"><label title="Creuse d'abord le fond plat avec une fraise plate ; le V ne fait plus que les flancs">Dégager le fond</label><select id="sClear" style="width:160px"></select></div>
       <div class="row"><label>Profondeur (mm)</label><input type="number" id="sDepth" step="0.1" min="0"></div>
-      <div class="row"><button id="bThrough">= épaisseur (découpe traversante)</button></div>
+      <div class="row"><button id="bThrough" title="La profondeur suit l'épaisseur du brut, même si elle change ensuite">Traversant (= épaisseur du brut)</button></div>
       <div class="row" style="gap:4px"><label>Tourner</label><button id="bRotL" title="90° vers la gauche">⟲ 90°</button><button id="bRotR" title="90° vers la droite">⟳ 90°</button><input type="number" id="sRot" step="5" style="width:52px" title="Angle en degrés, positif = vers la gauche"><button id="bRot">OK</button></div>
       <div class="note">Glisse une forme sur le plan pour la déplacer.</div>
       <div id="rowTabs" class="hide" style="margin-top:6px"><div class="note" id="tabInfo"></div>
@@ -274,6 +274,17 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <p class="note">La profondeur par passe, l'avance et la plongée sont celles de la fraise. La plus grosse fraise plate va le plus vite.</p>
   </div>
   <div class="ft"><button id="sfCancel">Annuler</button><button id="sfOk" class="pri">Préparer le surfaçage</button></div>
+</dialog>
+
+<dialog id="dlgColors">
+  <div class="hd">Usinages d'après les couleurs</div>
+  <div class="bd">
+    <div id="colSum" style="line-height:1.6"></div>
+    <div id="colWarn" style="color:var(--warn);margin-top:6px"></div>
+    <div class="row" style="margin-top:8px"><label>Épaisseur du brut (mm)</label><input type="number" id="colT" step="0.1" min="0.1"></div>
+    <p class="note">Rempli = poche, contour seul = gravure sur la ligne ; contour noir fermé = découpe. Profondeur = noirceur × épaisseur, figée en mm ; noir = traversant (suit l'épaisseur). L'épaisseur du trait est ignorée. Tout reste modifiable forme par forme.</p>
+  </div>
+  <div class="ft"><button id="colNo">Ignorer les couleurs</button><button id="colOk" class="pri">Appliquer</button></div>
 </dialog>
 
 <dialog id="dlgCarve">
@@ -493,7 +504,7 @@ function importSVG(text, name) {
       }
       if (!out.length) return;
       const closed = out.every(s => s.closed);
-      shapes.push({ id: shapes.length, name: el.getAttribute('inkscape:label') || el.id || (el.tagName.toLowerCase() + ' ' + (idx + 1)), subpaths: out, closed, op: closed ? 'outside' : 'on', depth: 1 });
+      shapes.push({ id: shapes.length, name: el.getAttribute('inkscape:label') || el.id || (el.tagName.toLowerCase() + ' ' + (idx + 1)), subpaths: out, closed, op: closed ? 'outside' : 'on', depth: 1, paint: paintOf(el, svg) });
     });
     if (!shapes.length) throw new Error('Aucune forme exploitable dans ce SVG.' + (warns.length ? ' ' + warns.join(' ') : ''));
     return { shapes, warns };
@@ -514,7 +525,7 @@ function loadDesign(text, name, saved) {
   shapes.forEach(initShapeGeom);
   D = { uid: Date.now() + Math.random(), name, svgText: text, shapes, bb: bboxOf(shapes), place: { x: 0, y: 0, s: 100 } };
   if (saved) {
-    (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
+    (saved.ops || []).forEach((o, k) => { const sh = D.shapes[k]; if (sh && o) { Object.assign(sh, { op: o.op, depth: o.depth, through: !!o.through, tool: o.tool || '', clear: o.clear || '', tabs: o.tabs || [] }); if (o.m) { sh.m = o.m; sh.subpaths = applyM(o.m, sh.orig); } } });
     D.bb = bboxOf(D.shapes); // le placement enregistré correspond aux formes déplacées / tournées
     if (saved.place) D.place = saved.place;
   } else centerDesign();
@@ -533,6 +544,86 @@ function toStockFn() {
   return p => [(p[0] - b.x0) * s + px, (b.y1 - p[1]) * s + py];
 }
 
+/* ====================== Couleurs du SVG ====================== */
+// À l'import, la couleur dit l'usinage (à la manière d'Easel) : blanc = dessus du brut, noir = traversant.
+//   rempli, gris -> poche, profondeur = noirceur × épaisseur (figée en mm) ; rempli noir -> poche traversante
+//   contour seul, gris -> sur la ligne ; contour seul noir fermé -> découpe traversante (intérieure si dans une autre)
+//   blanc ou rien -> non usiné. L'épaisseur du trait est ignorée : seule la ligne centrale compte.
+// « Traversant » (sh.through) suit l'épaisseur du brut si elle change ensuite.
+const depthOf = sh => sh.through ? S.stock.t : sh.depth;
+// noirceur 0 (blanc) … 1 (noir) d'une peinture calculée par le navigateur, transparence comprise ; null si aucune
+function darkness(paint, alpha) {
+  const m = /^rgba?\(([^)]+)\)$/.exec(paint || ''); if (!m) return null; // none, dégradé (url(…))
+  const [r, g, b, a = 1] = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+  const k = a * alpha; if (!(k > 0)) return null;
+  return k * (1 - (0.299 * r + 0.587 * g + 0.114 * b) / 255); // luma : gris 127 -> 50,2 %
+}
+function paintOf(el, svg) {
+  const cs = getComputedStyle(el); let op = 1;
+  for (let p = el; p && p !== svg; p = p.parentElement) op *= parseFloat(getComputedStyle(p).opacity) || 0;
+  const sw = parseFloat(cs.strokeWidth);
+  return {
+    fill: darkness(cs.fill, op * (parseFloat(cs.fillOpacity) || 0)),
+    stroke: sw > 0 ? darkness(cs.stroke, op * (parseFloat(cs.strokeOpacity) || 0)) : null,
+    gradient: /url\(/.test(cs.fill + cs.stroke)
+  };
+}
+const WHITE = 0.02, BLACK = 0.98;
+// proposition d'usinage par forme d'après sa couleur, pour une épaisseur de brut th
+function colorPlan(shapes, th) {
+  const mm = d => Math.round(d * th * 10) / 10;
+  const plan = shapes.map(sh => {
+    // remplissage blanc = pas de remplissage : un contour noir sur fond blanc reste une découpe
+    const P = sh.paint || {}, f = sh.closed && P.fill != null && P.fill >= WHITE ? P.fill : null, s = P.stroke;
+    if (f != null) return f > BLACK ? { op: 'pocket', through: true } : mm(f) > 0 ? { op: 'pocket', depth: mm(f) } : { op: 'none' };
+    if (s != null && s >= WHITE) {
+      if (s > BLACK) return sh.closed ? { op: 'cut', through: true } : { op: 'on', through: true };
+      return mm(s) > 0 ? { op: 'on', depth: mm(s) } : { op: 'none' };
+    }
+    return { op: 'none' };
+  });
+  // découpes noires : extérieure, ou intérieure si contenue dans un nombre impair d'autres découpes (trou dans une pièce)
+  const cuts = shapes.map((sh, k) => plan[k].op === 'cut' ? sh : null);
+  const area = sh => { const b = bboxOf([sh]); return (b.x1 - b.x0) * (b.y1 - b.y0); };
+  const inside = (a, b) => { let c = false; for (const s of a.subpaths) if (pointInPoly(b.subpaths[0].pts[0][0], b.subpaths[0].pts[0][1], s.pts)) c = !c; return c; };
+  cuts.forEach((b, k) => { if (!b) return; const n = cuts.filter(a => a && a !== b && area(a) > area(b) && inside(a, b)).length; plan[k].op = n % 2 ? 'inside' : 'outside'; });
+  return plan;
+}
+function colorSummary(shapes, plan, th) {
+  const n = op => plan.filter(p => p.op === op), rng = ps => { const d = ps.filter(p => !p.through).map(p => p.depth); return d.length ? (Math.min(...d) === Math.max(...d) ? `${f3(d[0])} mm` : `${f3(Math.min(...d))} à ${f3(Math.max(...d))} mm`) : ''; };
+  const L = [], cut = [...n('outside'), ...n('inside')], po = n('pocket'), on = n('on'), no = n('none');
+  if (cut.length) L.push(`${cut.length} découpe(s) traversante(s) : ${n('outside').length} extérieure(s), ${n('inside').length} intérieure(s)`);
+  if (po.length) { const t = po.filter(p => p.through).length; L.push(`${po.length} poche(s)` + [t ? `${t} traversante(s)` : '', rng(po)].filter(Boolean).map((x, i) => (i ? ', ' : ' : ') + x).join('')); }
+  if (on.length) { const t = on.filter(p => p.through).length; L.push(`${on.length} gravure(s) sur la ligne` + [t ? `${t} traversante(s)` : '', rng(on)].filter(Boolean).map((x, i) => (i ? ', ' : ' : ') + x).join('')); }
+  if (no.length) L.push(`${no.length} non usinée(s) (blanches ou sans couleur)`);
+  const warn = [];
+  // SVG sans couleurs voulues (logo, clipart, formes noires par défaut) : tout deviendrait traversant
+  if (po.filter(p => p.through).length >= 2 && !plan.some(p => p.op !== 'none' && !p.through)) warn.push('Toutes les formes remplies sont noires : elles seraient toutes traversantes. Si ce SVG n\'a pas été colorié pour l\'atelier (logo, clipart), choisis « Ignorer les couleurs ».');
+  if (shapes.some(s => s.paint && s.paint.gradient)) warn.push('Les dégradés ne sont pas interprétés (formes concernées non usinées).');
+  return { lines: L, warn };
+}
+// fenêtre de l'import : résumé, épaisseur modifiable (les profondeurs en dépendent), Appliquer / Ignorer
+function askColors() {
+  if (!D || !D.shapes.some(s => s.paint && (s.paint.fill != null || s.paint.stroke != null))) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const show = () => {
+      const th = S.stock.t, sm = colorSummary(D.shapes, colorPlan(D.shapes, th), th);
+      $('#colSum').innerHTML = sm.lines.map(l => '• ' + l.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join('<br>');
+      $('#colWarn').textContent = sm.warn.join(' ');
+    };
+    $('#colT').value = S.stock.t; show();
+    $('#colT').oninput = () => { const v = parseFloat(String($('#colT').value).replace(',', '.')); if (v > 0) { S.stock.t = v; show(); } };
+    const done = ok => { $('#dlgColors').close(); saveSettings(); $('#stT').value = S.stock.t; resolve(ok); };
+    $('#colOk').onclick = () => done(true); $('#colNo').onclick = () => done(false);
+    $('#dlgColors').oncancel = e => { e.preventDefault(); done(false); };
+    $('#dlgColors').showModal();
+  });
+}
+function applyColors() {
+  const plan = colorPlan(D.shapes, S.stock.t);
+  D.shapes.forEach((sh, k) => { const p = plan[k]; sh.op = p.op; sh.through = !!p.through; sh.depth = p.through ? S.stock.t : (p.depth || 1); });
+  log('Usinages déduits des couleurs du SVG : profondeurs modifiables forme par forme.', 'msg');
+}
 /* ====================== FAO ====================== */
 const CL = window.ClipperLib, SC = 1000;
 const toC = pts => pts.map(p => ({ X: Math.round(p[0] * SC), Y: Math.round(p[1] * SC) }));
@@ -730,7 +821,7 @@ function clearCuts(region, reverse, C, zMax, oMax) {
 // Groupes de passes d'une forme : [{ shape, tool, rank, cuts }] (deux groupes si le fond d'un V est dégagé)
 function shapeGroups(sh, res) {
   const skip = msg => { res.warns.push(msg); res.skipped.add(sh.id); return []; };
-  const T = shapeTool(sh), r = T.d / 2, th = S.stock.t, depth = sh.depth, tf = toStockFn();
+  const T = shapeTool(sh), r = T.d / 2, th = S.stock.t, depth = depthOf(sh), tf = toStockFn();
   const doc = Math.max(0.05, T.doc), order = { on: 0, pocket: 1, vcarve: 1, inside: 2, outside: 3 };
   if (depth > th + 1e-6) res.warns.push(`« ${sh.name} » : profondeur ${depth} mm > épaisseur du brut`);
   const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
@@ -799,7 +890,7 @@ function computeCAM() {
   const res = { steps: [], warns: [], skipped: new Set() };
   if (!D) return res;
   const byKey = new Map();
-  for (const sh of D.shapes) if (sh.op !== 'none' && sh.depth > 0) for (const g of shapeGroups(sh, res)) {
+  for (const sh of D.shapes) if (sh.op !== 'none' && depthOf(sh) > 0) for (const g of shapeGroups(sh, res)) {
     const out = g.rank === 3 ? 1 : 0, key = g.tool.id + (out ? ':out' : '');
     if (!byKey.has(key)) byKey.set(key, { tool: g.tool, out, groups: [] }); byKey.get(key).groups.push(g);
   }
@@ -1189,15 +1280,16 @@ function refreshShapes() {
     const skipped = CAM && CAM.skipped && CAM.skipped.has(sh.id);
     const sm = d.lastChild; sm.style.color = skipped ? '#c0392b' : OPCOL[sh.op];
     const own = toolById(sh.tool);
-    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + sh.depth + ' mm' + (own ? ' · ' + own.name : '') : '');
+    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + (sh.through ? 'traversant' : sh.depth + ' mm') + (own ? ' · ' + own.name : '') : '');
   });
   const ed = $('#selEdit');
   if (!sel.size) { ed.classList.add('hide'); refreshTabRow([]); return; }
   ed.classList.remove('hide');
   const ss = D.shapes.filter(s => sel.has(s.id));
   $('#selCount').textContent = ss.length === 1 ? ss[0].name : ss.length + ' formes sélectionnées';
-  const ops = new Set(ss.map(s => s.op)), deps = new Set(ss.map(s => s.depth));
-  $('#sOp').value = ops.size === 1 ? [...ops][0] : ''; $('#sDepth').value = deps.size === 1 ? [...deps][0] : '';
+  const ops = new Set(ss.map(s => s.op)), deps = new Set(ss.map(s => s.through ? 'T' : s.depth));
+  $('#sOp').value = ops.size === 1 ? [...ops][0] : ''; $('#sDepth').value = deps.size === 1 && !deps.has('T') ? [...deps][0] : '';
+  $('#sDepth').placeholder = deps.size === 1 && deps.has('T') ? 'traversant' : '';
   const tls = new Set(ss.map(s => s.tool || '')), cls = new Set(ss.map(s => s.clear || ''));
   $('#sTool').value = tls.size === 1 ? [...tls][0] : '*'; $('#sClear').value = cls.size === 1 ? [...cls][0] : '*';
   $('#rowClear').classList.toggle('hide', !ss.every(s => s.op === 'vcarve'));
@@ -1220,7 +1312,7 @@ function autosave() {
   try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
   catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
 }
-function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
 function restoreAutosave() {
   let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
   if (!p || !p.svg) return;
@@ -1298,10 +1390,10 @@ $('#bCenter').onclick = () => { centerDesign(); invalidate(); };
 // formes
 $('#bSelAll').onclick = () => { if (!D) return; sel = new Set(D.shapes.map(s => s.id)); refreshShapes(); draw(); };
 $('#sOp').addEventListener('change', e => { if (!D || !e.target.value) return; for (const sh of D.shapes) if (sel.has(sh.id)) { if (!sh.closed && e.target.value !== 'on' && e.target.value !== 'none') continue; sh.op = e.target.value; } refreshShapes(); invalidate(); });
-$('#sDepth').addEventListener('change', e => { if (!D) return; const v = num(e.target, NaN); if (!(v >= 0)) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.depth = v; refreshShapes(); invalidate(); });
+$('#sDepth').addEventListener('change', e => { if (!D) return; const v = num(e.target, NaN); if (!(v >= 0)) return; for (const sh of D.shapes) if (sel.has(sh.id)) { sh.depth = v; sh.through = false; } refreshShapes(); invalidate(); });
 $('#sTool').addEventListener('change', e => { if (!D || e.target.value === '*') return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.tool = e.target.value; refreshShapes(); invalidate(); });
 $('#sClear').addEventListener('change', e => { if (!D || e.target.value === '*') return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.clear = e.target.value; refreshShapes(); invalidate(); });
-$('#bThrough').onclick = () => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.depth = S.stock.t; refreshShapes(); invalidate(); };
+$('#bThrough').onclick = () => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) { sh.depth = S.stock.t; sh.through = true; } refreshShapes(); invalidate(); };
 // attaches & sens
 $('#tabOn').addEventListener('change', e => { S.tabs.on = e.target.checked; saveSettings(); invalidate(); });
 [['#tabN', 'n'], ['#tabW', 'w'], ['#tabH', 'h']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.tabs[k]); if (v > 0) S.tabs[k] = v; saveSettings(); invalidate(); }));
@@ -1324,7 +1416,11 @@ Les réglages (machine, fraises, matériau) sont conservés. Pour garder ce dess
   refreshAll(); log('Nouveau dessin : page vide.', 'msg');
 };
 $('#fSvg').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) openSvgFile(f); });
-async function openSvgFile(f) { try { loadDesign(await f.text(), f.name); } catch (err) { alert(err.message); } }
+async function openSvgFile(f) {
+  try { loadDesign(await f.text(), f.name); } catch (err) { return alert(err.message); }
+  if (await askColors()) { applyColors(); refreshShapes(); invalidate(); resetHistory(); }
+  offerVConvert();
+}
 $('#bSave').onclick = () => {
   if (!D) return alert('Rien à enregistrer : importe d\'abord un SVG.');
   const used = new Set([tool().id, ...D.shapes.flatMap(s => [s.tool, s.clear])]);
@@ -1424,7 +1520,7 @@ function refreshTabRow(ss) {
   if (!ok) { if (tabEdit !== null) { tabEdit = null; cv.style.cursor = 'crosshair'; } return; }
   const n = (sh.tabs || []).length, notes = [];
   if (!S.tabs.on) notes.push('désactivées dans « Attaches »');
-  if (sh.depth < S.stock.t - 1e-6) notes.push('seulement sur une découpe traversante');
+  if (depthOf(sh) < S.stock.t - 1e-6) notes.push('seulement sur une découpe traversante');
   $('#tabInfo').textContent = (n ? `Attaches : ${n} placée${n > 1 ? 's' : ''} à la main` : `Attaches : automatiques (${S.tabs.n} réparties)`) + (notes.length ? ' — ' + notes.join(', ') : '');
   $('#bTabEdit').textContent = tabEdit === sh.id ? 'Terminer' : 'Placer à la main';
   $('#bTabEdit').classList.toggle('pri', tabEdit === sh.id);
@@ -1470,7 +1566,7 @@ function rotateSel(deg) {
 function moveSel(dx, dy) { const s = D.place.s / 100; transformShapes(selShapes(), [1, 0, 0, 1, dx / s, -dy / s]); refreshPlace(); draw(); }
 // historique
 let hist = [], fut = [], lastState = null;
-const stateOf = () => JSON.stringify({ place: D.place, shapes: D.shapes.map(s => ({ m: s.m, op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [] })) });
+const stateOf = () => JSON.stringify({ place: D.place, shapes: D.shapes.map(s => ({ m: s.m, op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [] })) });
 function resetHistory() { hist = []; fut = []; lastState = D ? stateOf() : null; refreshUndo(); }
 function recordHistory() {
   if (!D) return; const st = stateOf();
@@ -1479,7 +1575,7 @@ function recordHistory() {
 }
 function applyState(st) {
   const o = JSON.parse(st);
-  o.shapes.forEach((x, k) => { const sh = D.shapes[k]; Object.assign(sh, { m: x.m, op: x.op, depth: x.depth, tool: x.tool, clear: x.clear, tabs: x.tabs }); sh.subpaths = applyM(sh.m, sh.orig); });
+  o.shapes.forEach((x, k) => { const sh = D.shapes[k]; Object.assign(sh, { m: x.m, op: x.op, depth: x.depth, through: x.through, tool: x.tool, clear: x.clear, tabs: x.tabs }); sh.subpaths = applyM(sh.m, sh.orig); });
   D.bb = bboxOf(D.shapes); D.place = o.place; lastState = st;
   refreshShapes(); refreshPlace(); invalidate(); refreshUndo();
 }

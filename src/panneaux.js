@@ -39,15 +39,16 @@ function refreshShapes() {
     const skipped = CAM && CAM.skipped && CAM.skipped.has(sh.id);
     const sm = d.lastChild; sm.style.color = skipped ? '#c0392b' : OPCOL[sh.op];
     const own = toolById(sh.tool);
-    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + sh.depth + ' mm' + (own ? ' · ' + own.name : '') : '');
+    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + (sh.through ? 'traversant' : sh.depth + ' mm') + (own ? ' · ' + own.name : '') : '');
   });
   const ed = $('#selEdit');
   if (!sel.size) { ed.classList.add('hide'); refreshTabRow([]); return; }
   ed.classList.remove('hide');
   const ss = D.shapes.filter(s => sel.has(s.id));
   $('#selCount').textContent = ss.length === 1 ? ss[0].name : ss.length + ' formes sélectionnées';
-  const ops = new Set(ss.map(s => s.op)), deps = new Set(ss.map(s => s.depth));
-  $('#sOp').value = ops.size === 1 ? [...ops][0] : ''; $('#sDepth').value = deps.size === 1 ? [...deps][0] : '';
+  const ops = new Set(ss.map(s => s.op)), deps = new Set(ss.map(s => s.through ? 'T' : s.depth));
+  $('#sOp').value = ops.size === 1 ? [...ops][0] : ''; $('#sDepth').value = deps.size === 1 && !deps.has('T') ? [...deps][0] : '';
+  $('#sDepth').placeholder = deps.size === 1 && deps.has('T') ? 'traversant' : '';
   const tls = new Set(ss.map(s => s.tool || '')), cls = new Set(ss.map(s => s.clear || ''));
   $('#sTool').value = tls.size === 1 ? [...tls][0] : '*'; $('#sClear').value = cls.size === 1 ? [...cls][0] : '*';
   $('#rowClear').classList.toggle('hide', !ss.every(s => s.op === 'vcarve'));
@@ -70,7 +71,7 @@ function autosave() {
   try { localStorage.setItem(AUTOSAVE, JSON.stringify(designData())); autosaveFailed = false; }
   catch (e) { if (!autosaveFailed) log('Sauvegarde automatique impossible (dessin trop volumineux pour le navigateur) : pense à « Enregistrer le projet ».', 'err'); autosaveFailed = true; }
 }
-function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
+function designData() { return { name: D.name, svg: D.svgText, place: D.place, ops: D.shapes.map(s => ({ op: s.op, depth: s.depth, through: !!s.through, tool: s.tool || '', clear: s.clear || '', tabs: s.tabs || [], m: s.m })) }; }
 function restoreAutosave() {
   let p = null; try { p = JSON.parse(localStorage.getItem(AUTOSAVE)); } catch (e) {}
   if (!p || !p.svg) return;
@@ -148,10 +149,10 @@ $('#bCenter').onclick = () => { centerDesign(); invalidate(); };
 // formes
 $('#bSelAll').onclick = () => { if (!D) return; sel = new Set(D.shapes.map(s => s.id)); refreshShapes(); draw(); };
 $('#sOp').addEventListener('change', e => { if (!D || !e.target.value) return; for (const sh of D.shapes) if (sel.has(sh.id)) { if (!sh.closed && e.target.value !== 'on' && e.target.value !== 'none') continue; sh.op = e.target.value; } refreshShapes(); invalidate(); });
-$('#sDepth').addEventListener('change', e => { if (!D) return; const v = num(e.target, NaN); if (!(v >= 0)) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.depth = v; refreshShapes(); invalidate(); });
+$('#sDepth').addEventListener('change', e => { if (!D) return; const v = num(e.target, NaN); if (!(v >= 0)) return; for (const sh of D.shapes) if (sel.has(sh.id)) { sh.depth = v; sh.through = false; } refreshShapes(); invalidate(); });
 $('#sTool').addEventListener('change', e => { if (!D || e.target.value === '*') return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.tool = e.target.value; refreshShapes(); invalidate(); });
 $('#sClear').addEventListener('change', e => { if (!D || e.target.value === '*') return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.clear = e.target.value; refreshShapes(); invalidate(); });
-$('#bThrough').onclick = () => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) sh.depth = S.stock.t; refreshShapes(); invalidate(); };
+$('#bThrough').onclick = () => { if (!D) return; for (const sh of D.shapes) if (sel.has(sh.id)) { sh.depth = S.stock.t; sh.through = true; } refreshShapes(); invalidate(); };
 // attaches & sens
 $('#tabOn').addEventListener('change', e => { S.tabs.on = e.target.checked; saveSettings(); invalidate(); });
 [['#tabN', 'n'], ['#tabW', 'w'], ['#tabH', 'h']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.tabs[k]); if (v > 0) S.tabs[k] = v; saveSettings(); invalidate(); }));
@@ -174,7 +175,11 @@ Les réglages (machine, fraises, matériau) sont conservés. Pour garder ce dess
   refreshAll(); log('Nouveau dessin : page vide.', 'msg');
 };
 $('#fSvg').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) openSvgFile(f); });
-async function openSvgFile(f) { try { loadDesign(await f.text(), f.name); } catch (err) { alert(err.message); } }
+async function openSvgFile(f) {
+  try { loadDesign(await f.text(), f.name); } catch (err) { return alert(err.message); }
+  if (await askColors()) { applyColors(); refreshShapes(); invalidate(); resetHistory(); }
+  offerVConvert();
+}
 $('#bSave').onclick = () => {
   if (!D) return alert('Rien à enregistrer : importe d\'abord un SVG.');
   const used = new Set([tool().id, ...D.shapes.flatMap(s => [s.tool, s.clear])]);

@@ -35,6 +35,7 @@ const launch = require('./navigateur');
   });
   await p.goto('file://' + __dirname + '/../dist/atelier-cnc.html');
   await p.setInputFiles('#fSvg', __dirname + '/exemple.svg');
+  await p.click('#colNo'); // formes noires par défaut : couleurs ignorées, usinages réglés plus bas
   await p.waitForTimeout(400);
   const names = await p.$$eval('#shapeList > div', d => d.map(x => x.textContent));
   console.log('formes:', names);

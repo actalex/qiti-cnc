@@ -195,7 +195,7 @@ function clearCuts(region, reverse, C, zMax, oMax) {
 // Groupes de passes d'une forme : [{ shape, tool, rank, cuts }] (deux groupes si le fond d'un V est dégagé)
 function shapeGroups(sh, res) {
   const skip = msg => { res.warns.push(msg); res.skipped.add(sh.id); return []; };
-  const T = shapeTool(sh), r = T.d / 2, th = S.stock.t, depth = sh.depth, tf = toStockFn();
+  const T = shapeTool(sh), r = T.d / 2, th = S.stock.t, depth = depthOf(sh), tf = toStockFn();
   const doc = Math.max(0.05, T.doc), order = { on: 0, pocket: 1, vcarve: 1, inside: 2, outside: 3 };
   if (depth > th + 1e-6) res.warns.push(`« ${sh.name} » : profondeur ${depth} mm > épaisseur du brut`);
   const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
@@ -264,7 +264,7 @@ function computeCAM() {
   const res = { steps: [], warns: [], skipped: new Set() };
   if (!D) return res;
   const byKey = new Map();
-  for (const sh of D.shapes) if (sh.op !== 'none' && sh.depth > 0) for (const g of shapeGroups(sh, res)) {
+  for (const sh of D.shapes) if (sh.op !== 'none' && depthOf(sh) > 0) for (const g of shapeGroups(sh, res)) {
     const out = g.rank === 3 ? 1 : 0, key = g.tool.id + (out ? ':out' : '');
     if (!byKey.has(key)) byKey.set(key, { tool: g.tool, out, groups: [] }); byKey.get(key).groups.push(g);
   }

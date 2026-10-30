@@ -46,7 +46,7 @@ function refreshTabRow(ss) {
   if (!ok) { if (tabEdit !== null) { tabEdit = null; cv.style.cursor = 'crosshair'; } return; }
   const n = (sh.tabs || []).length, notes = [];
   if (!S.tabs.on) notes.push('désactivées dans « Attaches »');
-  if (sh.depth < S.stock.t - 1e-6) notes.push('seulement sur une découpe traversante');
+  if (depthOf(sh) < S.stock.t - 1e-6) notes.push('seulement sur une découpe traversante');
   $('#tabInfo').textContent = (n ? `Attaches : ${n} placée${n > 1 ? 's' : ''} à la main` : `Attaches : automatiques (${S.tabs.n} réparties)`) + (notes.length ? ' — ' + notes.join(', ') : '');
   $('#bTabEdit').textContent = tabEdit === sh.id ? 'Terminer' : 'Placer à la main';
   $('#bTabEdit').classList.toggle('pri', tabEdit === sh.id);
