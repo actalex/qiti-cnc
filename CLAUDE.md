@@ -7,7 +7,7 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 - Éditer **`src/`** uniquement (`atelier-cnc.src.html` = HTML, CSS, utilitaires, réglages, projet, démarrage ; sections insérées par `/*INCLUDE:x.js*/` : `svg.js` import SVG, `fao.js` FAO + G-code, `temps.js` estimation, `materiaux.js`, `vue.js` canvas, `panneaux.js` panneaux latéraux, `grbl.js` Web Serial, `gravure.js` déroulement d'une gravure), puis `npm run build` (régénère `dist/atelier-cnc.html`, à committer aussi). Garder chaque fichier court : sortir une section dans son propre fichier plutôt que d'allonger.
 - Tout reste dans un seul fichier (HTML + CSS + JS vanilla, pas de framework, pas de CDN : la page doit marcher hors ligne). Seule dépendance : Clipper, intégrée au build.
 - Après chaque modification : `npm test` (Playwright, ou Edge à défaut : `test/vcarve.test.js` vérifie les profondeurs, `test/grbl-simule.test.js` simule GRBL) et vérifier les captures `test/shot-*.png`.
-- Sécurité machine : ne jamais émettre de mouvement sans Z de dégagement, garder la liste de vérification avant gravure, arrêter le flux sur toute `error:` ou `ALARM:` pendant une gravure.
+- Sécurité machine : ne jamais émettre de mouvement sans Z de dégagement, jamais de G0 sous Z0 (approche rapide jusqu'à 0,5 mm au-dessus du brut, puis G1), garder la liste de vérification avant gravure, arrêter le flux sur toute `error:` ou `ALARM:` pendant une gravure.
 
 ## Architecture (sections du script, dans l'ordre)
 1. **Réglages persistants** — matériau choisi (`S.material`, table et calcul dans `src/materiaux.js`, appliqué à toutes les fraises après confirmation) ; `S` (machine, brut, fraises, attaches, sens, origine) dans `localStorage` clé `atelier-cnc-v1`. Le dessin en cours (SVG, placement, usinages) est sauvegardé automatiquement sous `atelier-cnc-projet` à chaque `invalidate()` et restauré au démarrage. Fraises : `{id, name, type:'flat'|'v', d, angle, tip, feed, plunge, doc, so}` (`id` stable : les formes et les projets désignent leur fraise par id ; à l'ouverture d'un projet, une fraise est retrouvée par id puis par nom).
@@ -22,7 +22,7 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 
 ## Pistes suivantes (analyse du 2026-10-29, par priorité)
 **1. Fiabilité**
-- Étendre les tests à assertions (offsets, attaches, G-code).
+- Tests à assertions : `test/gcode.test.js` relit le G-code comme la machine (sécurité, profondeurs, décalages, attaches) ; à étendre (origine au centre, échelle, sens avalant).
 
 **2. Se rapprocher d'Easel**
 - Aperçu 3D réaliste (carte de hauteurs).
