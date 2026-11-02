@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="70mm" viewBox="0 0 100 70">
+  <!-- Test 3 QiTi-CNC : découpe traversante avec attaches, trou intérieur, poche de 2 mm, fraise plate 3,175 (voir test3-fiche.md).
+       Page = brut 100 × 70 ; contour noir = découpe traversante ; gris #aaa = poche de 1/3 de l'épaisseur (2 mm pour 6 mm). -->
+  <path id="piece" d="M19,12 H81 A4,4 0 0 1 85,16 V54 A4,4 0 0 1 81,58 H19 A4,4 0 0 1 15,54 V16 A4,4 0 0 1 19,12 Z" fill="none" stroke="#000" stroke-width="0.3"/>
+  <circle id="trou" cx="32" cy="35" r="10" fill="none" stroke="#000" stroke-width="0.3"/>
+  <rect id="poche" x="52" y="23" width="24" height="24" fill="#aaaaaa"/>
+</svg>

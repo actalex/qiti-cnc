@@ -21,9 +21,19 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 
 `window.__atelier` expose l'état pour les tests.
 
-## Pistes suivantes (analyse du 2026-10-29, par priorité)
+## Pistes suivantes (mises à jour le 2026-11-02, par priorité)
+Principe (utilisateur, 2026-11-02) : rester un outil simple ; une nouvelle fonction = un réglage d'une forme ou un mode, pas un outil d'éditeur.
+
 **1. Fiabilité**
+- Essai réel d'une découpe traversante avec attaches et d'une poche à la fraise plate (seule la gravure en V a été usinée, test 2).
+- Point de zéro Z (changement de fraise) : la broche remonte dans son collier pour changer de fraise, seul Z est affecté, mais le dessus du brut sous la fraise a pu être usiné. La page choisit d'office un point du brut que rien n'usine (coin hors de l'emprise + marge, vérifié contre les trajets et les brides), s'y rend à Z sûr à chaque changement de fraise, et le zéro Z au papier se fait là. Aucune gravure de marque, aucun réglage en plus. Plus tard seulement, si une perte de position X/Y arrive vraiment : marque gravée en V pour recaler X/Y (rotation du brut : non).
+- Reprise d'une gravure interrompue : repartir au début d'une passe ou d'une forme, après remontée au Z de dégagement (indispensable avant les longs usinages, relief 3D compris).
 - Tests à assertions : `test/gcode.test.js` relit le G-code comme la machine (sécurité, profondeurs, décalages, attaches) ; à étendre (origine au centre, échelle, sens avalant).
+
+**1 bis. Nouveaux usinages, sous forme de réglages**
+- Chanfrein sur un contour extérieur/intérieur (« Chanfrein : non / largeur ») : passage à la fraise en V décalé pour que le biseau tombe sur l'arête.
+- Marqueterie en V : réglage d'une forme en V « Normal / Femelle / Mâle » ; mâle = miroir + V autour de la forme sur une marge + décalage de profondeur (emboîtement, jeu de colle), le miroir n'est fait qu'au calcul.
+- Relief 3D depuis une image en niveaux de gris : à l'étude ; piste : mode à part comme le surfaçage (remplace `PLAN`), ébauche en paliers à la fraise plate + finition en balayage à la fraise boule (« drop cutter » sur la carte de hauteurs, profil de fraise de `relief.js`), points alignés simplifiés.
 
 **2. Se rapprocher d'Easel**
 - Relief vu de dessus fait (`relief.js`) ; reste une vue inclinée/orbitale à partir de la même carte de hauteurs.
