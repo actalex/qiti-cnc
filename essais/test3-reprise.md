@@ -42,6 +42,5 @@ Demander aussi la matière (MDF ou essence de bois), l'épaisseur mesurée et ce
 
 Ordre ensuite (règle de l'utilisateur : pas de nouvelle fonction tant que la précédente n'est pas validée sur la machine) : point de zéro Z → reprise d'une gravure interrompue → relief 3D depuis une image en niveaux de gris (le vrai objectif de l'utilisateur) → chanfrein et marqueterie en V.
 
-## En suspens
-- `essais/resultats.png` n'est pas suivi par git : demander s'il faut le garder.
-- Matériel de l'utilisateur pour le relief 3D : a-t-il une fraise boule ?
+## Matériel de l'utilisateur
+- Pas encore de fraise boule (2026-11-02) : à acheter avant le relief 3D (boule Ø 3,175, ou conique à bout rond pour les détails). D'ici là, on peut coder le relief 3D et le valider par l'aperçu, mais le tester sur la machine attendra la fraise.
