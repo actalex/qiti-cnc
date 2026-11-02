@@ -25,7 +25,7 @@ Application « à la Easel », réécrite de zéro (aucun code d'Easel/Inventabl
 Principe (utilisateur, 2026-11-02) : rester un outil simple ; une nouvelle fonction = un réglage d'une forme ou un mode, pas un outil d'éditeur.
 
 **1. Fiabilité**
-- Essai réel d'une découpe traversante avec attaches et d'une poche à la fraise plate (seule la gravure en V a été usinée, test 2).
+- Essai réel d'une découpe traversante avec attaches et d'une poche à la fraise plate (seule la gravure en V a été usinée, test 2) : test 3 préparé, retours attendus et suite dans `essais/test3-reprise.md`.
 - Point de zéro Z (changement de fraise) : la broche remonte dans son collier pour changer de fraise, seul Z est affecté, mais le dessus du brut sous la fraise a pu être usiné. La page choisit d'office un point du brut que rien n'usine (coin hors de l'emprise + marge, vérifié contre les trajets et les brides), s'y rend à Z sûr à chaque changement de fraise, et le zéro Z au papier se fait là. Aucune gravure de marque, aucun réglage en plus. Plus tard seulement, si une perte de position X/Y arrive vraiment : marque gravée en V pour recaler X/Y (rotation du brut : non).
 - Reprise d'une gravure interrompue : repartir au début d'une passe ou d'une forme, après remontée au Z de dégagement (indispensable avant les longs usinages, relief 3D compris).
 - Tests à assertions : `test/gcode.test.js` relit le G-code comme la machine (sécurité, profondeurs, décalages, attaches) ; à étendre (origine au centre, échelle, sens avalant).
