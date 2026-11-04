@@ -23,4 +23,4 @@
 - Fraise pas au point à la fin de l'étape 1, ou trace de fraise sur le point : bug, à corriger avec un test dans `test/gcode.test.js`.
 
 ## Ensuite
-Test réussi : noter les résultats dans `test4-fiche.md`, puis passer à la **reprise d'une gravure interrompue** (feuille de route de `CLAUDE.md`), puis au relief 3D (fraise boule à acheter avant l'essai sur la machine).
+Test réussi : noter les résultats dans `test4-fiche.md`, puis passer à la **reprise d'une gravure interrompue** (feuille de route de `CLAUDE.md`), puis au relief 3D (fraises boule livrées avec la machine : relever leurs dimensions).
