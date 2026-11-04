@@ -4,7 +4,7 @@ function updateButtons() {
   $('#bCarve').disabled = !(G && ready);
   $('#bExport').disabled = !G;
   $('#bSurf').disabled = !!job;
-  ['#bUnlock', '#bHome', '#bZeroXY', '#bZeroZ', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
+  ['#bUnlock', '#bHome', '#bZeroXY', '#bZeroZ', '#bGoZero', '#bProbe', '#bGoZP', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
   $('#bUnlock').disabled = !machine.port || (!!job && machine.state !== 'Alarm');
   const noHome = machine.grbl[22] === 0;
   if (noHome) $('#bHome').disabled = true;
@@ -18,7 +18,8 @@ function updateButtons() {
 $('#bCarve').onclick = () => {
   if (!G) return;
   const T = G.tool, warns = $('#warns').textContent;
-  $('#cZ').textContent = stepIdx > 0 ? 'Le zéro Z est refait avec cette fraise, et le zéro X/Y n\'a pas bougé depuis l\'étape 1.' : 'Le zéro Z est fait sur le dessus du matériau (papier ou plaque de sonde retirés).';
+  const zp = ZPOINT ? ' au point de zéro Z (repère bleu)' : '';
+  $('#cZ').textContent = stepIdx > 0 ? `Le zéro Z est refait avec cette fraise${zp}, et le zéro X/Y n'a pas bougé depuis l'étape 1.` : `Le zéro Z est fait sur le dessus du matériau${zp} (papier ou plaque de sonde retirés).`;
   $('#cSummary').innerHTML = (PLAN.length > 1 ? `<b>Étape ${stepIdx + 1}/${PLAN.length}</b> · ` : '') + `Durée estimée <b>${fmtTime(G.time)}</b> · profondeur max <b>${f3(-G.zMin)} mm</b> · ${G.lines.length.toLocaleString('fr')} lignes`;
   // zéros à refaire après un démarrage de la carte (pas de homing) ; Z à refaire après chaque changement de fraise
   const miss = [...'XYZ'].filter(a => !machine.zeroed[a]), alerts = [];
@@ -119,7 +120,8 @@ function finishJob() {
   if (k >= PLAN.length - 1) return endJob(PLAN.length > 1 ? `Dernière étape terminée en ${t}.` : `Gravure terminée en ${t}.`);
   stepIdx = k + 1;
   machine.zeroed.Z = false; // nouvelle fraise : son zéro Z est à refaire
-  endJob(`Étape ${k + 1} terminée en ${t}. Installe « ${PLAN[k + 1].tool.name} », refais le zéro Z (sans toucher au zéro X/Y), puis lance l'étape ${k + 2}.`);
+  const at = ZPOINT ? ' La fraise attend au point de zéro Z (repère bleu) : remonte Z si la nouvelle fraise est plus longue.' : '';
+  endJob(`Étape ${k + 1} terminée en ${t}.${at} Installe « ${PLAN[k + 1].tool.name} », refais le zéro Z${ZPOINT ? ' au papier à cet endroit' : ''} (sans toucher au zéro X/Y), puis lance l'étape ${k + 2}.`);
 }
 function endJob(msg) {
   if (!job) return; job = null; log(msg, 'msg'); keepAwake(false);

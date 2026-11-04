@@ -296,7 +296,7 @@ function computeCAM() {
   if (new Set(sorted.filter(st => st.out).map(st => st.tool)).size > 1) res.warns.push('Plusieurs fraises détourent des formes : les pièces peuvent se libérer avant la dernière étape (attaches conseillées)');
   return res;
 }
-function buildGcode(step) {
+function buildGcode(step, park) { // park : point de zéro Z où finir (changement de fraise), sinon retour à X0 Y0
   const T = step.tool, m = S.machine, safe = m.safeZ, L = [], moves = [], lineMove = [];
   const [gx, gy] = originOff();
   let x = gx, y = gy, z = safe, F = null, time = 0, zMin = 0;
@@ -355,7 +355,8 @@ function buildGcode(step) {
   }
   if (z < safe) mv(0, x, y, safe);
   push('M5');
-  mv(0, gx, gy, safe);
+  if (park) { push('; Point de zéro Z : changer de fraise ici, puis zéro Z au papier'); mv(0, park[0], park[1], safe); }
+  else mv(0, gx, gy, safe);
   push('M2');
   if (m.plan) time = planTime(moves, m.plan) + Math.max(0, m.dwell); // accélérations lues sur la carte
   return { lines: L, moves, lineMove, time, zMin, tool: T };

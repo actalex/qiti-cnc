@@ -59,3 +59,14 @@ Le principe a déjà été validé aux tests 1 et 2. Si tu la fais, procède com
 - Plaque **plus petite** et trou **plus grand** du même écart : la fraise coupe plus large que 3,175 mm (faux-rond, ou diamètre réel différent). Diamètre effectif ≈ 3,175 + (trou mesuré − 20). On le corrige dans le diamètre de la fraise.
 - Plaque **et** trou **tous les deux plus grands** (ou tous les deux plus petits) : ce n'est pas la fraise, c'est l'échelle des axes (pas/mm de la carte, $100/$101) ou du jeu mécanique.
 - Écart seulement en X ou seulement en Y : jeu ou courroie de cet axe.
+
+## Résultat (2026-11-04)
+Matière : contreplaqué de 5 mm, poche réglée à 1 mm, vitesses adaptées par l'utilisateur. Photo : `test3-resultat.jpg`.
+- Console : ni `error:` ni `ALARM:` ; un premier lancement arrêté par « Stop (arrêt sûr) », sans incident, puis gravure complète.
+- Durée : 10 min 40 s réelles pour 10 min 45 s estimées.
+- Plaque : 69,72 × 45,55 mm (prévu 70,0 × 46,0).
+- Pastille du trou : 13,63 et 13,61 mm (prévu 20 − 2 × 3,175 = 13,65) : fraise effective ≈ 3,19 mm.
+- Poche : 23,90 × 23,82 mm (prévu 24,0), profondeur 0,96 mm (prévu 1,0).
+- Traversée complète et propre, attaches présentes et conformes, aucune marque de rampe, aucune brûlure.
+
+Lecture : plaque et poche toutes deux un peu petites (X ≈ −0,4 %, Y ≈ −0,75 à −1 %), pastille juste : ni la fraise ni le code. Échelle d'axe ou jeu, surtout en Y. Jugé suffisant par l'utilisateur ; à revoir par une mesure sur grande longueur seulement si une pièce l'exige.

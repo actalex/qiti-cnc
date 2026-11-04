@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="50mm" viewBox="0 0 80 50">
+  <!-- Test 4 QiTi-CNC : deux fraises (plate puis V 30°), zéro Z au point bleu pour chacune (voir test4-fiche.md).
+       Page = brut 80 × 50 ; étoile grise = remplissage en V dégagé à la plate ; carré gris = poche témoin ; trait = gravure en V sur la ligne. -->
+  <path id="etoile" d="M25.00,11.00 L28.53,20.15 L38.31,20.67 L30.71,26.85 L33.23,36.33 L25.00,31.00 L16.77,36.33 L19.29,26.85 L11.69,20.67 L21.47,20.15 Z" fill="#aaaaaa"/>
+  <rect id="poche" x="50" y="8" width="16" height="16" fill="#aaaaaa"/>
+  <path id="trait" d="M47,40 C53,30 61,46 70,36" fill="none" stroke="#000" stroke-width="0.3"/>
+</svg>

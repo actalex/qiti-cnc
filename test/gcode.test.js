@@ -61,11 +61,22 @@ function relire(lines, safe) {
     const c = n => [(bb[n][0] + bb[n][2]) / 2, (bb[n][1] + bb[n][3]) / 2], r = flat.d / 2;
     const relief = { poche: hAt(...c('poche')), trouCentre: hAt(...c('trou')), trouBord: hAt(bb.trou[0] + 0.5, c('trou')[1]),
       plaqueBord: Math.min(...Array.from({ length: 30 }, (_, k) => hAt(bb.plaque[2] + r, bb.plaque[1] + 5 + k))), brut: hAt(95, 55) };
-    return { relief, safe: S.machine.safeZ, bb, flat: { d: flat.d, doc: flat.doc, feed: flat.feed, plunge: flat.plunge }, v: { doc: v.doc, feed: v.feed, plunge: v.plunge },
+    // point de zéro Z : le dessus du brut y reste intact sur tout le disque de la plus grosse fraise (+ 1 mm)
+    const zr = Math.max(...A.PLAN.map(P => P.tool.d / 2)) + 1, zpFree = ZPOINT && Array.from({ length: 36 }, (_, k) => [0, zr / 2, zr].map(d =>
+      hAt(ZPOINT[0] + d * Math.cos(k / 6 * Math.PI / 3), ZPOINT[1] + d * Math.sin(k / 6 * Math.PI / 3)))).flat().every(z => z === 0);
+    return { relief, zp: ZPOINT, zpFree, safe: S.machine.safeZ, bb, flat: { d: flat.d, doc: flat.doc, feed: flat.feed, plunge: flat.plunge }, v: { doc: v.doc, feed: v.feed, plunge: v.plunge },
       steps: A.PLAN.map(P => ({ tool: P.tool.name, type: P.tool.type || 'flat', lines: P.lines })), warns: $('#warns').textContent };
   }, SVG);
   console.log('étapes :', data.steps.map(s => `${s.tool} (${s.lines.length} lignes)`), data.warns || '(aucun avertissement)');
   assert.strictEqual(data.steps.length, 3, 'plate (poche, trou, trait, dégagement), V, plate (détourage)');
+  // point de zéro Z : dans le brut, hors de toute coupe ; chaque étape sauf la dernière y finit à Z sûr, la dernière à X0 Y0
+  console.log('point de zéro Z :', data.zp);
+  assert.ok(data.zp && data.zp[0] > 5 && data.zp[1] > 5 && data.zp[0] < 95 && data.zp[1] < 55, 'point de zéro Z dans le brut, loin des bords');
+  assert.ok(data.zpFree, "point de zéro Z sur une surface que rien n'usine");
+  data.steps.forEach((st, k) => {
+    const { moves } = relire(st.lines, data.safe), end = moves.at(-1), want = k < data.steps.length - 1 ? data.zp : [0, 0];
+    assert.ok(Math.abs(end.x - want[0]) < 1e-3 && Math.abs(end.y - want[1]) < 1e-3 && end.z >= data.safe - 1e-6, `étape ${k + 1} : fin en ${want} à Z sûr`);
+  });
 
   const r = data.flat.d / 2, eps = 0.02, all = {};
   for (const st of data.steps) {

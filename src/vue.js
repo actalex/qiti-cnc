@@ -41,6 +41,7 @@ function draw() {
   ctx.fillStyle = '#22201c'; ctx.font = '11px system-ui'; ctx.fillText('X0 Y0', ox + 4, oy + 14);
   if (G && (viewMode === 'carve' || viewMode === 'paths')) drawMoves();
   if (D && !SURF && viewMode !== 'carve' && !(viewMode === 'relief' && G)) drawShapes(viewMode === 'paths' ? 0.35 : 1);
+  drawZPoint();
   if (job && G) drawProgress();
   if (machine.wpos) {
     const [tx, ty] = W2S(machine.wpos[0] + originOff()[0], machine.wpos[1] + originOff()[1]);

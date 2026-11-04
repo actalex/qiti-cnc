@@ -11,6 +11,7 @@ Diagnostic du 2026-10-30 : risques connus d'un logiciel de FAO / pilotage GRBL, 
 - Broche : `M3` + temporisation avant la première coupe, `M5` puis `M2` à la fin, fin au Z de sécurité. [gcode.test]
 - Attaches sur les découpes traversantes ; intérieurs avant extérieurs. [gcode.test]
 - Formes impossibles (trop étroites, mauvais type de fraise) ignorées et signalées ; fraise en V limitée à son cône.
+- Plusieurs fraises : chaque étape sauf la dernière finit, au Z de sécurité, au point de zéro Z choisi par la page (dessus du brut que rien n'usine, à l'écart des trajets et des bords) ; le zéro Z de chaque fraise se fait sur la même surface d'origine. [gcode.test]
 - Passe de finition refusée dans un goulot (saignée pleine profondeur). [gcode.test]
 - Avances plafonnées aux vitesses max de la carte ; conventionnel par défaut pour l'ébauche.
 

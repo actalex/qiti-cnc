@@ -93,7 +93,12 @@ function recompute() {
   try {
     if (SURF) { CAM = { steps: [], warns: [], skipped: new Set() }; PLAN = [buildGcode(surfaceStep())]; warns.push(...surfaceWarns()); }
     else { CAM = computeCAM(); warns.push(...CAM.warns); PLAN = CAM.steps.map(st => buildGcode(st)); }
-  } catch (e) { PLAN = []; warns.push('Erreur de calcul : ' + e.message); console.error(e); }
+    // plusieurs fraises : point de zéro Z libre, où finissent toutes les étapes sauf la dernière
+    ZPOINT = SURF ? null : zeroPoint(PLAN);
+    if (ZPOINT) PLAN = PLAN.map((P, k) => k < PLAN.length - 1 ? buildGcode(CAM.steps[k], ZPOINT) : P);
+    else if (PLAN.length > 1) warns.push('Aucun point libre pour le zéro Z entre deux fraises : refais-le à la main sur une zone que rien n\'usine');
+  } catch (e) { PLAN = []; ZPOINT = null; warns.push('Erreur de calcul : ' + e.message); console.error(e); }
+  $('#bGoZP').classList.toggle('hide', !ZPOINT);
   stepIdx = Math.min(stepIdx, Math.max(0, PLAN.length - 1)); G = PLAN[stepIdx] || null;
   if (D) {
     const s = D.place.s / 100, x1 = D.place.x + (D.bb.x1 - D.bb.x0) * s, y1 = D.place.y + (D.bb.y1 - D.bb.y0) * s;

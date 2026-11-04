@@ -218,6 +218,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <button id="bGoZero" style="flex:1">Aller à X0 Y0</button>
       <button id="bProbe" style="flex:1">Sonde Z (plaque)</button>
     </div>
+    <div class="row"><button id="bGoZP" class="hide" style="flex:1" title="Point du brut que rien n'usine (repère bleu « Zéro Z » sur le plan) : le zéro Z au papier s'y fait avec chaque fraise">Aller au point de zéro Z</button></div>
     <div class="jog">
       <span></span><button data-jog="Y+">Y+</button><span></span><button data-jog="Z+">Z+</button>
       <button data-jog="X-">X−</button><button data-jog="Y-">Y−</button><button data-jog="X+">X+</button><button data-jog="Z-">Z−</button>
@@ -979,7 +980,7 @@ function computeCAM() {
   if (new Set(sorted.filter(st => st.out).map(st => st.tool)).size > 1) res.warns.push('Plusieurs fraises détourent des formes : les pièces peuvent se libérer avant la dernière étape (attaches conseillées)');
   return res;
 }
-function buildGcode(step) {
+function buildGcode(step, park) { // park : point de zéro Z où finir (changement de fraise), sinon retour à X0 Y0
   const T = step.tool, m = S.machine, safe = m.safeZ, L = [], moves = [], lineMove = [];
   const [gx, gy] = originOff();
   let x = gx, y = gy, z = safe, F = null, time = 0, zMin = 0;
@@ -1038,7 +1039,8 @@ function buildGcode(step) {
   }
   if (z < safe) mv(0, x, y, safe);
   push('M5');
-  mv(0, gx, gy, safe);
+  if (park) { push('; Point de zéro Z : changer de fraise ici, puis zéro Z au papier'); mv(0, park[0], park[1], safe); }
+  else mv(0, gx, gy, safe);
   push('M2');
   if (m.plan) time = planTime(moves, m.plan) + Math.max(0, m.dwell); // accélérations lues sur la carte
   return { lines: L, moves, lineMove, time, zMin, tool: T };
@@ -1186,6 +1188,7 @@ function draw() {
   ctx.fillStyle = '#22201c'; ctx.font = '11px system-ui'; ctx.fillText('X0 Y0', ox + 4, oy + 14);
   if (G && (viewMode === 'carve' || viewMode === 'paths')) drawMoves();
   if (D && !SURF && viewMode !== 'carve' && !(viewMode === 'relief' && G)) drawShapes(viewMode === 'paths' ? 0.35 : 1);
+  drawZPoint();
   if (job && G) drawProgress();
   if (machine.wpos) {
     const [tx, ty] = W2S(machine.wpos[0] + originOff()[0], machine.wpos[1] + originOff()[1]);
@@ -1354,6 +1357,57 @@ function drawRelief() {
   ctx.save(); ctx.beginPath(); ctx.rect(sx0, sy0, sx1 - sx0, sy1 - sy0); ctx.clip();
   ctx.imageSmoothingEnabled = true; ctx.drawImage(img, x0, y0, x1 - x0, y1 - y0); ctx.restore();
 }
+/* ====================== Point de zéro Z ====================== */
+// Entre deux fraises, seul Z change (la fraise remonte dans son collier), mais le dessus du brut sous la fraise a pu être
+// usiné. La page choisit d'office un point du dessus du brut que rien n'usine, au plus près du coin avant-gauche : chaque
+// étape sauf la dernière s'y termine, à Z sûr, et le zéro Z au papier s'y fait avec chaque fraise, sur la même surface.
+// Écart au trajet : rayon de coupe + rayon de la plus grosse fraise + ZP_GAP ; aux bords du brut : ZP_EDGE + ce rayon.
+const ZP_GAP = 2, ZP_EDGE = 5;
+let ZPOINT = null; // [x, y] en coordonnées brut, null si une seule étape ou aucun point libre
+function zeroPoint(plan) {
+  if (plan.length < 2) return null;
+  const w = S.stock.w, h = S.stock.h, res = Math.max(0.5, Math.sqrt(w * h / 200000));
+  const nx = Math.ceil(w / res), ny = Math.ceil(h / res), busy = new Uint8Array(nx * ny);
+  const rMax = Math.max(...plan.map(P => P.tool.d / 2)), edge = ZP_EDGE + rMax;
+  for (const P of plan) {
+    const T = P.tool, v = isV(T), k = v ? Math.tan(T.angle * Math.PI / 360) : 0, tip = v ? (T.tip || 0) / 2 : 0;
+    for (const m of P.moves) {
+      if (m.g !== 1 || (m.z >= 0 && m.z0 >= 0)) continue; // seulement ce qui entame le brut
+      const rc = v ? Math.min(T.d / 2, tip - Math.min(m.z, m.z0) * k) : T.d / 2, R = rc + rMax + ZP_GAP + res;
+      const dx = m.x - m.x0, dy = m.y - m.y0, L2 = dx * dx + dy * dy;
+      const i0 = Math.max(0, Math.floor((Math.min(m.x, m.x0) - R) / res)), i1 = Math.min(nx - 1, Math.ceil((Math.max(m.x, m.x0) + R) / res));
+      const j0 = Math.max(0, Math.floor((Math.min(m.y, m.y0) - R) / res)), j1 = Math.min(ny - 1, Math.ceil((Math.max(m.y, m.y0) + R) / res));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const px = (i + 0.5) * res, py = (j + 0.5) * res;
+        let u = L2 ? ((px - m.x0) * dx + (py - m.y0) * dy) / L2 : 0; u = u < 0 ? 0 : u > 1 ? 1 : u;
+        if (Math.hypot(px - m.x0 - u * dx, py - m.y0 - u * dy) <= R) busy[j * nx + i] = 1;
+      }
+    }
+  }
+  let best = null, bd = Infinity;
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const px = (i + 0.5) * res, py = (j + 0.5) * res;
+    if (busy[j * nx + i] || px < edge || py < edge || px > w - edge || py > h - edge) continue;
+    const d = Math.hypot(px, py); if (d < bd) { bd = d; best = [px, py]; }
+  }
+  return best;
+}
+function drawZPoint() {
+  if (!ZPOINT || !G) return;
+  const [x, y] = W2S(...ZPOINT);
+  ctx.strokeStyle = '#2471a3'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.moveTo(x - 10, y); ctx.lineTo(x + 10, y); ctx.moveTo(x, y - 10); ctx.lineTo(x, y + 10); ctx.stroke();
+  ctx.fillStyle = '#2471a3'; ctx.font = '11px system-ui'; ctx.fillText('Zéro Z', x + 9, y - 8);
+}
+// Aller au point (avant le zéro Z de la première fraise, ou pour le refaire) : Z sûr d'abord si le zéro Z est connu
+$('#bGoZP').onclick = () => {
+  if (!ZPOINT) return;
+  if (!machine.zeroed.X || !machine.zeroed.Y) return log('Fais d\'abord le zéro X/Y : le point de zéro Z se repère depuis lui.', 'err');
+  if (!machine.zeroed.Z && !confirm('Le zéro Z n\'est pas fait : la fraise va se déplacer à sa hauteur actuelle.\nElle est bien au-dessus du brut et des brides ?')) return;
+  const [gx, gy] = originOff(), safe = S.machine.safeZ;
+  const z = machine.zeroed.Z && machine.wpos && machine.wpos[2] < safe ? [`G90 G0 Z${f3(safe)}`] : [];
+  sendLines([...z, `G90 G0 X${f3(ZPOINT[0] - gx)} Y${f3(ZPOINT[1] - gy)}`]);
+  log('Fraise au point de zéro Z : fais le zéro Z au papier ici.', 'msg');
+};
 /* ====================== Panneaux ====================== */
 function bindNum(id, get, set) { const el = $(id); el.value = get(); el.addEventListener('change', () => { set(num(el, get())); saveSettings(); invalidate(); }); return el; }
 function refreshTools() {
@@ -1449,7 +1503,12 @@ function recompute() {
   try {
     if (SURF) { CAM = { steps: [], warns: [], skipped: new Set() }; PLAN = [buildGcode(surfaceStep())]; warns.push(...surfaceWarns()); }
     else { CAM = computeCAM(); warns.push(...CAM.warns); PLAN = CAM.steps.map(st => buildGcode(st)); }
-  } catch (e) { PLAN = []; warns.push('Erreur de calcul : ' + e.message); console.error(e); }
+    // plusieurs fraises : point de zéro Z libre, où finissent toutes les étapes sauf la dernière
+    ZPOINT = SURF ? null : zeroPoint(PLAN);
+    if (ZPOINT) PLAN = PLAN.map((P, k) => k < PLAN.length - 1 ? buildGcode(CAM.steps[k], ZPOINT) : P);
+    else if (PLAN.length > 1) warns.push('Aucun point libre pour le zéro Z entre deux fraises : refais-le à la main sur une zone que rien n\'usine');
+  } catch (e) { PLAN = []; ZPOINT = null; warns.push('Erreur de calcul : ' + e.message); console.error(e); }
+  $('#bGoZP').classList.toggle('hide', !ZPOINT);
   stepIdx = Math.min(stepIdx, Math.max(0, PLAN.length - 1)); G = PLAN[stepIdx] || null;
   if (D) {
     const s = D.place.s / 100, x1 = D.place.x + (D.bb.x1 - D.bb.x0) * s, y1 = D.place.y + (D.bb.y1 - D.bb.y0) * s;
@@ -1995,7 +2054,7 @@ function updateButtons() {
   $('#bCarve').disabled = !(G && ready);
   $('#bExport').disabled = !G;
   $('#bSurf').disabled = !!job;
-  ['#bUnlock', '#bHome', '#bZeroXY', '#bZeroZ', '#bGoZero', '#bProbe', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
+  ['#bUnlock', '#bHome', '#bZeroXY', '#bZeroZ', '#bGoZero', '#bProbe', '#bGoZP', '#bSend'].forEach(id => $(id).disabled = !machine.port || !!job);
   $('#bUnlock').disabled = !machine.port || (!!job && machine.state !== 'Alarm');
   const noHome = machine.grbl[22] === 0;
   if (noHome) $('#bHome').disabled = true;
@@ -2009,7 +2068,8 @@ function updateButtons() {
 $('#bCarve').onclick = () => {
   if (!G) return;
   const T = G.tool, warns = $('#warns').textContent;
-  $('#cZ').textContent = stepIdx > 0 ? 'Le zéro Z est refait avec cette fraise, et le zéro X/Y n\'a pas bougé depuis l\'étape 1.' : 'Le zéro Z est fait sur le dessus du matériau (papier ou plaque de sonde retirés).';
+  const zp = ZPOINT ? ' au point de zéro Z (repère bleu)' : '';
+  $('#cZ').textContent = stepIdx > 0 ? `Le zéro Z est refait avec cette fraise${zp}, et le zéro X/Y n'a pas bougé depuis l'étape 1.` : `Le zéro Z est fait sur le dessus du matériau${zp} (papier ou plaque de sonde retirés).`;
   $('#cSummary').innerHTML = (PLAN.length > 1 ? `<b>Étape ${stepIdx + 1}/${PLAN.length}</b> · ` : '') + `Durée estimée <b>${fmtTime(G.time)}</b> · profondeur max <b>${f3(-G.zMin)} mm</b> · ${G.lines.length.toLocaleString('fr')} lignes`;
   // zéros à refaire après un démarrage de la carte (pas de homing) ; Z à refaire après chaque changement de fraise
   const miss = [...'XYZ'].filter(a => !machine.zeroed[a]), alerts = [];
@@ -2110,7 +2170,8 @@ function finishJob() {
   if (k >= PLAN.length - 1) return endJob(PLAN.length > 1 ? `Dernière étape terminée en ${t}.` : `Gravure terminée en ${t}.`);
   stepIdx = k + 1;
   machine.zeroed.Z = false; // nouvelle fraise : son zéro Z est à refaire
-  endJob(`Étape ${k + 1} terminée en ${t}. Installe « ${PLAN[k + 1].tool.name} », refais le zéro Z (sans toucher au zéro X/Y), puis lance l'étape ${k + 2}.`);
+  const at = ZPOINT ? ' La fraise attend au point de zéro Z (repère bleu) : remonte Z si la nouvelle fraise est plus longue.' : '';
+  endJob(`Étape ${k + 1} terminée en ${t}.${at} Installe « ${PLAN[k + 1].tool.name} », refais le zéro Z${ZPOINT ? ' au papier à cet endroit' : ''} (sans toucher au zéro X/Y), puis lance l'étape ${k + 2}.`);
 }
 function endJob(msg) {
   if (!job) return; job = null; log(msg, 'msg'); keepAwake(false);

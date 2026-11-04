@@ -218,6 +218,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <button id="bGoZero" style="flex:1">Aller à X0 Y0</button>
       <button id="bProbe" style="flex:1">Sonde Z (plaque)</button>
     </div>
+    <div class="row"><button id="bGoZP" class="hide" style="flex:1" title="Point du brut que rien n'usine (repère bleu « Zéro Z » sur le plan) : le zéro Z au papier s'y fait avec chaque fraise">Aller au point de zéro Z</button></div>
     <div class="jog">
       <span></span><button data-jog="Y+">Y+</button><span></span><button data-jog="Z+">Z+</button>
       <button data-jog="X-">X−</button><button data-jog="Y-">Y−</button><button data-jog="X+">X+</button><button data-jog="Z-">Z−</button>
@@ -411,6 +412,7 @@ function toStockFn() {
 /*INCLUDE:materiaux.js*/
 /*INCLUDE:vue.js*/
 /*INCLUDE:relief.js*/
+/*INCLUDE:pointz.js*/
 /*INCLUDE:panneaux.js*/
 /*INCLUDE:attaches.js*/
 /*INCLUDE:edition.js*/
