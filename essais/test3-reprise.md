@@ -43,4 +43,4 @@ Demander aussi la matière (MDF ou essence de bois), l'épaisseur mesurée et ce
 Ordre ensuite (règle de l'utilisateur : pas de nouvelle fonction tant que la précédente n'est pas validée sur la machine) : point de zéro Z → reprise d'une gravure interrompue → relief 3D depuis une image en niveaux de gris (le vrai objectif de l'utilisateur) → chanfrein et marqueterie en V.
 
 ## Matériel de l'utilisateur
-- Fraises boule : finalement présentes (livrées avec la machine, signalé le 2026-11-04) ; dimensions à relever (diamètre ou rayon du bout, cylindrique ou conique) avant le relief 3D.
+- Fraises boule livrées avec la machine (signalé le 2026-11-04) : 2 dents, hélicoïdales, cylindriques, Ø 3,175 mm (rayon de la boule 1,5875 mm), longueur de coupe 17 mm, longueur totale 38 mm. Même format pour les fraises plates du lot.
