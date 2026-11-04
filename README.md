@@ -56,6 +56,7 @@ Le filtre Inkscape « Inverser » est reconnu, et l'épaisseur du trait est igno
   - passes de profondeur, entrée en rampe, attaches automatiques ou placées à la main ;
   - passe de finition (0,2 mm, en avalant) ;
   - surfaçage du brut ou de la table.
+- **Réglages par matériau** : chaque fraise retient l'avance, la plongée, la profondeur par passe et le repère du variateur que tu as réglés pour un matériau, et les reprend quand tu rechoisis ce matériau. Tous les réglages s'exportent et s'importent en `.json` (fenêtre Machine), pour les sauvegarder ou passer de la page locale à la version en ligne.
 - **Plusieurs fraises** : une étape par fraise, enchaînées avec changement de fraise et nouveau zéro Z. La page choisit d'office un point du brut que rien n'usine (repère bleu « Zéro Z ») : chaque étape s'y termine, et le zéro Z au papier s'y fait avec chaque fraise.
 - **Édition sur le plan** : déplacer, tourner, annuler et rétablir.
 - **Aperçus** : relief calculé avec la forme réelle de chaque fraise, trajectoires, durée estimée avec les accélérations lues sur la carte.

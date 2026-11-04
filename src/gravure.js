@@ -28,6 +28,7 @@ $('#bCarve').onclick = () => {
   if (!SURF && deep > 1e-6) alerts.push(`La fraise descend ${f3(deep)} mm sous le brut, dans la table.`);
   $('#cAlert').textContent = alerts.join(' ');
   $('#cClamp').textContent = `Les brides et vis sont plus basses que la hauteur de dégagement (${f3(S.machine.safeZ)} mm au-dessus du brut).`;
+  const own = cutOf(T); $('#cKnob').textContent = 'La vitesse de broche est réglée sur le variateur' + (own && own.knob ? ` (repère noté pour ce matériau : ${own.knob}).` : '.');
   $('#cWarn').textContent = warns; $('#cTool').textContent = `La fraise « ${T.name} » (${isV(T) ? 'en V ' + T.angle + '°' : 'Ø ' + T.d + ' mm'}) est installée.`;
   $('#cOrigin').textContent = S.origin === 'center' ? 'Le zéro X/Y est placé au centre du brut.' : 'Le zéro X/Y est placé au coin avant-gauche du brut.';
   $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').disabled = true;

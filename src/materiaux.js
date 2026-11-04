@@ -14,13 +14,23 @@ function materialParams(mat, T) {
   const k = T.d <= 1 ? 0.4 : T.d < 2 ? 0.6 : 1, r = v => Math.max(5, Math.round(v * k / 10) * 10);
   return { feed: r(mat.flat.feed), plunge: r(mat.flat.plunge), doc: Math.max(0.1, Math.round(Math.min(mat.flat.docMax, mat.flat.doc * T.d) * 20) / 20) };
 }
+// Réglages retenus par couple matériau + fraise : S.cuts[matériau][id de fraise] = { feed, plunge, doc, knob }. Toute
+// avance, plongée ou profondeur par passe saisie pendant qu'un matériau est choisi y est gardée ; rechoisir ce matériau
+// les reprend à la place des valeurs de départ. knob = repère du variateur de broche (texte libre), rappelé avant gravure.
+if (!S.cuts) S.cuts = {};
+const cutOf = (T, mat = S.material) => (mat && S.cuts[mat] && S.cuts[mat][T.id]) || null;
+function rememberCut(T, knob) {
+  if (!S.material) return;
+  const c = (S.cuts[S.material] ??= {}), o = c[T.id] || {};
+  c[T.id] = { feed: T.feed, plunge: T.plunge, doc: T.doc, knob: knob ?? o.knob ?? '' };
+}
 // Avances plafonnées aux vitesses max de la carte ($110-$112, lues à la connexion) : la machine ne va pas plus vite.
 // Renvoie les plafonds appliqués (texte), '' si aucun.
 function applyMaterial(id) {
   const mat = MATERIALS.find(m => m.id === id); if (!mat) return null;
   const r = S.machine.plan && S.machine.plan.rate, capXY = r ? Math.min(r[0], r[1]) : Infinity, capZ = r ? r[2] : Infinity, capped = new Set();
   for (const T of S.tools) {
-    const p = materialParams(mat, T);
+    const own = cutOf(T, id), p = own ? { feed: own.feed, plunge: own.plunge, doc: own.doc } : materialParams(mat, T);
     if (p.feed > capXY) { p.feed = capXY; capped.add(`avance ${capXY}`); }
     if (p.plunge > capZ) { p.plunge = capZ; capped.add(`plongée ${capZ}`); }
     Object.assign(T, p);

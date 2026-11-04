@@ -107,7 +107,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row" style="margin-top:6px"><label>Origine X0 Y0</label>
       <select id="origin" style="width:150px"><option value="corner">Coin avant-gauche</option><option value="center">Centre du brut</option></select></div>
     <div class="note">mm — Z0 sur le dessus du brut.</div>
-    <div class="row" style="margin-top:6px"><label>Matériau</label><select id="matSel" style="width:150px" title="Pré-remplit avance, plongée et profondeur par passe de toutes les fraises"></select></div>
+    <div class="row" style="margin-top:6px"><label>Matériau</label><select id="matSel" style="width:150px" title="Pré-remplit avance, plongée et profondeur par passe de toutes les fraises : tes réglages retenus pour ce matériau, sinon des valeurs de départ prudentes"></select></div>
   </section>
   <section class="box">
     <h2>Fraise <span><button id="bToolAdd" title="Dupliquer la fraise">+</button> <button id="bToolDel" title="Supprimer la fraise">−</button></span></h2>
@@ -120,6 +120,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row"><label>Avance (mm/min)</label><input type="number" id="tF" step="10" min="1"></div>
     <div class="row"><label>Plongée (mm/min)</label><input type="number" id="tP" step="10" min="1"></div>
     <div class="row"><label>Prof. par passe (mm)</label><input type="number" id="tDoc" step="0.1" min="0.05"></div>
+    <div class="row hide" id="rowKnob"><label title="Position du bouton du variateur de broche pour ce matériau et cette fraise : rappelée dans la liste de vérification avant la gravure">Variateur (repère)</label><input type="text" id="tKnob" style="width:80px" placeholder="ex. 4"></div>
+    <div class="note hide" id="cutNote"></div>
     <div class="row flatonly"><label>Recouvrement poche (%)</label><input type="number" id="tSo" step="5" min="5" max="95"></div>
     <div class="note vonly" id="vNote"></div>
   </section>
@@ -266,6 +268,9 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row"><label>Épaisseur de la plaque de sonde (mm)</label><input type="number" id="mProbe" step="0.05"></div>
     <div class="row"><label>Course max de la sonde (mm)</label><input type="number" id="mProbeDist" step="1"></div>
     <p class="note">Mesure l'épaisseur de ta plaque au pied à coulisse. Avec 0, le zéro Z sera placé au contact de la plaque.</p>
+    <div class="row" style="margin-top:10px"><label title="Fraises, réglages retenus par matériau, machine et options, dans un fichier .json">Tous les réglages</label><button id="bSetExport">Exporter…</button><button id="bSetImport">Importer…</button></div>
+    <p class="note">Les réglages vivent dans le navigateur : la page locale et la version en ligne ne les partagent pas. Exporte-les pour les sauvegarder ou les passer de l'une à l'autre.</p>
+    <input type="file" id="fSet" accept=".json,application/json" class="hide">
   </div>
   <div class="ft"><button id="mCancel">Annuler</button><button id="mOk" class="pri">Enregistrer</button></div>
 </dialog>
@@ -310,7 +315,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
     <label class="check"><input type="checkbox"> <span id="cZ">Le zéro Z est fait sur le dessus du matériau (papier ou plaque de sonde retirés).</span></label>
     <label class="check"><input type="checkbox"> <span id="cClamp">Les brides sont plus basses que la hauteur de dégagement.</span></label>
-    <label class="check"><input type="checkbox"> <span>La vitesse de broche est réglée sur le variateur.</span></label>
+    <label class="check"><input type="checkbox"> <span id="cKnob">La vitesse de broche est réglée sur le variateur.</span></label>
     <label class="check"><input type="checkbox"> <span>Lunettes, protection auditive et aspiration en place.</span></label>
   </div>
   <div class="ft"><button id="cCancel">Annuler</button><button id="cGo" class="pri" disabled>Lancer la gravure</button></div>
@@ -410,6 +415,7 @@ function toStockFn() {
 /*INCLUDE:fusion.js*/
 /*INCLUDE:temps.js*/
 /*INCLUDE:materiaux.js*/
+/*INCLUDE:reglages.js*/
 /*INCLUDE:vue.js*/
 /*INCLUDE:relief.js*/
 /*INCLUDE:pointz.js*/

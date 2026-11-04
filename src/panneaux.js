@@ -9,6 +9,12 @@ function refreshTools() {
   $('#lD').textContent = isV(T) ? 'Diamètre du corps (mm)' : 'Diamètre (mm)';
   if (isV(T)) $('#vNote').textContent = `Largeur de trait : ${f3(cutWidth(-0.5, T))} mm à 0,5 mm de profondeur, ${f3(cutWidth(-1, T))} mm à 1 mm, ${f3(cutWidth(-2, T))} mm à 2 mm. Utilisable en « Sur la ligne » et « Remplissage en V ».`;
   $('#tName').value = T.name; $('#tD').value = T.d; $('#tF').value = T.feed; $('#tP').value = T.plunge; $('#tDoc').value = T.doc; $('#tSo').value = T.so;
+  // réglages retenus pour le matériau choisi (aucun en « réglages manuels »)
+  const mat = MATERIALS.find(m => m.id === S.material), own = cutOf(T);
+  $('#rowKnob').classList.toggle('hide', !mat); $('#cutNote').classList.toggle('hide', !mat);
+  $('#tKnob').value = own ? own.knob || '' : '';
+  if (mat) $('#cutNote').textContent = own ? `Tes réglages pour « ${mat.name} » : la page les reprend chaque fois que tu choisis ce matériau.`
+    : `Valeurs de départ pour « ${mat.name} », estimées : ajuste-les après un essai, la page retiendra les tiennes.`;
   refreshShapeTools();
 }
 // listes « Fraise » et « Dégager le fond » des formes ('' = fraise courante / pas de dégagement, '*' = valeurs mélangées)
@@ -138,10 +144,10 @@ function refreshAll() {
 }
 // matériau
 $('#matSel').addEventListener('change', e => {
-  const id = e.target.value, mat = MATERIALS.find(m => m.id === id);
+  const id = e.target.value, mat = MATERIALS.find(m => m.id === id), nOwn = mat ? S.tools.filter(T => cutOf(T, id)).length : 0;
   if (mat && !confirm(`Appliquer les réglages « ${mat.name} » à toutes les fraises (avance, plongée, profondeur par passe) ?
 
-Ce sont des valeurs de départ prudentes : fais un essai dans une chute et ajuste.`)) { e.target.value = S.material || ''; return; }
+${nOwn ? `${nOwn} fraise(s) reprennent tes réglages pour ce matériau ; les autres reçoivent` : 'Les fraises reçoivent'} des valeurs de départ prudentes : fais un essai dans une chute et ajuste.`)) { e.target.value = S.material || ''; return; }
   S.material = id;
   if (mat) { const capped = applyMaterial(id); log(`Réglages « ${mat.name} » appliqués aux fraises.` + (capped ? ` Limités par la vitesse max de la carte : ${capped} mm/min.` : ''), 'msg'); }
   saveSettings(); refreshTools(); invalidate();
@@ -149,7 +155,12 @@ Ce sont des valeurs de départ prudentes : fais un essai dans une chute et ajust
 [['#stW', 'w'], ['#stH', 'h'], ['#stT', 't']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.stock[k]); if (v > 0) S.stock[k] = v; saveSettings(); invalidate(); }));
 // fraise
 $('#toolSel').addEventListener('change', e => { S.toolIdx = +e.target.value; saveSettings(); refreshTools(); offerVConvert(); invalidate(); });
-[['#tD', 'd'], ['#tF', 'feed'], ['#tP', 'plunge'], ['#tDoc', 'doc'], ['#tSo', 'so']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, tool()[k]); if (v > 0) tool()[k] = v; saveSettings(); invalidate(); }));
+[['#tD', 'd'], ['#tF', 'feed'], ['#tP', 'plunge'], ['#tDoc', 'doc'], ['#tSo', 'so']].forEach(([id, k]) => $(id).addEventListener('change', e => {
+  const v = num(e.target, tool()[k]); if (v > 0) tool()[k] = v;
+  if (['feed', 'plunge', 'doc'].includes(k)) { rememberCut(tool()); refreshTools(); } // retenu pour le matériau choisi
+  saveSettings(); invalidate();
+}));
+$('#tKnob').addEventListener('change', e => { rememberCut(tool(), e.target.value.trim()); saveSettings(); refreshTools(); });
 $('#tType').addEventListener('change', e => { const T = tool(); T.type = e.target.value; if (T.type === 'v') { T.angle = T.angle || 60; T.tip = T.tip ?? 0.2; } saveSettings(); refreshTools(); offerVConvert(); invalidate(); });
 $('#tAng').addEventListener('change', e => { const v = num(e.target, tool().angle); if (v > 0 && v < 180) tool().angle = v; saveSettings(); refreshTools(); invalidate(); });
 $('#tTip').addEventListener('change', e => { const v = num(e.target, tool().tip); if (v >= 0) tool().tip = v; saveSettings(); refreshTools(); invalidate(); });

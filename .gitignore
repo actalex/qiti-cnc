@@ -3,3 +3,4 @@ test/out.nc
 test/*.png
 *.log
 settings.local.json
+test/out-reglages.json

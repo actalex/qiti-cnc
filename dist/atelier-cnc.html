@@ -107,7 +107,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row" style="margin-top:6px"><label>Origine X0 Y0</label>
       <select id="origin" style="width:150px"><option value="corner">Coin avant-gauche</option><option value="center">Centre du brut</option></select></div>
     <div class="note">mm — Z0 sur le dessus du brut.</div>
-    <div class="row" style="margin-top:6px"><label>Matériau</label><select id="matSel" style="width:150px" title="Pré-remplit avance, plongée et profondeur par passe de toutes les fraises"></select></div>
+    <div class="row" style="margin-top:6px"><label>Matériau</label><select id="matSel" style="width:150px" title="Pré-remplit avance, plongée et profondeur par passe de toutes les fraises : tes réglages retenus pour ce matériau, sinon des valeurs de départ prudentes"></select></div>
   </section>
   <section class="box">
     <h2>Fraise <span><button id="bToolAdd" title="Dupliquer la fraise">+</button> <button id="bToolDel" title="Supprimer la fraise">−</button></span></h2>
@@ -120,6 +120,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row"><label>Avance (mm/min)</label><input type="number" id="tF" step="10" min="1"></div>
     <div class="row"><label>Plongée (mm/min)</label><input type="number" id="tP" step="10" min="1"></div>
     <div class="row"><label>Prof. par passe (mm)</label><input type="number" id="tDoc" step="0.1" min="0.05"></div>
+    <div class="row hide" id="rowKnob"><label title="Position du bouton du variateur de broche pour ce matériau et cette fraise : rappelée dans la liste de vérification avant la gravure">Variateur (repère)</label><input type="text" id="tKnob" style="width:80px" placeholder="ex. 4"></div>
+    <div class="note hide" id="cutNote"></div>
     <div class="row flatonly"><label>Recouvrement poche (%)</label><input type="number" id="tSo" step="5" min="5" max="95"></div>
     <div class="note vonly" id="vNote"></div>
   </section>
@@ -266,6 +268,9 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row"><label>Épaisseur de la plaque de sonde (mm)</label><input type="number" id="mProbe" step="0.05"></div>
     <div class="row"><label>Course max de la sonde (mm)</label><input type="number" id="mProbeDist" step="1"></div>
     <p class="note">Mesure l'épaisseur de ta plaque au pied à coulisse. Avec 0, le zéro Z sera placé au contact de la plaque.</p>
+    <div class="row" style="margin-top:10px"><label title="Fraises, réglages retenus par matériau, machine et options, dans un fichier .json">Tous les réglages</label><button id="bSetExport">Exporter…</button><button id="bSetImport">Importer…</button></div>
+    <p class="note">Les réglages vivent dans le navigateur : la page locale et la version en ligne ne les partagent pas. Exporte-les pour les sauvegarder ou les passer de l'une à l'autre.</p>
+    <input type="file" id="fSet" accept=".json,application/json" class="hide">
   </div>
   <div class="ft"><button id="mCancel">Annuler</button><button id="mOk" class="pri">Enregistrer</button></div>
 </dialog>
@@ -310,7 +315,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
     <label class="check"><input type="checkbox"> <span id="cZ">Le zéro Z est fait sur le dessus du matériau (papier ou plaque de sonde retirés).</span></label>
     <label class="check"><input type="checkbox"> <span id="cClamp">Les brides sont plus basses que la hauteur de dégagement.</span></label>
-    <label class="check"><input type="checkbox"> <span>La vitesse de broche est réglée sur le variateur.</span></label>
+    <label class="check"><input type="checkbox"> <span id="cKnob">La vitesse de broche est réglée sur le variateur.</span></label>
     <label class="check"><input type="checkbox"> <span>Lunettes, protection auditive et aspiration en place.</span></label>
   </div>
   <div class="ft"><button id="cCancel">Annuler</button><button id="cGo" class="pri" disabled>Lancer la gravure</button></div>
@@ -1132,19 +1137,62 @@ function materialParams(mat, T) {
   const k = T.d <= 1 ? 0.4 : T.d < 2 ? 0.6 : 1, r = v => Math.max(5, Math.round(v * k / 10) * 10);
   return { feed: r(mat.flat.feed), plunge: r(mat.flat.plunge), doc: Math.max(0.1, Math.round(Math.min(mat.flat.docMax, mat.flat.doc * T.d) * 20) / 20) };
 }
+// Réglages retenus par couple matériau + fraise : S.cuts[matériau][id de fraise] = { feed, plunge, doc, knob }. Toute
+// avance, plongée ou profondeur par passe saisie pendant qu'un matériau est choisi y est gardée ; rechoisir ce matériau
+// les reprend à la place des valeurs de départ. knob = repère du variateur de broche (texte libre), rappelé avant gravure.
+if (!S.cuts) S.cuts = {};
+const cutOf = (T, mat = S.material) => (mat && S.cuts[mat] && S.cuts[mat][T.id]) || null;
+function rememberCut(T, knob) {
+  if (!S.material) return;
+  const c = (S.cuts[S.material] ??= {}), o = c[T.id] || {};
+  c[T.id] = { feed: T.feed, plunge: T.plunge, doc: T.doc, knob: knob ?? o.knob ?? '' };
+}
 // Avances plafonnées aux vitesses max de la carte ($110-$112, lues à la connexion) : la machine ne va pas plus vite.
 // Renvoie les plafonds appliqués (texte), '' si aucun.
 function applyMaterial(id) {
   const mat = MATERIALS.find(m => m.id === id); if (!mat) return null;
   const r = S.machine.plan && S.machine.plan.rate, capXY = r ? Math.min(r[0], r[1]) : Infinity, capZ = r ? r[2] : Infinity, capped = new Set();
   for (const T of S.tools) {
-    const p = materialParams(mat, T);
+    const own = cutOf(T, id), p = own ? { feed: own.feed, plunge: own.plunge, doc: own.doc } : materialParams(mat, T);
     if (p.feed > capXY) { p.feed = capXY; capped.add(`avance ${capXY}`); }
     if (p.plunge > capZ) { p.plunge = capZ; capped.add(`plongée ${capZ}`); }
     Object.assign(T, p);
   }
   return [...capped].join(', ');
 }
+/* ====================== Sauvegarde des réglages ====================== */
+// Fichier .json : fraises, réglages retenus par matériau (S.cuts), machine et options. Sert de sauvegarde (tout vit
+// dans le localStorage du navigateur) et à passer de la page locale à la version en ligne, qui ne partagent pas leur
+// stockage. À l'import, les fraises sont retrouvées par id puis par nom (comme à l'ouverture d'un projet), sinon ajoutées.
+$('#bSetExport').onclick = () => {
+  const { machine, tools, cuts, material, tabs, ramp, climb, origin } = S;
+  download('atelier-cnc-reglages.json', JSON.stringify({ app: 'atelier-cnc-reglages', v: 1, machine, tools, cuts, material, tabs, ramp, climb, origin }, null, 1), 'application/json');
+};
+$('#bSetImport').onclick = () => $('#fSet').click();
+$('#fSet').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const p = JSON.parse(await f.text());
+    if (p.app !== 'atelier-cnc-reglages') throw new Error('Ce fichier n\'est pas une sauvegarde de réglages Atelier CNC.');
+    const tools = p.tools || [];
+    if (!confirm(`Importer les réglages du fichier (${tools.length} fraise(s), machine, réglages par matériau) ?\n\nLes fraises de même nom sont mises à jour, les autres ajoutées ; aucune n'est supprimée.`)) return;
+    const remap = {};
+    for (const pt of tools) {
+      let t = S.tools.find(x => pt.id && x.id === pt.id) || S.tools.find(x => x.name === pt.name);
+      if (t) Object.assign(t, pt, { id: t.id }); else { t = Object.assign({}, pt, { id: pt.id || newId() }); S.tools.push(t); }
+      if (pt.id) remap[pt.id] = t.id;
+    }
+    for (const [m, byTool] of Object.entries(p.cuts || {})) {
+      const c = (S.cuts[m] ??= {});
+      for (const [id, v] of Object.entries(byTool)) c[remap[id] || id] = v;
+    }
+    if (p.machine) Object.assign(S.machine, p.machine);
+    if (p.tabs) S.tabs = p.tabs; if (p.ramp) S.ramp = p.ramp; if (p.origin) S.origin = p.origin;
+    if ('climb' in p) S.climb = !!p.climb; if ('material' in p) S.material = p.material || '';
+    saveSettings(); $('#dlgMachine').close(); refreshAll();
+    log(`Réglages importés : ${tools.length} fraise(s), ${Object.keys(p.cuts || {}).length} matériau(x) réglé(s).`, 'msg');
+  } catch (err) { alert(err.message); }
+});
 /* ====================== Vue ====================== */
 const cv = $('#cv'), ctx = cv.getContext('2d');
 let view = { s: 1, ox: 0, oy: 0 }, viewMode = 'design', job = null, G = null, CAM = null, PLAN = [], stepIdx = 0; // PLAN : une étape (G-code) par fraise ; G = étape choisie
@@ -1419,6 +1467,12 @@ function refreshTools() {
   $('#lD').textContent = isV(T) ? 'Diamètre du corps (mm)' : 'Diamètre (mm)';
   if (isV(T)) $('#vNote').textContent = `Largeur de trait : ${f3(cutWidth(-0.5, T))} mm à 0,5 mm de profondeur, ${f3(cutWidth(-1, T))} mm à 1 mm, ${f3(cutWidth(-2, T))} mm à 2 mm. Utilisable en « Sur la ligne » et « Remplissage en V ».`;
   $('#tName').value = T.name; $('#tD').value = T.d; $('#tF').value = T.feed; $('#tP').value = T.plunge; $('#tDoc').value = T.doc; $('#tSo').value = T.so;
+  // réglages retenus pour le matériau choisi (aucun en « réglages manuels »)
+  const mat = MATERIALS.find(m => m.id === S.material), own = cutOf(T);
+  $('#rowKnob').classList.toggle('hide', !mat); $('#cutNote').classList.toggle('hide', !mat);
+  $('#tKnob').value = own ? own.knob || '' : '';
+  if (mat) $('#cutNote').textContent = own ? `Tes réglages pour « ${mat.name} » : la page les reprend chaque fois que tu choisis ce matériau.`
+    : `Valeurs de départ pour « ${mat.name} », estimées : ajuste-les après un essai, la page retiendra les tiennes.`;
   refreshShapeTools();
 }
 // listes « Fraise » et « Dégager le fond » des formes ('' = fraise courante / pas de dégagement, '*' = valeurs mélangées)
@@ -1548,10 +1602,10 @@ function refreshAll() {
 }
 // matériau
 $('#matSel').addEventListener('change', e => {
-  const id = e.target.value, mat = MATERIALS.find(m => m.id === id);
+  const id = e.target.value, mat = MATERIALS.find(m => m.id === id), nOwn = mat ? S.tools.filter(T => cutOf(T, id)).length : 0;
   if (mat && !confirm(`Appliquer les réglages « ${mat.name} » à toutes les fraises (avance, plongée, profondeur par passe) ?
 
-Ce sont des valeurs de départ prudentes : fais un essai dans une chute et ajuste.`)) { e.target.value = S.material || ''; return; }
+${nOwn ? `${nOwn} fraise(s) reprennent tes réglages pour ce matériau ; les autres reçoivent` : 'Les fraises reçoivent'} des valeurs de départ prudentes : fais un essai dans une chute et ajuste.`)) { e.target.value = S.material || ''; return; }
   S.material = id;
   if (mat) { const capped = applyMaterial(id); log(`Réglages « ${mat.name} » appliqués aux fraises.` + (capped ? ` Limités par la vitesse max de la carte : ${capped} mm/min.` : ''), 'msg'); }
   saveSettings(); refreshTools(); invalidate();
@@ -1559,7 +1613,12 @@ Ce sont des valeurs de départ prudentes : fais un essai dans une chute et ajust
 [['#stW', 'w'], ['#stH', 'h'], ['#stT', 't']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, S.stock[k]); if (v > 0) S.stock[k] = v; saveSettings(); invalidate(); }));
 // fraise
 $('#toolSel').addEventListener('change', e => { S.toolIdx = +e.target.value; saveSettings(); refreshTools(); offerVConvert(); invalidate(); });
-[['#tD', 'd'], ['#tF', 'feed'], ['#tP', 'plunge'], ['#tDoc', 'doc'], ['#tSo', 'so']].forEach(([id, k]) => $(id).addEventListener('change', e => { const v = num(e.target, tool()[k]); if (v > 0) tool()[k] = v; saveSettings(); invalidate(); }));
+[['#tD', 'd'], ['#tF', 'feed'], ['#tP', 'plunge'], ['#tDoc', 'doc'], ['#tSo', 'so']].forEach(([id, k]) => $(id).addEventListener('change', e => {
+  const v = num(e.target, tool()[k]); if (v > 0) tool()[k] = v;
+  if (['feed', 'plunge', 'doc'].includes(k)) { rememberCut(tool()); refreshTools(); } // retenu pour le matériau choisi
+  saveSettings(); invalidate();
+}));
+$('#tKnob').addEventListener('change', e => { rememberCut(tool(), e.target.value.trim()); saveSettings(); refreshTools(); });
 $('#tType').addEventListener('change', e => { const T = tool(); T.type = e.target.value; if (T.type === 'v') { T.angle = T.angle || 60; T.tip = T.tip ?? 0.2; } saveSettings(); refreshTools(); offerVConvert(); invalidate(); });
 $('#tAng').addEventListener('change', e => { const v = num(e.target, tool().angle); if (v > 0 && v < 180) tool().angle = v; saveSettings(); refreshTools(); invalidate(); });
 $('#tTip').addEventListener('change', e => { const v = num(e.target, tool().tip); if (v >= 0) tool().tip = v; saveSettings(); refreshTools(); invalidate(); });
@@ -2078,6 +2137,7 @@ $('#bCarve').onclick = () => {
   if (!SURF && deep > 1e-6) alerts.push(`La fraise descend ${f3(deep)} mm sous le brut, dans la table.`);
   $('#cAlert').textContent = alerts.join(' ');
   $('#cClamp').textContent = `Les brides et vis sont plus basses que la hauteur de dégagement (${f3(S.machine.safeZ)} mm au-dessus du brut).`;
+  const own = cutOf(T); $('#cKnob').textContent = 'La vitesse de broche est réglée sur le variateur' + (own && own.knob ? ` (repère noté pour ce matériau : ${own.knob}).` : '.');
   $('#cWarn').textContent = warns; $('#cTool').textContent = `La fraise « ${T.name} » (${isV(T) ? 'en V ' + T.angle + '°' : 'Ø ' + T.d + ' mm'}) est installée.`;
   $('#cOrigin').textContent = S.origin === 'center' ? 'Le zéro X/Y est placé au centre du brut.' : 'Le zéro X/Y est placé au coin avant-gauche du brut.';
   $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').disabled = true;
