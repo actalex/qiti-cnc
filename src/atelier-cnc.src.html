@@ -42,7 +42,7 @@ header button:hover:not(:disabled){background:#4a463f;border-color:#5a564e}
 #viewbar{position:absolute;top:10px;left:10px;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:3px}
 #viewbar button{border:0}
 #viewbar button.on{background:#22201c;color:#fff}
-#surfBar{position:absolute;top:10px;right:10px;display:flex;gap:6px;align-items:center;background:#fff3cd;border:1px solid #f0d78c;border-radius:8px;padding:4px 8px;font-size:13px}
+#surfBar,#r3dBar{position:absolute;top:10px;right:10px;display:flex;gap:6px;align-items:center;background:#fff3cd;border:1px solid #f0d78c;border-radius:8px;padding:4px 8px;font-size:13px}
 #info{position:absolute;bottom:10px;left:10px;right:10px;display:flex;gap:14px;flex-wrap:wrap;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
 #info b{font-weight:600}
 #warns{color:var(--warn)}
@@ -113,7 +113,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <h2>Fraise <span><button id="bToolAdd" title="Dupliquer la fraise">+</button> <button id="bToolDel" title="Supprimer la fraise">−</button></span></h2>
     <select id="toolSel"></select>
     <div class="row"><label>Nom</label><input type="text" id="tName" style="width:150px"></div>
-    <div class="row"><label>Type</label><select id="tType" style="width:150px"><option value="flat">Plate</option><option value="v">En V (pointue)</option></select></div>
+    <div class="row"><label>Type</label><select id="tType" style="width:150px"><option value="flat">Plate</option><option value="v">En V (pointue)</option><option value="ball">Boule (relief 3D)</option></select></div>
     <div class="row"><label id="lD">Diamètre (mm)</label><input type="number" id="tD" step="0.05" min="0.1"></div>
     <div class="row vonly"><label>Angle (°)</label><input type="number" id="tAng" step="5" min="5" max="170"></div>
     <div class="row vonly"><label>Diamètre de pointe (mm)</label><input type="number" id="tTip" step="0.05" min="0"></div>
@@ -189,6 +189,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <button id="bRedo" title="Rétablir (Ctrl+Y)" disabled>↷</button>
   </div>
   <div id="surfBar" class="hide"><span id="surfTxt"></span><button id="surfEdit">Modifier</button><button id="surfQuit">Quitter</button></div>
+  <div id="r3dBar" class="hide"><span id="r3dTxt"></span><button id="r3dEdit">Modifier</button><button id="r3dQuit">Quitter</button></div>
   <div id="info">
     <span>Temps estimé : <b id="iTime">—</b></span>
     <span>Lignes G-code : <b id="iLines">—</b></span>
@@ -234,7 +235,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <h2>Gravure</h2>
     <select id="stepSel" class="hide" style="width:100%;margin-bottom:6px" title="Une étape par fraise"></select>
     <button id="bCarve" class="pri big" disabled>Graver</button>
-    <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button><button id="bSurf" title="Aplanir le dessus du brut ou la table à la fraise plate">Surfaçage…</button></div>
+    <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button><button id="bSurf" title="Aplanir le dessus du brut ou la table à la fraise plate">Surfaçage…</button><button id="bR3d" title="Relief sculpté depuis une image en niveaux de gris (fraise boule)">Relief 3D…</button></div>
     <div id="job" class="hide">
       <div class="prog"><i id="pBar"></i></div>
       <div class="row note"><span id="pTxt" style="flex:1"></span><span id="pTime"></span></div>
@@ -288,6 +289,27 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <p class="note">La profondeur par passe, l'avance et la plongée sont celles de la fraise. La plus grosse fraise plate va le plus vite.</p>
   </div>
   <div class="ft"><button id="sfCancel">Annuler</button><button id="sfOk" class="pri">Préparer le surfaçage</button></div>
+</dialog>
+
+<dialog id="dlgR3d">
+  <div class="hd">Relief 3D</div>
+  <div class="bd">
+    <p class="note" style="margin-top:0">Sculpte une image en niveaux de gris : le <b>blanc</b> reste au dessus du brut, le <b>noir</b> descend à la profondeur max. La fraise boule suit la surface en lignes parallèles sans jamais l'entailler. Tout autour de l'image, le brut reste intact.</p>
+    <div class="row"><button id="r3Pick">Choisir une image…</button><span id="r3Name" class="note"></span></div>
+    <input type="file" id="fR3d" accept="image/png,image/jpeg,image/webp,image/bmp" class="hide">
+    <div class="row"><label><input type="checkbox" id="r3Inv"> Inverser (noir = haut)</label></div>
+    <div class="row"><label>Position X / Y (mm)</label><input type="number" id="r3X" step="1"><input type="number" id="r3Y" step="1"></div>
+    <div class="row"><label>Largeur (mm)</label><input type="number" id="r3W" step="1" min="1"></div>
+    <div class="note" id="r3Size"></div>
+    <div class="row"><label>Profondeur max (mm)</label><input type="number" id="r3D" step="0.5" min="0.05"></div>
+    <div class="row"><label><input type="checkbox" id="r3Rough"> Ébauche à la fraise plate</label><select id="r3RTool" style="width:170px"></select></div>
+    <div class="row"><label>Surépaisseur laissée (mm)</label><input type="number" id="r3Leave" step="0.1" min="0"></div>
+    <div class="row"><label>Finition (fraise boule)</label><select id="r3Tool" style="width:200px"></select></div>
+    <div class="row"><label>Pas entre les lignes (mm)</label><input type="number" id="r3Step" step="0.05" min="0.05"></div>
+    <div class="row"><label><input type="checkbox" id="r3Cross"> Seconde finition en lignes croisées (Y) : plus lisse, durée doublée</label></div>
+    <p class="note">Avance, plongée et profondeur par passe : celles des fraises. Avec l'ébauche, 2 étapes : zéro Z de chaque fraise au point bleu. Un pas plus petit donne une surface plus lisse mais allonge la finition.</p>
+  </div>
+  <div class="ft"><button id="r3Cancel">Annuler</button><button id="r3Ok" class="pri">Préparer le relief</button></div>
 </dialog>
 
 <dialog id="dlgColors">
@@ -345,6 +367,8 @@ const V_TOOLS = [
   { name: 'Fraise en V 60°', type: 'v', d: 6, angle: 60, tip: 0.2, feed: 500, plunge: 120, doc: 0.8, so: 40 },
   { name: 'Fraise en V 90°', type: 'v', d: 6, angle: 90, tip: 0.2, feed: 500, plunge: 120, doc: 0.8, so: 40 }
 ];
+// fraise boule (hémisphérique) : réservée au relief 3D ; celle livrée avec la TTC450 (Ø 3,175, coupe 17 mm)
+const BALL_TOOLS = [{ name: 'Fraise boule 3,175 mm (R 1,59)', type: 'ball', d: 3.175, feed: 700, plunge: 150, doc: 1, so: 90 }];
 const DEFAULTS = {
   machine: { name: 'TwoTrees TTC450 Pro', w: 460, h: 460, z: 80, baud: 115200, safeZ: 5, spindleS: 1000, dwell: 2, rapid: 2000, jogFeed: 1000, probeT: 0, probeDist: 25 },
   stock: { w: 200, h: 150, t: 6 },
@@ -353,7 +377,8 @@ const DEFAULTS = {
     { name: 'Fraise plate 2 mm', d: 2, feed: 500, plunge: 120, doc: 0.5, so: 40 },
     { name: 'Fraise plate 1 mm', d: 1, feed: 300, plunge: 80, doc: 0.3, so: 40 },
     { name: 'Fraise plate 6 mm', d: 6, feed: 800, plunge: 200, doc: 1, so: 40 },
-    ...V_TOOLS
+    ...V_TOOLS,
+    ...BALL_TOOLS
   ],
   toolIdx: 0,
   tabs: { on: true, n: 4, w: 5, h: 1.5 },
@@ -365,12 +390,15 @@ const DEFAULTS = {
 let S = clone(DEFAULTS);
 try { const raw = localStorage.getItem(STORE); if (raw) { const o = JSON.parse(raw); S = Object.assign(clone(DEFAULTS), o); S.machine = Object.assign(clone(DEFAULTS.machine), o.machine || {}); } } catch (e) {}
 if (!S.tools.some(t => t.type === 'v')) S.tools.push(...clone(V_TOOLS));
+if (!S.tools.some(t => t.type === 'ball')) S.tools.push(...clone(BALL_TOOLS));
 // identifiant stable : les formes et les projets désignent leur fraise par id
 const newId = () => Math.random().toString(36).slice(2, 10);
 S.tools.forEach(t => { if (!t.id) t.id = newId(); });
 function saveSettings() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} }
 const tool = () => S.tools[Math.min(S.toolIdx, S.tools.length - 1)];
 const isV = (T = tool()) => T.type === 'v';
+const isBall = (T = tool()) => T.type === 'ball';
+const isFlat = (T = tool()) => !isV(T) && !isBall(T);
 // largeur de coupe d'une fraise à une profondeur z (<0)
 function cutWidth(z, T = tool()) {
   if (!isV(T)) return T.d;
@@ -389,6 +417,7 @@ function bboxOf(shapes) {
 }
 function loadDesign(text, name, saved) {
   if (SURF) { SURF = false; $('#surfBar').classList.add('hide'); } // un nouveau dessin quitte le mode surfaçage
+  if (R3D.on) { R3D.on = false; $('#r3dBar').classList.add('hide'); } // et le relief 3D
   const imp = importSVG(text, name), warns = imp.warns, pageOnly = !!(saved && saved.pageOnly && imp.page);
   const shapes = pageOnly ? pageShapes(imp.shapes, imp.page) : imp.shapes; // la page Inkscape est le brut : hors page ignoré
   if (!shapes.length) throw new Error('Aucune forme dans la page du SVG.');
@@ -429,6 +458,8 @@ function toStockFn() {
 /*INCLUDE:attaches.js*/
 /*INCLUDE:edition.js*/
 /*INCLUDE:surfacage.js*/
+/*INCLUDE:relief3d.js*/
+/*INCLUDE:relief3d-ui.js*/
 /*INCLUDE:grbl.js*/
 /*INCLUDE:gravure.js*/
 /*INCLUDE:reprise.js*/

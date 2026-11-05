@@ -1,6 +1,6 @@
 /* ====================== Relief ====================== */
 // Carte de hauteurs du brut après usinage, calculée depuis le G-code de toutes les étapes : chaque coupe balaie la
-// forme réelle de sa fraise (cylindre plat, ou cône en V avec sa pointe). Puis rendu éclairé (ombrage) vu de dessus.
+// forme réelle de sa fraise (cylindre plat, cône en V avec sa pointe, ou boule). Puis rendu éclairé (ombrage) vu de dessus.
 // Mise en cache par plan : recalculée seulement quand le G-code change.
 let RELIEF = null;
 function heightMap(plan) {
@@ -8,7 +8,7 @@ function heightMap(plan) {
   const res = Math.max(0.05, Math.sqrt(w * h / 600000)); // ≤ 600 000 cellules
   const nx = Math.ceil(w / res), ny = Math.ceil(h / res), H = new Float32Array(nx * ny); // 0 = dessus du brut
   for (const P of plan) {
-    const T = P.tool, v = isV(T), k = v ? Math.tan(T.angle * Math.PI / 360) : 0, tip = v ? (T.tip || 0) / 2 : 0, rf = T.d / 2;
+    const T = P.tool, v = isV(T), ball = isBall(T), k = v ? Math.tan(T.angle * Math.PI / 360) : 0, tip = v ? (T.tip || 0) / 2 : 0, rf = T.d / 2;
     for (const m of P.moves) {
       if (m.g !== 1 || (m.z >= 0 && m.z0 >= 0)) continue;
       const dx = m.x - m.x0, dy = m.y - m.y0, dz = m.z - m.z0, L2 = dx * dx + dy * dy;
@@ -22,7 +22,8 @@ function heightMap(plan) {
           let u = L2 ? ((px - m.x0) * dx + (py - m.y0) * dy) / L2 : 0; u = u < 0 ? 0 : u > 1 ? 1 : u;
           const d = Math.hypot(px - m.x0 - u * dx, py - m.y0 - u * dy); if (d > R) continue;
           const zc = m.z0 + u * dz; if (zc >= 0) continue;
-          const z = v ? zc + Math.max(0, d - tip) / k : zc; // cône : remonte de 1/k par mm d'écart à l'axe
+          // cône : remonte de 1/k par mm d'écart à l'axe ; boule : sphère de rayon rf posée sur la pointe
+          const z = v ? zc + Math.max(0, d - tip) / k : ball ? zc + rf - Math.sqrt(rf * rf - d * d) : zc;
           const c = j * nx + i; if (z < H[c]) H[c] = z < -t ? -t : z;
         }
       }

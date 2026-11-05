@@ -4,7 +4,7 @@ function refreshTools() {
   const s = $('#toolSel'); s.innerHTML = '';
   S.tools.forEach((t, k) => { const o = document.createElement('option'); o.value = k; o.textContent = t.name; s.appendChild(o); });
   s.value = S.toolIdx; const T = tool();
-  $('#tType').value = isV(T) ? 'v' : 'flat'; $('#tAng').value = T.angle || 60; $('#tTip').value = T.tip || 0;
+  $('#tType').value = isV(T) ? 'v' : isBall(T) ? 'ball' : 'flat'; $('#tAng').value = T.angle || 60; $('#tTip').value = T.tip || 0;
   $$('.vonly').forEach(e => e.classList.toggle('hide', !isV(T))); $$('.flatonly').forEach(e => e.classList.toggle('hide', isV(T)));
   $('#lD').textContent = isV(T) ? 'Diamètre du corps (mm)' : 'Diamètre (mm)';
   if (isV(T)) $('#vNote').textContent = `Largeur de trait : ${f3(cutWidth(-0.5, T))} mm à 0,5 mm de profondeur, ${f3(cutWidth(-1, T))} mm à 1 mm, ${f3(cutWidth(-2, T))} mm à 2 mm. Utilisable en « Sur la ligne » et « Remplissage en V ».`;
@@ -25,7 +25,7 @@ function refreshShapeTools() {
     el.value = v;
   };
   fill($('#sTool'), `Fraise courante (${tool().name})`, S.tools);
-  fill($('#sClear'), 'Non', S.tools.filter(t => !isV(t)));
+  fill($('#sClear'), 'Non', S.tools.filter(isFlat));
 }
 function refreshShapes() {
   const box = $('#shapeList');
@@ -98,6 +98,7 @@ function recompute() {
   const warns = [];
   try {
     if (SURF) { CAM = { steps: [], warns: [], skipped: new Set() }; PLAN = [buildGcode(surfaceStep())]; warns.push(...surfaceWarns()); }
+    else if (R3D.on) { CAM = { steps: r3dSteps(warns), warns: [], skipped: new Set() }; PLAN = CAM.steps.map(st => buildGcode(st)); }
     else { CAM = computeCAM(); warns.push(...CAM.warns); PLAN = CAM.steps.map(st => buildGcode(st)); }
     // plusieurs fraises : point de zéro Z libre, où finissent toutes les étapes sauf la dernière
     ZPOINT = SURF ? null : zeroPoint(PLAN);

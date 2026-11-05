@@ -40,7 +40,7 @@ function draw() {
   ctx.strokeStyle = '#27ae60'; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, oy - 30); ctx.stroke();
   ctx.fillStyle = '#22201c'; ctx.font = '11px system-ui'; ctx.fillText('X0 Y0', ox + 4, oy + 14);
   if (G && (viewMode === 'carve' || viewMode === 'paths')) drawMoves();
-  if (D && !SURF && viewMode !== 'carve' && !(viewMode === 'relief' && G)) drawShapes(viewMode === 'paths' ? 0.35 : 1);
+  if (D && !SURF && !R3D.on && viewMode !== 'carve' && !(viewMode === 'relief' && G)) drawShapes(viewMode === 'paths' ? 0.35 : 1);
   drawZPoint();
   if (job && G) drawProgress();
   if (machine.wpos) {
@@ -98,7 +98,7 @@ function drawProgress() {
 // interactions
 let drag = null;
 // clic sur une forme (vue Dessin ou Trajectoires) : la sélectionne et la glisse ; ailleurs, ou bouton du milieu : déplace la vue
-const canEditShapes = () => D && !SURF && tabEdit === null && !job && (viewMode === 'design' || viewMode === 'paths');
+const canEditShapes = () => D && !SURF && !R3D.on && tabEdit === null && !job && (viewMode === 'design' || viewMode === 'paths');
 cv.addEventListener('mousedown', e => {
   const hit = e.button === 0 && canEditShapes() ? hitShape(e.offsetX, e.offsetY) : null;
   if (hit) {

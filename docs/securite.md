@@ -12,6 +12,8 @@ Diagnostic du 2026-10-30 : risques connus d'un logiciel de FAO / pilotage GRBL, 
 - Attaches sur les découpes traversantes ; intérieurs avant extérieurs. [gcode.test]
 - Formes impossibles (trop étroites, mauvais type de fraise) ignorées et signalées ; fraise en V limitée à son cône.
 - Plusieurs fraises : chaque étape sauf la dernière finit, au Z de sécurité, au point de zéro Z choisi par la page (dessus du brut que rien n'usine, à l'écart des trajets et des bords) ; le zéro Z de chaque fraise se fait sur la même surface d'origine. [gcode.test]
+- Relief 3D : hauteur de chaque point par « drop cutter » (profil plat ou boule posé sur la surface voulue), jamais sous la surface à 0,15 mm de position près ; ébauche à au moins sa surépaisseur ; brut intact hors de l'image ; toute descente en pente plafonnée à la vitesse de plongée (arrondi des coordonnées compris). [relief3d.test]
+- Fraise boule refusée pour les usinages 2,5D (contours, poches, V). 
 - Passe de finition refusée dans un goulot (saignée pleine profondeur). [gcode.test]
 - Avances plafonnées aux vitesses max de la carte ; conventionnel par défaut pour l'ébauche.
 

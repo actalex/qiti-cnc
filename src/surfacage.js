@@ -3,11 +3,11 @@
 // en passes de profondeur. Mode à part : tant que SURF est actif, le plan (PLAN) est le surfaçage au lieu du dessin ;
 // aperçu, relief, liste de vérification, gravure et export servent tels quels. Réglages gardés dans S.surf.
 let SURF = false;
-const flatTools = () => S.tools.filter(t => !isV(t));
+const flatTools = () => S.tools.filter(isFlat);
 function surfParams() {
   const flats = flatTools(), big = flats.slice().sort((a, b) => b.d - a.d)[0];
   S.surf = Object.assign({ x: 0, y: 0, w: S.stock.w, h: S.stock.h, depth: 0.5, over: 40, tool: big ? big.id : '' }, S.surf || {});
-  if (!toolById(S.surf.tool) || isV(toolById(S.surf.tool))) S.surf.tool = big ? big.id : '';
+  if (!toolById(S.surf.tool) || !isFlat(toolById(S.surf.tool))) S.surf.tool = big ? big.id : '';
   return S.surf;
 }
 // Zone en coordonnées brut (coin avant-gauche) ; le centre de la fraise passe sur les bords : elle déborde de son rayon
@@ -42,6 +42,7 @@ function readSurf() {
   Object.assign(P, { x: v('#sfX', P.x), y: v('#sfY', P.y), w: Math.max(1, v('#sfW', P.w)), h: Math.max(1, v('#sfH', P.h)), depth: Math.max(0.05, v('#sfD', P.depth)), over: v('#sfO', P.over), tool: $('#sfTool').value });
 }
 function setSurf(on) {
+  if (on && R3D.on) { R3D.on = false; $('#r3dBar').classList.add('hide'); }
   SURF = on; $('#surfBar').classList.toggle('hide', !on); stepIdx = 0;
   if (on) { const P = surfParams(); $('#surfTxt').textContent = `Surfaçage ${P.w} × ${P.h} mm à ${P.depth} mm — ${toolById(P.tool).name}`; }
   recompute(); draw();

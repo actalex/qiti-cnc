@@ -42,7 +42,7 @@ header button:hover:not(:disabled){background:#4a463f;border-color:#5a564e}
 #viewbar{position:absolute;top:10px;left:10px;display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:3px}
 #viewbar button{border:0}
 #viewbar button.on{background:#22201c;color:#fff}
-#surfBar{position:absolute;top:10px;right:10px;display:flex;gap:6px;align-items:center;background:#fff3cd;border:1px solid #f0d78c;border-radius:8px;padding:4px 8px;font-size:13px}
+#surfBar,#r3dBar{position:absolute;top:10px;right:10px;display:flex;gap:6px;align-items:center;background:#fff3cd;border:1px solid #f0d78c;border-radius:8px;padding:4px 8px;font-size:13px}
 #info{position:absolute;bottom:10px;left:10px;right:10px;display:flex;gap:14px;flex-wrap:wrap;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px}
 #info b{font-weight:600}
 #warns{color:var(--warn)}
@@ -113,7 +113,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <h2>Fraise <span><button id="bToolAdd" title="Dupliquer la fraise">+</button> <button id="bToolDel" title="Supprimer la fraise">−</button></span></h2>
     <select id="toolSel"></select>
     <div class="row"><label>Nom</label><input type="text" id="tName" style="width:150px"></div>
-    <div class="row"><label>Type</label><select id="tType" style="width:150px"><option value="flat">Plate</option><option value="v">En V (pointue)</option></select></div>
+    <div class="row"><label>Type</label><select id="tType" style="width:150px"><option value="flat">Plate</option><option value="v">En V (pointue)</option><option value="ball">Boule (relief 3D)</option></select></div>
     <div class="row"><label id="lD">Diamètre (mm)</label><input type="number" id="tD" step="0.05" min="0.1"></div>
     <div class="row vonly"><label>Angle (°)</label><input type="number" id="tAng" step="5" min="5" max="170"></div>
     <div class="row vonly"><label>Diamètre de pointe (mm)</label><input type="number" id="tTip" step="0.05" min="0"></div>
@@ -189,6 +189,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <button id="bRedo" title="Rétablir (Ctrl+Y)" disabled>↷</button>
   </div>
   <div id="surfBar" class="hide"><span id="surfTxt"></span><button id="surfEdit">Modifier</button><button id="surfQuit">Quitter</button></div>
+  <div id="r3dBar" class="hide"><span id="r3dTxt"></span><button id="r3dEdit">Modifier</button><button id="r3dQuit">Quitter</button></div>
   <div id="info">
     <span>Temps estimé : <b id="iTime">—</b></span>
     <span>Lignes G-code : <b id="iLines">—</b></span>
@@ -234,7 +235,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <h2>Gravure</h2>
     <select id="stepSel" class="hide" style="width:100%;margin-bottom:6px" title="Une étape par fraise"></select>
     <button id="bCarve" class="pri big" disabled>Graver</button>
-    <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button><button id="bSurf" title="Aplanir le dessus du brut ou la table à la fraise plate">Surfaçage…</button></div>
+    <div class="row"><button id="bExport" style="flex:1" disabled>Exporter le G-code</button><button id="bSurf" title="Aplanir le dessus du brut ou la table à la fraise plate">Surfaçage…</button><button id="bR3d" title="Relief sculpté depuis une image en niveaux de gris (fraise boule)">Relief 3D…</button></div>
     <div id="job" class="hide">
       <div class="prog"><i id="pBar"></i></div>
       <div class="row note"><span id="pTxt" style="flex:1"></span><span id="pTime"></span></div>
@@ -288,6 +289,27 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <p class="note">La profondeur par passe, l'avance et la plongée sont celles de la fraise. La plus grosse fraise plate va le plus vite.</p>
   </div>
   <div class="ft"><button id="sfCancel">Annuler</button><button id="sfOk" class="pri">Préparer le surfaçage</button></div>
+</dialog>
+
+<dialog id="dlgR3d">
+  <div class="hd">Relief 3D</div>
+  <div class="bd">
+    <p class="note" style="margin-top:0">Sculpte une image en niveaux de gris : le <b>blanc</b> reste au dessus du brut, le <b>noir</b> descend à la profondeur max. La fraise boule suit la surface en lignes parallèles sans jamais l'entailler. Tout autour de l'image, le brut reste intact.</p>
+    <div class="row"><button id="r3Pick">Choisir une image…</button><span id="r3Name" class="note"></span></div>
+    <input type="file" id="fR3d" accept="image/png,image/jpeg,image/webp,image/bmp" class="hide">
+    <div class="row"><label><input type="checkbox" id="r3Inv"> Inverser (noir = haut)</label></div>
+    <div class="row"><label>Position X / Y (mm)</label><input type="number" id="r3X" step="1"><input type="number" id="r3Y" step="1"></div>
+    <div class="row"><label>Largeur (mm)</label><input type="number" id="r3W" step="1" min="1"></div>
+    <div class="note" id="r3Size"></div>
+    <div class="row"><label>Profondeur max (mm)</label><input type="number" id="r3D" step="0.5" min="0.05"></div>
+    <div class="row"><label><input type="checkbox" id="r3Rough"> Ébauche à la fraise plate</label><select id="r3RTool" style="width:170px"></select></div>
+    <div class="row"><label>Surépaisseur laissée (mm)</label><input type="number" id="r3Leave" step="0.1" min="0"></div>
+    <div class="row"><label>Finition (fraise boule)</label><select id="r3Tool" style="width:200px"></select></div>
+    <div class="row"><label>Pas entre les lignes (mm)</label><input type="number" id="r3Step" step="0.05" min="0.05"></div>
+    <div class="row"><label><input type="checkbox" id="r3Cross"> Seconde finition en lignes croisées (Y) : plus lisse, durée doublée</label></div>
+    <p class="note">Avance, plongée et profondeur par passe : celles des fraises. Avec l'ébauche, 2 étapes : zéro Z de chaque fraise au point bleu. Un pas plus petit donne une surface plus lisse mais allonge la finition.</p>
+  </div>
+  <div class="ft"><button id="r3Cancel">Annuler</button><button id="r3Ok" class="pri">Préparer le relief</button></div>
 </dialog>
 
 <dialog id="dlgColors">
@@ -346,6 +368,8 @@ const V_TOOLS = [
   { name: 'Fraise en V 60°', type: 'v', d: 6, angle: 60, tip: 0.2, feed: 500, plunge: 120, doc: 0.8, so: 40 },
   { name: 'Fraise en V 90°', type: 'v', d: 6, angle: 90, tip: 0.2, feed: 500, plunge: 120, doc: 0.8, so: 40 }
 ];
+// fraise boule (hémisphérique) : réservée au relief 3D ; celle livrée avec la TTC450 (Ø 3,175, coupe 17 mm)
+const BALL_TOOLS = [{ name: 'Fraise boule 3,175 mm (R 1,59)', type: 'ball', d: 3.175, feed: 700, plunge: 150, doc: 1, so: 90 }];
 const DEFAULTS = {
   machine: { name: 'TwoTrees TTC450 Pro', w: 460, h: 460, z: 80, baud: 115200, safeZ: 5, spindleS: 1000, dwell: 2, rapid: 2000, jogFeed: 1000, probeT: 0, probeDist: 25 },
   stock: { w: 200, h: 150, t: 6 },
@@ -354,7 +378,8 @@ const DEFAULTS = {
     { name: 'Fraise plate 2 mm', d: 2, feed: 500, plunge: 120, doc: 0.5, so: 40 },
     { name: 'Fraise plate 1 mm', d: 1, feed: 300, plunge: 80, doc: 0.3, so: 40 },
     { name: 'Fraise plate 6 mm', d: 6, feed: 800, plunge: 200, doc: 1, so: 40 },
-    ...V_TOOLS
+    ...V_TOOLS,
+    ...BALL_TOOLS
   ],
   toolIdx: 0,
   tabs: { on: true, n: 4, w: 5, h: 1.5 },
@@ -366,12 +391,15 @@ const DEFAULTS = {
 let S = clone(DEFAULTS);
 try { const raw = localStorage.getItem(STORE); if (raw) { const o = JSON.parse(raw); S = Object.assign(clone(DEFAULTS), o); S.machine = Object.assign(clone(DEFAULTS.machine), o.machine || {}); } } catch (e) {}
 if (!S.tools.some(t => t.type === 'v')) S.tools.push(...clone(V_TOOLS));
+if (!S.tools.some(t => t.type === 'ball')) S.tools.push(...clone(BALL_TOOLS));
 // identifiant stable : les formes et les projets désignent leur fraise par id
 const newId = () => Math.random().toString(36).slice(2, 10);
 S.tools.forEach(t => { if (!t.id) t.id = newId(); });
 function saveSettings() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) {} }
 const tool = () => S.tools[Math.min(S.toolIdx, S.tools.length - 1)];
 const isV = (T = tool()) => T.type === 'v';
+const isBall = (T = tool()) => T.type === 'ball';
+const isFlat = (T = tool()) => !isV(T) && !isBall(T);
 // largeur de coupe d'une fraise à une profondeur z (<0)
 function cutWidth(z, T = tool()) {
   if (!isV(T)) return T.d;
@@ -548,6 +576,7 @@ function bboxOf(shapes) {
 }
 function loadDesign(text, name, saved) {
   if (SURF) { SURF = false; $('#surfBar').classList.add('hide'); } // un nouveau dessin quitte le mode surfaçage
+  if (R3D.on) { R3D.on = false; $('#r3dBar').classList.add('hide'); } // et le relief 3D
   const imp = importSVG(text, name), warns = imp.warns, pageOnly = !!(saved && saved.pageOnly && imp.page);
   const shapes = pageOnly ? pageShapes(imp.shapes, imp.page) : imp.shapes; // la page Inkscape est le brut : hors page ignoré
   if (!shapes.length) throw new Error('Aucune forme dans la page du SVG.');
@@ -907,6 +936,7 @@ function shapeGroups(sh, res) {
   const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
   const passes = depthPasses(depth, doc), cuts = [];
   const group = (cs, tl = T, rank = order[sh.op]) => cs.length ? [{ shape: sh, tool: tl, rank, cuts: cs }] : [];
+  if (isBall(T)) return skip(`« ${sh.name} » ignorée : la fraise boule sert au relief 3D, choisis une fraise plate ou en V`);
   if (isV(T) && sh.op !== 'on' && sh.op !== 'vcarve') return skip(`« ${sh.name} » ignorée : avec une fraise en V, choisir « Sur la ligne » ou « Remplissage en V »`);
   if (!isV(T) && sh.op === 'vcarve') return skip(`« ${sh.name} » ignorée : le remplissage en V demande une fraise en V`);
   if (isV(T) && sh.op === 'on' && 2 * depth * Math.tan((T.angle || 60) * Math.PI / 360) + (T.tip || 0) > T.d) res.warns.push(`« ${sh.name} » : profondeur plus grande que la partie conique de la fraise`);
@@ -929,7 +959,7 @@ function shapeGroups(sh, res) {
     const zCone = (T.d / 2 - tip2) / k, zMax = Math.min(depth, zCone);
     if (depth > zCone + 1e-6) res.warns.push(`« ${sh.name} » : profondeur limitée à ${f3(zCone)} mm (partie conique de la fraise)`);
     const C = toolById(sh.clear); let cc = null;
-    if (C && isV(C)) res.warns.push(`« ${sh.name} » : la fraise de dégagement doit être plate`);
+    if (C && !isFlat(C)) res.warns.push(`« ${sh.name} » : la fraise de dégagement doit être plate`);
     else if (C) cc = clearCuts(region, reverse, C, zMax, tip2 + zMax * k);
     const vc = vcarveCuts(region, reverse, T, zMax, doc, cc && cc.cleared);
     if (!vc.cuts.length) return skip(`« ${sh.name} » : trop étroite pour la pointe de la fraise`);
@@ -1038,7 +1068,7 @@ function buildGcode(step, park) { // park : point de zéro Z où finir (changeme
         rp(); mv(0, p0[0], p0[1], safe);
         if (app0 < safe) mv(0, p0[0], p0[1], app0);
       }
-      if (!isV(T) && S.ramp.on && !c.finish && p0[2] < z - 1e-6) {
+      if (isFlat(T) && S.ramp.on && !c.finish && p0[2] < z - 1e-6) {
         // fraise plate : descente verticale seulement jusqu'au-dessus de la matière, puis rampe
         const z0 = Math.min(z, c.zTop); if (z0 < z - 1e-6) mv(1, p0[0], p0[1], z0, T.plunge);
         const R = p0[2] < z0 - 1e-6 && rampPts(c.pts, z0, p0[2]);
@@ -1046,8 +1076,9 @@ function buildGcode(step, park) { // park : point de zéro Z où finir (changeme
       }
       mv(1, p0[0], p0[1], p0[2], p0[2] < z ? T.plunge : T.feed);
       for (let k = 1; k < c.pts.length; k++) {
-        const p = c.pts[k], vert = Math.abs(p[0] - x) < 5e-4 && Math.abs(p[1] - y) < 5e-4;
-        mv(1, p[0], p[1], p[2], vert && p[2] < z ? T.plunge : T.feed);
+        // descente (verticale ou en pente, relief 3D) : vitesse en Z plafonnée à la vitesse de plongée
+        const p = c.pts[k], dz = z - p[2], vert = Math.abs(p[0] - x) < 5e-4 && Math.abs(p[1] - y) < 5e-4;
+        mv(1, p[0], p[1], p[2], vert && dz > 0 ? T.plunge : dz > 1e-6 ? Math.min(T.feed, Math.floor(0.99 * T.plunge * Math.hypot(p[0] - x, p[1] - y, dz) / (dz + 1e-3))) : T.feed); // coordonnées arrondies au millième
       }
       last = { g, c };
     }
@@ -1245,7 +1276,7 @@ function draw() {
   ctx.strokeStyle = '#27ae60'; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, oy - 30); ctx.stroke();
   ctx.fillStyle = '#22201c'; ctx.font = '11px system-ui'; ctx.fillText('X0 Y0', ox + 4, oy + 14);
   if (G && (viewMode === 'carve' || viewMode === 'paths')) drawMoves();
-  if (D && !SURF && viewMode !== 'carve' && !(viewMode === 'relief' && G)) drawShapes(viewMode === 'paths' ? 0.35 : 1);
+  if (D && !SURF && !R3D.on && viewMode !== 'carve' && !(viewMode === 'relief' && G)) drawShapes(viewMode === 'paths' ? 0.35 : 1);
   drawZPoint();
   if (job && G) drawProgress();
   if (machine.wpos) {
@@ -1303,7 +1334,7 @@ function drawProgress() {
 // interactions
 let drag = null;
 // clic sur une forme (vue Dessin ou Trajectoires) : la sélectionne et la glisse ; ailleurs, ou bouton du milieu : déplace la vue
-const canEditShapes = () => D && !SURF && tabEdit === null && !job && (viewMode === 'design' || viewMode === 'paths');
+const canEditShapes = () => D && !SURF && !R3D.on && tabEdit === null && !job && (viewMode === 'design' || viewMode === 'paths');
 cv.addEventListener('mousedown', e => {
   const hit = e.button === 0 && canEditShapes() ? hitShape(e.offsetX, e.offsetY) : null;
   if (hit) {
@@ -1356,7 +1387,7 @@ function hitShape(sx, sy) {
 
 /* ====================== Relief ====================== */
 // Carte de hauteurs du brut après usinage, calculée depuis le G-code de toutes les étapes : chaque coupe balaie la
-// forme réelle de sa fraise (cylindre plat, ou cône en V avec sa pointe). Puis rendu éclairé (ombrage) vu de dessus.
+// forme réelle de sa fraise (cylindre plat, cône en V avec sa pointe, ou boule). Puis rendu éclairé (ombrage) vu de dessus.
 // Mise en cache par plan : recalculée seulement quand le G-code change.
 let RELIEF = null;
 function heightMap(plan) {
@@ -1364,7 +1395,7 @@ function heightMap(plan) {
   const res = Math.max(0.05, Math.sqrt(w * h / 600000)); // ≤ 600 000 cellules
   const nx = Math.ceil(w / res), ny = Math.ceil(h / res), H = new Float32Array(nx * ny); // 0 = dessus du brut
   for (const P of plan) {
-    const T = P.tool, v = isV(T), k = v ? Math.tan(T.angle * Math.PI / 360) : 0, tip = v ? (T.tip || 0) / 2 : 0, rf = T.d / 2;
+    const T = P.tool, v = isV(T), ball = isBall(T), k = v ? Math.tan(T.angle * Math.PI / 360) : 0, tip = v ? (T.tip || 0) / 2 : 0, rf = T.d / 2;
     for (const m of P.moves) {
       if (m.g !== 1 || (m.z >= 0 && m.z0 >= 0)) continue;
       const dx = m.x - m.x0, dy = m.y - m.y0, dz = m.z - m.z0, L2 = dx * dx + dy * dy;
@@ -1378,7 +1409,8 @@ function heightMap(plan) {
           let u = L2 ? ((px - m.x0) * dx + (py - m.y0) * dy) / L2 : 0; u = u < 0 ? 0 : u > 1 ? 1 : u;
           const d = Math.hypot(px - m.x0 - u * dx, py - m.y0 - u * dy); if (d > R) continue;
           const zc = m.z0 + u * dz; if (zc >= 0) continue;
-          const z = v ? zc + Math.max(0, d - tip) / k : zc; // cône : remonte de 1/k par mm d'écart à l'axe
+          // cône : remonte de 1/k par mm d'écart à l'axe ; boule : sphère de rayon rf posée sur la pointe
+          const z = v ? zc + Math.max(0, d - tip) / k : ball ? zc + rf - Math.sqrt(rf * rf - d * d) : zc;
           const c = j * nx + i; if (z < H[c]) H[c] = z < -t ? -t : z;
         }
       }
@@ -1472,7 +1504,7 @@ function refreshTools() {
   const s = $('#toolSel'); s.innerHTML = '';
   S.tools.forEach((t, k) => { const o = document.createElement('option'); o.value = k; o.textContent = t.name; s.appendChild(o); });
   s.value = S.toolIdx; const T = tool();
-  $('#tType').value = isV(T) ? 'v' : 'flat'; $('#tAng').value = T.angle || 60; $('#tTip').value = T.tip || 0;
+  $('#tType').value = isV(T) ? 'v' : isBall(T) ? 'ball' : 'flat'; $('#tAng').value = T.angle || 60; $('#tTip').value = T.tip || 0;
   $$('.vonly').forEach(e => e.classList.toggle('hide', !isV(T))); $$('.flatonly').forEach(e => e.classList.toggle('hide', isV(T)));
   $('#lD').textContent = isV(T) ? 'Diamètre du corps (mm)' : 'Diamètre (mm)';
   if (isV(T)) $('#vNote').textContent = `Largeur de trait : ${f3(cutWidth(-0.5, T))} mm à 0,5 mm de profondeur, ${f3(cutWidth(-1, T))} mm à 1 mm, ${f3(cutWidth(-2, T))} mm à 2 mm. Utilisable en « Sur la ligne » et « Remplissage en V ».`;
@@ -1493,7 +1525,7 @@ function refreshShapeTools() {
     el.value = v;
   };
   fill($('#sTool'), `Fraise courante (${tool().name})`, S.tools);
-  fill($('#sClear'), 'Non', S.tools.filter(t => !isV(t)));
+  fill($('#sClear'), 'Non', S.tools.filter(isFlat));
 }
 function refreshShapes() {
   const box = $('#shapeList');
@@ -1566,6 +1598,7 @@ function recompute() {
   const warns = [];
   try {
     if (SURF) { CAM = { steps: [], warns: [], skipped: new Set() }; PLAN = [buildGcode(surfaceStep())]; warns.push(...surfaceWarns()); }
+    else if (R3D.on) { CAM = { steps: r3dSteps(warns), warns: [], skipped: new Set() }; PLAN = CAM.steps.map(st => buildGcode(st)); }
     else { CAM = computeCAM(); warns.push(...CAM.warns); PLAN = CAM.steps.map(st => buildGcode(st)); }
     // plusieurs fraises : point de zéro Z libre, où finissent toutes les étapes sauf la dernière
     ZPOINT = SURF ? null : zeroPoint(PLAN);
@@ -1855,11 +1888,11 @@ document.addEventListener('keydown', e => {
 // en passes de profondeur. Mode à part : tant que SURF est actif, le plan (PLAN) est le surfaçage au lieu du dessin ;
 // aperçu, relief, liste de vérification, gravure et export servent tels quels. Réglages gardés dans S.surf.
 let SURF = false;
-const flatTools = () => S.tools.filter(t => !isV(t));
+const flatTools = () => S.tools.filter(isFlat);
 function surfParams() {
   const flats = flatTools(), big = flats.slice().sort((a, b) => b.d - a.d)[0];
   S.surf = Object.assign({ x: 0, y: 0, w: S.stock.w, h: S.stock.h, depth: 0.5, over: 40, tool: big ? big.id : '' }, S.surf || {});
-  if (!toolById(S.surf.tool) || isV(toolById(S.surf.tool))) S.surf.tool = big ? big.id : '';
+  if (!toolById(S.surf.tool) || !isFlat(toolById(S.surf.tool))) S.surf.tool = big ? big.id : '';
   return S.surf;
 }
 // Zone en coordonnées brut (coin avant-gauche) ; le centre de la fraise passe sur les bords : elle déborde de son rayon
@@ -1894,6 +1927,7 @@ function readSurf() {
   Object.assign(P, { x: v('#sfX', P.x), y: v('#sfY', P.y), w: Math.max(1, v('#sfW', P.w)), h: Math.max(1, v('#sfH', P.h)), depth: Math.max(0.05, v('#sfD', P.depth)), over: v('#sfO', P.over), tool: $('#sfTool').value });
 }
 function setSurf(on) {
+  if (on && R3D.on) { R3D.on = false; $('#r3dBar').classList.add('hide'); }
   SURF = on; $('#surfBar').classList.toggle('hide', !on); stepIdx = 0;
   if (on) { const P = surfParams(); $('#surfTxt').textContent = `Surfaçage ${P.w} × ${P.h} mm à ${P.depth} mm — ${toolById(P.tool).name}`; }
   recompute(); draw();
@@ -1904,6 +1938,186 @@ $('#sfCancel').onclick = () => $('#dlgSurf').close();
 $('#sfOk').onclick = () => { readSurf(); saveSettings(); $('#dlgSurf').close(); setSurf(true); if (viewMode === 'design') $('#viewbar [data-v=paths]').click(); };
 $('#surfEdit').onclick = () => { if (!job) openSurf(); };
 $('#surfQuit').onclick = () => { if (!job) setSurf(false); };
+/* ====================== Relief 3D : calcul ====================== */
+// Relief depuis une image en niveaux de gris : blanc = dessus du brut, noir = profondeur max (« Inverser » : l'inverse).
+// Mode à part comme le surfaçage : tant que R3D.on, le plan est l'ébauche (option : fraise plate, paliers de sa
+// profondeur de passe, surépaisseur laissée) puis la finition (fraise boule, lignes en X, option lignes croisées en Y).
+// Hauteur de la fraise en chaque nœud : « drop cutter », elle descend jusqu'à toucher la surface voulue sous tout son
+// profil (disque plat ou boule), donc n'entaille jamais le relief ; hors de l'image, le brut reste intact (Z0).
+const R3D = { on: false, img: null, cache: null }; // img : { name, w, h, g (Float32Array, 0 noir … 1 blanc), url }
+const R3D_TOL = 0.003; // simplification des points alignés (mm)
+function r3dParams() {
+  const ball = S.tools.find(isBall), flat = S.tools.find(isFlat);
+  S.r3d = Object.assign({ x: 5, y: 5, w: 60, depth: 3, invert: false, rough: true, roughTool: flat ? flat.id : '', leave: 0.3, tool: ball ? ball.id : '', step: 0.3, cross: false }, S.r3d || {});
+  const P = S.r3d;
+  if (!isFlat(toolById(P.roughTool) || {})) P.roughTool = flat ? flat.id : '';
+  if (!isBall(toolById(P.tool) || {})) P.tool = ball ? ball.id : '';
+  return P;
+}
+const r3dHeight = P => R3D.img ? P.w * R3D.img.h / R3D.img.w : 0;
+// surface voulue sur une grille carrée (pas res), bordée de nœuds à Z0 sur le rayon rMax (brut intact autour de l'image)
+function r3dTarget(P, rMax) {
+  const I = R3D.img, W = P.w, H = r3dHeight(P), res = Math.max(0.1, Math.sqrt(W * H / 400000)), pad = Math.ceil(rMax / res) + 2;
+  const nx = Math.floor(W / res + 1e-9) + 1, ny = Math.floor(H / res + 1e-9) + 1, px = nx + 2 * pad, Tz = new Float32Array(px * (ny + 2 * pad));
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const u = i * res / W * (I.w - 1), v = (1 - j * res / H) * (I.h - 1); // image : ligne 0 en haut, brut : y vers le haut
+    const i0 = Math.min(I.w - 2, Math.floor(u)), j0 = Math.min(I.h - 2, Math.floor(v)), fu = u - i0, fv = v - j0, g = I.g, k = j0 * I.w + i0;
+    let gr = (g[k] * (1 - fu) + g[k + 1] * fu) * (1 - fv) + (g[k + I.w] * (1 - fu) + g[k + I.w + 1] * fu) * fv;
+    if (P.invert) gr = 1 - gr;
+    Tz[(j + pad) * px + i + pad] = -P.depth * (1 - gr);
+  }
+  return { res, nx, ny, pad, px, Tz };
+}
+// hauteur de la fraise T posée sur la surface au nœud (i, j) : max sur son disque de (surface + relèvement du profil)
+function dropper(G, T) {
+  const R = T.d / 2, n = Math.ceil(R / G.res), off = [], lift = [];
+  for (let b = -n; b <= n; b++) for (let a = -n; a <= n; a++) {
+    const d = Math.hypot(a, b) * G.res; if (d > R + 1e-9) continue;
+    off.push(b * G.px + a); lift.push(isBall(T) ? R - Math.sqrt(Math.max(0, R * R - d * d)) : 0);
+  }
+  const O = Int32Array.from(off), L = Float32Array.from(lift), Tz = G.Tz, cache = new Map();
+  return (i, j) => {
+    const c = (j + G.pad) * G.px + i + G.pad; let z = cache.get(c);
+    if (z !== undefined) return z;
+    z = -Infinity; for (let k = 0; k < O.length; k++) { const h = Tz[c + O[k]] - L[k]; if (h > z) z = h; }
+    cache.set(c, z); return z;
+  };
+}
+// garde un point seulement s'il s'écarte de plus de R3D_TOL du segment qui le saute
+function simplify3(pts) {
+  if (pts.length < 3) return pts;
+  const out = [pts[0]]; let a = 0;
+  const dev = (p, q, r) => { const d = [r[0] - p[0], r[1] - p[1], r[2] - p[2]], L2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+    const u = L2 ? ((q[0] - p[0]) * d[0] + (q[1] - p[1]) * d[1] + (q[2] - p[2]) * d[2]) / L2 : 0;
+    return Math.hypot(q[0] - p[0] - u * d[0], q[1] - p[1] - u * d[1], q[2] - p[2] - u * d[2]); };
+  for (let k = 2; k < pts.length; k++) {
+    let ok = k - a < 400;
+    for (let m = a + 1; ok && m < k; m++) if (dev(pts[a], pts[m], pts[k]) > R3D_TOL) ok = false;
+    if (!ok) { out.push(pts[k - 1]); a = k - 1; }
+  }
+  out.push(pts[pts.length - 1]); return out;
+}
+// balayage d'un palier : lignes parallèles à X (axis 'x') ou à Y, tous les sn nœuds, en zigzag ; z = max(palier, drop).
+// Chaque ligne est réduite à ce qui reste à couper sous zPrev (± rayon) ; ligne sans rien : sautée. Chaque ligne commence par la
+// liaison depuis la fin de la précédente, au drop aussi : les coupes s'enchaînent sans remonter (point de reprise à
+// chaque ligne) ; liaison de plus de 10 mm : nouvelle coupe, avec remontée.
+function rasterCuts(G, P, T, drop, axis, sn, zl, zPrev, extra) {
+  const ax = axis === 'x', nL = ax ? G.ny : G.nx, nA = ax ? G.nx : G.ny, ext = Math.ceil(T.d / 2 / G.res);
+  const lines = []; for (let l = 0; l < nL; l += sn) lines.push(l); if (lines[lines.length - 1] !== nL - 1) lines.push(nL - 1);
+  const node = (l, a) => ax ? [a, l] : [l, a], xyz = (i, j) => [P.x + i * G.res, P.y + j * G.res, Math.min(0, Math.max(zl, drop(i, j) + extra))];
+  const cuts = []; let last = null, fwd = true;
+  for (const l of lines) {
+    let a0 = 0, a1 = nA - 1;
+    { // seulement là où il reste de la matière sous le palier précédent (± rayon)
+      a0 = -1; for (let a = 0; a < nA; a++) if (xyz(...node(l, a))[2] < zPrev - 1e-4) { if (a0 < 0) a0 = a; a1 = a; }
+      if (a0 < 0) continue; a0 = Math.max(0, a0 - ext); a1 = Math.min(nA - 1, a1 + ext);
+    }
+    const seq = []; for (let a = a0; a <= a1; a++) seq.push(node(l, a)); if (!fwd) seq.reverse(); fwd = !fwd;
+    const pts = [];
+    if (last) {
+      const [i0, j0] = last, [i1, j1] = seq[0], n = Math.max(Math.abs(i1 - i0), Math.abs(j1 - j0));
+      // liaison de plus de 10 mm : rien ici, buildGcode remonte et refait une approche
+      if (n * G.res <= 10) for (let s = 0; s < n; s++) pts.push(xyz(Math.round(i0 + (i1 - i0) * s / n), Math.round(j0 + (j1 - j0) * s / n)));
+    }
+    for (const [i, j] of seq) pts.push(xyz(i, j));
+    cuts.push({ pts: simplify3(pts), zTop: 0 }); last = seq[seq.length - 1];
+  }
+  return cuts;
+}
+// étapes du relief : [{ tool, title, groups }] ; mises en cache (image, réglages, fraises)
+function r3dSteps(warns) {
+  const P = r3dParams(), B = toolById(P.tool), F = P.rough ? toolById(P.roughTool) : null;
+  if (!R3D.img) { warns.push('Relief 3D : aucune image choisie'); return []; }
+  if (!B) { warns.push('Relief 3D : aucune fraise boule (ajoute-en une, type « Boule »)'); return []; }
+  const H = r3dHeight(P);
+  if (P.x < -1e-6 || P.y < -1e-6 || P.x + P.w > S.stock.w + 1e-6 || P.y + H > S.stock.h + 1e-6) warns.push('Relief 3D : l\'image dépasse du brut');
+  if (P.depth > S.stock.t + 1e-6) warns.push(`Relief 3D : profondeur ${P.depth} mm > épaisseur du brut`);
+  if (!F && P.depth > 2 * B.doc + 1e-6) warns.push(`Relief 3D : ${Math.ceil(P.depth / B.doc)} passes à la fraise boule ; une ébauche à la fraise plate serait plus rapide`);
+  const key = JSON.stringify([R3D.img.id, P, B, F]);
+  if (R3D.cache && R3D.cache.key === key) return R3D.cache.steps;
+  const G = r3dTarget(P, Math.max(B.d, F ? F.d : 0) / 2), steps = [];
+  if (F) {
+    const drop = dropper(G, F), sn = Math.max(1, Math.round(F.d * soOf(F) / G.res)), groups = []; let zPrev = 0;
+    for (const zl of depthPasses(P.depth, Math.max(0.05, F.doc))) {
+      const cuts = rasterCuts(G, P, F, drop, 'x', sn, zl, zPrev, P.leave);
+      if (cuts.length) groups.push({ shape: { name: 'ébauche' }, tool: F, rank: 1, cuts }); zPrev = zl;
+    }
+    if (groups.length) steps.push({ tool: F, title: `Relief 3D — ébauche (${R3D.img.name})`, groups });
+  }
+  const drop = dropper(G, B), sn = Math.max(1, Math.round(P.step / G.res)), groups = [];
+  const levels = F ? [-P.depth] : depthPasses(P.depth, Math.max(0.05, B.doc));
+  // lignes réduites à ce qui descend sous le palier précédent (le blanc, à Z0, n'est pas balayé) ; finition seule : paliers
+  let zPrev = 0;
+  for (const zl of levels) { const cuts = rasterCuts(G, P, B, drop, 'x', sn, zl, zPrev, 0); if (cuts.length) groups.push({ shape: { name: 'finition X' }, tool: B, rank: 1, cuts }); zPrev = zl; }
+  if (P.cross) { const cuts = rasterCuts(G, P, B, drop, 'y', sn, -P.depth, 0, 0); if (cuts.length) groups.push({ shape: { name: 'finition Y' }, tool: B, rank: 1, cuts }); }
+  if (!groups.length) { warns.push('Relief 3D : image entièrement blanche, rien à usiner'); return steps; }
+  steps.push({ tool: B, title: `Relief 3D — finition (${R3D.img.name})`, groups });
+  R3D.cache = { key, steps };
+  return steps;
+}
+/* ====================== Relief 3D : interface ====================== */
+// Fenêtre « Relief 3D… » (image, placement, profondeur, fraises), bandeau du mode, image gardée dans le navigateur.
+const R3D_IMG_KEY = 'atelier-cnc-relief-img', R3D_MAXPX = 800;
+// image → niveaux de gris (transparent = blanc), réduite à R3D_MAXPX px au plus grand côté
+function r3dLoadImage(url, name) {
+  return new Promise((ok, ko) => {
+    const im = new Image();
+    im.onload = () => {
+      const k = Math.min(1, R3D_MAXPX / Math.max(im.width, im.height)), w = Math.max(2, Math.round(im.width * k)), h = Math.max(2, Math.round(im.height * k));
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(im, 0, 0, w, h);
+      const px = g.getImageData(0, 0, w, h).data, gr = new Float32Array(w * h);
+      for (let i = 0; i < w * h; i++) gr[i] = (0.299 * px[4 * i] + 0.587 * px[4 * i + 1] + 0.114 * px[4 * i + 2]) / 255;
+      R3D.img = { id: Date.now() + Math.random(), name, w, h, g: gr, url }; R3D.cache = null; ok(R3D.img);
+    };
+    im.onerror = () => ko(new Error('image illisible'));
+    im.src = url;
+  });
+}
+function r3dFill() {
+  const P = r3dParams(), opt = (sel, list, v) => { sel.innerHTML = ''; list.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; sel.appendChild(o); }); sel.value = v; };
+  opt($('#r3RTool'), S.tools.filter(isFlat), P.roughTool); opt($('#r3Tool'), S.tools.filter(isBall), P.tool);
+  [['#r3X', 'x'], ['#r3Y', 'y'], ['#r3W', 'w'], ['#r3D', 'depth'], ['#r3Leave', 'leave'], ['#r3Step', 'step']].forEach(([id, k]) => $(id).value = P[k]);
+  $('#r3Inv').checked = P.invert; $('#r3Rough').checked = P.rough; $('#r3Cross').checked = P.cross;
+  r3dInfo();
+}
+function r3dInfo() {
+  const I = R3D.img, w = parseFloat($('#r3W').value) || 0;
+  $('#r3Name').textContent = I ? `${I.name} (${I.w} × ${I.h} px)` : 'aucune image';
+  $('#r3Size').textContent = I ? `Hauteur : ${f3(w * I.h / I.w)} mm (proportions de l'image).` : '';
+  $('#r3Ok').disabled = !I || !S.tools.some(isBall);
+}
+function r3dRead() {
+  const P = r3dParams(), v = (id, d) => { const x = parseFloat(String($(id).value).replace(',', '.')); return isFinite(x) ? x : d; };
+  Object.assign(P, { x: v('#r3X', P.x), y: v('#r3Y', P.y), w: Math.max(1, v('#r3W', P.w)), depth: Math.max(0.05, v('#r3D', P.depth)), leave: Math.max(0, v('#r3Leave', P.leave)),
+    step: Math.max(0.05, v('#r3Step', P.step)), invert: $('#r3Inv').checked, rough: $('#r3Rough').checked, cross: $('#r3Cross').checked, roughTool: $('#r3RTool').value, tool: $('#r3Tool').value });
+}
+function setR3d(on) {
+  if (on && SURF) setSurf(false);
+  R3D.on = on; $('#r3dBar').classList.toggle('hide', !on); stepIdx = 0;
+  if (on) { const P = r3dParams(); $('#r3dTxt').textContent = `Relief 3D ${f3(P.w)} × ${f3(r3dHeight(P))} mm, ${f3(P.depth)} mm — ${R3D.img.name}`; }
+  recompute(); draw();
+  if (on) $('#viewbar [data-v=relief]').click(); // la pièce telle qu'elle sortira
+}
+$('#bR3d').onclick = () => { if (!job) { r3dFill(); $('#dlgR3d').showModal(); } };
+$('#r3Pick').onclick = () => $('#fR3d').click();
+$('#fR3d').onchange = e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => r3dLoadImage(rd.result, f.name).then(I => {
+    const P = r3dParams(), m = 5, w = Math.max(1, Math.min(S.stock.w - 2 * m, (S.stock.h - 2 * m) * I.w / I.h));
+    $('#r3X').value = m; $('#r3Y').value = m; $('#r3W').value = f3(Math.floor(w)); P.w = Math.floor(w); // placée dans le brut, marge 5 mm
+    try { localStorage.setItem(R3D_IMG_KEY, JSON.stringify({ name: f.name, url: rd.result })); } catch (er) { log('Image trop lourde pour être gardée dans le navigateur : il faudra la rechoisir à la prochaine ouverture.', 'msg'); }
+    r3dInfo();
+  }).catch(er => alert('Image : ' + er.message));
+  rd.readAsDataURL(f);
+};
+$('#r3W').addEventListener('input', r3dInfo);
+$('#r3Cancel').onclick = () => $('#dlgR3d').close();
+$('#r3Ok').onclick = () => { r3dRead(); saveSettings(); $('#dlgR3d').close(); setR3d(true); };
+$('#r3dEdit').onclick = () => { if (!job) { r3dFill(); $('#dlgR3d').showModal(); } };
+$('#r3dQuit').onclick = () => { if (!job) setR3d(false); };
+(() => { try { const o = JSON.parse(localStorage.getItem(R3D_IMG_KEY)); if (o) r3dLoadImage(o.url, o.name).catch(() => {}); } catch (e) {} })();
 /* ====================== GRBL / Web Serial ====================== */
 const RX_BUF = 127;
 const ALARMS = { 1: 'fin de course matériel déclenché', 2: 'déplacement hors limites logicielles', 3: 'reset pendant un mouvement : position perdue, refais l\'origine', 4: 'sonde déjà en contact au départ', 5: 'la sonde n\'a pas touché la plaque', 6: 'homing interrompu', 7: 'porte ouverte pendant le homing', 8: 'homing : impossible de dégager le fin de course', 9: 'homing : fin de course introuvable' };

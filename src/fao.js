@@ -212,6 +212,7 @@ function shapeGroups(sh, res) {
   const subs = sh.subpaths.map(s => ({ closed: s.closed, pts: s.pts.map(tf) }));
   const passes = depthPasses(depth, doc), cuts = [];
   const group = (cs, tl = T, rank = order[sh.op]) => cs.length ? [{ shape: sh, tool: tl, rank, cuts: cs }] : [];
+  if (isBall(T)) return skip(`« ${sh.name} » ignorée : la fraise boule sert au relief 3D, choisis une fraise plate ou en V`);
   if (isV(T) && sh.op !== 'on' && sh.op !== 'vcarve') return skip(`« ${sh.name} » ignorée : avec une fraise en V, choisir « Sur la ligne » ou « Remplissage en V »`);
   if (!isV(T) && sh.op === 'vcarve') return skip(`« ${sh.name} » ignorée : le remplissage en V demande une fraise en V`);
   if (isV(T) && sh.op === 'on' && 2 * depth * Math.tan((T.angle || 60) * Math.PI / 360) + (T.tip || 0) > T.d) res.warns.push(`« ${sh.name} » : profondeur plus grande que la partie conique de la fraise`);
@@ -234,7 +235,7 @@ function shapeGroups(sh, res) {
     const zCone = (T.d / 2 - tip2) / k, zMax = Math.min(depth, zCone);
     if (depth > zCone + 1e-6) res.warns.push(`« ${sh.name} » : profondeur limitée à ${f3(zCone)} mm (partie conique de la fraise)`);
     const C = toolById(sh.clear); let cc = null;
-    if (C && isV(C)) res.warns.push(`« ${sh.name} » : la fraise de dégagement doit être plate`);
+    if (C && !isFlat(C)) res.warns.push(`« ${sh.name} » : la fraise de dégagement doit être plate`);
     else if (C) cc = clearCuts(region, reverse, C, zMax, tip2 + zMax * k);
     const vc = vcarveCuts(region, reverse, T, zMax, doc, cc && cc.cleared);
     if (!vc.cuts.length) return skip(`« ${sh.name} » : trop étroite pour la pointe de la fraise`);
@@ -343,7 +344,7 @@ function buildGcode(step, park) { // park : point de zéro Z où finir (changeme
         rp(); mv(0, p0[0], p0[1], safe);
         if (app0 < safe) mv(0, p0[0], p0[1], app0);
       }
-      if (!isV(T) && S.ramp.on && !c.finish && p0[2] < z - 1e-6) {
+      if (isFlat(T) && S.ramp.on && !c.finish && p0[2] < z - 1e-6) {
         // fraise plate : descente verticale seulement jusqu'au-dessus de la matière, puis rampe
         const z0 = Math.min(z, c.zTop); if (z0 < z - 1e-6) mv(1, p0[0], p0[1], z0, T.plunge);
         const R = p0[2] < z0 - 1e-6 && rampPts(c.pts, z0, p0[2]);
@@ -351,8 +352,9 @@ function buildGcode(step, park) { // park : point de zéro Z où finir (changeme
       }
       mv(1, p0[0], p0[1], p0[2], p0[2] < z ? T.plunge : T.feed);
       for (let k = 1; k < c.pts.length; k++) {
-        const p = c.pts[k], vert = Math.abs(p[0] - x) < 5e-4 && Math.abs(p[1] - y) < 5e-4;
-        mv(1, p[0], p[1], p[2], vert && p[2] < z ? T.plunge : T.feed);
+        // descente (verticale ou en pente, relief 3D) : vitesse en Z plafonnée à la vitesse de plongée
+        const p = c.pts[k], dz = z - p[2], vert = Math.abs(p[0] - x) < 5e-4 && Math.abs(p[1] - y) < 5e-4;
+        mv(1, p[0], p[1], p[2], vert && dz > 0 ? T.plunge : dz > 1e-6 ? Math.min(T.feed, Math.floor(0.99 * T.plunge * Math.hypot(p[0] - x, p[1] - y, dz) / (dz + 1e-3))) : T.feed); // coordonnées arrondies au millième
       }
       last = { g, c };
     }
