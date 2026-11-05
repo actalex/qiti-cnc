@@ -42,3 +42,16 @@ Deux étapes, environ **8 min 35 s** : étape 1 à la fraise plate 3,175 mm (≈
 ### Lecture
 - Pas de marche dans l'étoile et poche à 2,0 mm : les deux zéros Z concordent, le point de zéro Z est validé.
 - Fond des pointes en V **plus bas** que le fond plat : le zéro Z de la fraise en V est trop bas, de la hauteur de la marche. Plus haut : trop haut. Vérifie que le papier est le même et que la fraise n'a pas glissé dans la pince.
+
+## Résultats (2026-11-05)
+Photo : `test4-resultat.jpg`, dessin réellement usiné : `test4-capture.png`. L'utilisateur a volontairement **posé le carré sur l'étoile** (au lieu de les séparer) pour comparer directement les deux profondeurs.
+
+- **Console** : ni `error:` ni `ALARM:`.
+- **Point de zéro Z** : « Aller au point de zéro Z » (G0 X6.75 Y6.75) puis zéro au papier ; fin de l'étape 1 au point bleu, zéro Z de la fraise en V refait au même endroit. Validé.
+- **Raccord des deux fraises** : fond plat de l'étoile, pentes en V et fond de la poche au même niveau, « parfait » à l'œil et au toucher : les deux zéros Z concordent.
+- **Coupure en cours d'étape 2** : batterie de l'ordinateur à plat. Pause, Stop, reconnexion, puis l'étape 2 relancée depuis le début : le zéro pièce (G54) est resté dans la carte, la reprise s'est faite sans défaut visible. Au rapport de l'utilisateur : « je n'y serais jamais arrivé aussi bien avec Easel ».
+- **Durées** : étape 1 en 1 min 51 s (estimée ≈ 1:29), étape 2 en 9 min 14 s (estimée ≈ 7:06, relancée complète). Estimation trop courte de ≈ 25-30 % ici, alors qu'elle était juste au test 3 (10:40 pour 10:45) : à regarder (vitesses modifiées ? remplissage en V à petits segments ?).
+- **Défaut constaté** : une fine **paroi** reste entre l'étoile et le carré. Cause : avec le recouvrement (`D.stack`), le carré retire sa surface de l'étoile, dont le contour suit alors le bord du carré ; le remplissage en V y remonte en pente jusqu'à la surface, face à la paroi verticale de la poche, d'où une arête de matière. N'apparaît que pour un V en contact avec une poche. Jugé **pas grave, laissé tel quel** (utilisateur). Correction possible plus tard : calculer les anneaux du V sur l'étoile entière, puis retirer seulement la surface du carré, quand la forme posée dessus est elle-même usinée au moins aussi profond.
+
+### Conclusion
+Test 4 validé : le point de zéro Z entre deux fraises fonctionne, et une gravure interrompue a pu être relancée.
