@@ -90,7 +90,7 @@ function drawMoves() {
   }
 }
 function drawProgress() {
-  const upto = G.lineMove[Math.min(job.acked, G.lineMove.length - 1)] || 0;
+  const upto = G.lineMove[Math.max(0, Math.min((job.off || 0) + job.acked, G.lineMove.length - 1))] || 0;
   ctx.strokeStyle = 'rgba(46,139,87,.9)'; ctx.lineWidth = 2; ctx.beginPath();
   for (let k = 0; k < upto; k++) { const m = G.moves[k]; if (m.g !== 1) continue; const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d); }
   ctx.stroke();

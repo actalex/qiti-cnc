@@ -310,6 +310,12 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div id="cSummary" class="note" style="margin-bottom:8px"></div>
     <div id="cAlert" style="color:#c0392b;font-weight:600;margin-bottom:8px"></div>
     <div id="cWarn" style="color:var(--warn);margin-bottom:8px"></div>
+    <div id="cResume" class="hide" style="border:1px solid var(--warn);border-radius:6px;padding:6px 8px;margin-bottom:8px">
+      <div id="cResumeWhen" style="font-weight:600"></div>
+      <label>Repartir de <select id="cFrom" style="max-width:100%"></select></label>
+      <div class="note">La fraise remonte au dégagement, va au-dessus du point de reprise, la broche démarre, puis la gravure continue. Ce qui précède n'est pas refait (le point choisi est un peu avant l'interruption : quelques passes à vide).</div>
+      <label class="check" id="cResumeChk"><input type="checkbox"> <span>Le brut n'a pas bougé et la carte n'a pas été éteinte ni réinitialisée en alarme depuis l'interruption (sinon : refais les zéros exactement au même endroit, ou repars du début).</span></label>
+    </div>
     <label class="check"><input type="checkbox"> <span>Le matériau est fixé solidement sur la table.</span></label>
     <label class="check"><input type="checkbox"> <span id="cTool">La bonne fraise est installée.</span></label>
     <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
@@ -425,6 +431,7 @@ function toStockFn() {
 /*INCLUDE:surfacage.js*/
 /*INCLUDE:grbl.js*/
 /*INCLUDE:gravure.js*/
+/*INCLUDE:reprise.js*/
 /* ====================== Démarrage ====================== */
 new ResizeObserver(resize).observe(cv);
 refreshAll(); updateButtons();

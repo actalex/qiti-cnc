@@ -72,7 +72,9 @@ function handleLine(l) {
     if (c === 1) log('Clique « Déverrouiller », puis éloigne l\'axe du contacteur par petits pas (ex. Z− si Z était tout en haut). Refais ensuite les zéros : la position a pu glisser.', 'msg');
     if (job) abortJob('Alarme ' + c + ' : ' + (ALARMS[c] || '')); return; }
   // démarrage de la carte : sans homing, les zéros de travail ne valent plus (machine.zeroed)
-  if (/^Grbl/i.test(l)) { machine.queue = []; machine.inflight = []; machine.used = 0; machine.zeroed = {}; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); readGrblSettings(); return; }
+  if (/^Grbl/i.test(l)) {
+    const own = machine.softReset && Date.now() - machine.softReset < 3000; machine.softReset = 0; // bannière de notre reset d'arrêt
+    machine.queue = []; machine.inflight = []; machine.used = 0; if (!own) machine.zeroed = {}; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); readGrblSettings(); return; }
   if (/^\$\d+=/.test(l)) { const [k, v] = l.slice(1).split('='); machine.grbl[+k] = parseFloat(v); if (!machine.quietSettings) log(l); return; }
   if (l.startsWith('[PRB:')) { log(l, 'msg'); return; }
   log(l, l.startsWith('[MSG') ? 'msg' : '');

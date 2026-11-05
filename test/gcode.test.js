@@ -78,6 +78,28 @@ function relire(lines, safe) {
     assert.ok(Math.abs(end.x - want[0]) < 1e-3 && Math.abs(end.y - want[1]) < 1e-3 && end.z >= data.safe - 1e-6, `étape ${k + 1} : fin en ${want} à Z sûr`);
   });
 
+  // Reprise : depuis chaque point de reprise, le programme repris est sûr et refait exactement la suite de l'original
+  // (mêmes mouvements, mêmes avances), sans rien de ce qui précède
+  const rep = await p.evaluate(() => window.__atelier.PLAN.map(P => ({ lines: P.lines, pts: P.resume.map(r => ({ r, R: resumeLines(P, r) })) })));
+  let nRep = 0;
+  rep.forEach((st, k) => {
+    const orig = relire(st.lines, data.safe).moves;
+    assert.ok(st.pts.length >= 2 && st.pts[0].r.line < 10, `étape ${k + 1} : points de reprise`);
+    for (const { r, R } of st.pts) {
+      const { moves, bad } = relire(R.lines, data.safe), tail = orig.filter(m => m.line > r.line);
+      assert.deepStrictEqual(bad, [], `étape ${k + 1}, reprise ligne ${r.line} : sécurité`);
+      const got = moves.filter(m => m.line > R.pre), key = m => [m.g, m.f, m.x, m.y, m.z].join(' ');
+      assert.deepStrictEqual(got.map(key), tail.map(key), `étape ${k + 1}, reprise ligne ${r.line} : suite identique`);
+      const start = moves.filter(m => m.line <= R.pre);
+      // approche : XY seulement au dégagement, puis descente verticale (rapide jamais sous 0,5 mm au-dessus du brut)
+      assert.ok(start.every(m => (m.x === m.x0 && m.y === m.y0) || m.z0 >= data.safe - 1e-6), 'reprise : XY au dégagement');
+      assert.ok(start.every(m => m.g === 0 ? m.z >= Math.min(data.safe, 0.5) - 1e-6 || m.z >= r.z - 1e-6 && r.z >= 0 : m.x === m.x0 && m.y === m.y0 && m.f <= Math.max(data.flat.plunge, data.v.plunge)), 'reprise : descente sûre');
+      const end = start.at(-1); assert.ok(Math.abs(end.z - r.z) < 1e-3 && Math.abs(end.x - +r.x) < 1e-3 && Math.abs(end.y - +r.y) < 1e-3, 'reprise : au point');
+      nRep++;
+    }
+  });
+  console.log('reprise :', nRep, 'points vérifiés');
+
   const r = data.flat.d / 2, eps = 0.02, all = {};
   for (const st of data.steps) {
     const { moves, bad } = relire(st.lines, data.safe);

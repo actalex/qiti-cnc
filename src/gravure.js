@@ -23,7 +23,8 @@ $('#bCarve').onclick = () => {
   $('#cSummary').innerHTML = (PLAN.length > 1 ? `<b>Étape ${stepIdx + 1}/${PLAN.length}</b> · ` : '') + `Durée estimée <b>${fmtTime(G.time)}</b> · profondeur max <b>${f3(-G.zMin)} mm</b> · ${G.lines.length.toLocaleString('fr')} lignes`;
   // zéros à refaire après un démarrage de la carte (pas de homing) ; Z à refaire après chaque changement de fraise
   const miss = [...'XYZ'].filter(a => !machine.zeroed[a]), alerts = [];
-  if (miss.length) alerts.push(`Zéro ${miss.join(', ')} pas refait depuis le démarrage de la carte${stepIdx > 0 && miss.includes('Z') && miss.length === 1 ? ' ou le changement de fraise' : ''} : sans homing, l'ancien zéro ne vaut plus.`);
+  if (miss.length && resumeChoices(G)) alerts.push(`Zéro ${miss.join(', ')} pas refait depuis l'ouverture de la page ou le démarrage de la carte. Pour reprendre, la carte ne doit pas avoir redémarré : vérifie la position avec « Aller au zéro »${ZPOINT ? ' et « Aller au point de zéro Z » (au papier)' : ''} avant de lancer.`);
+  else if (miss.length) alerts.push(`Zéro ${miss.join(', ')} pas refait depuis le démarrage de la carte${stepIdx > 0 && miss.includes('Z') && miss.length === 1 ? ' ou le changement de fraise' : ''} : sans homing, l'ancien zéro ne vaut plus.`);
   const deep = -G.zMin - S.stock.t;
   if (!SURF && deep > 1e-6) alerts.push(`La fraise descend ${f3(deep)} mm sous le brut, dans la table.`);
   $('#cAlert').textContent = alerts.join(' ');
@@ -31,21 +32,25 @@ $('#bCarve').onclick = () => {
   const own = cutOf(T); $('#cKnob').textContent = 'La vitesse de broche est réglée sur le variateur' + (own && own.knob ? ` (repère noté pour ce matériau : ${own.knob}).` : '.');
   $('#cWarn').textContent = warns; $('#cTool').textContent = `La fraise « ${T.name} » (${isV(T) ? 'en V ' + T.angle + '°' : 'Ø ' + T.d + ' mm'}) est installée.`;
   $('#cOrigin').textContent = S.origin === 'center' ? 'Le zéro X/Y est placé au centre du brut.' : 'Le zéro X/Y est placé au coin avant-gauche du brut.';
-  $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').disabled = true;
+  $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').textContent = 'Lancer la gravure';
+  fillResume(); checkCarveList();
   $('#dlgCarve').showModal();
 };
-$$('#dlgCarve input[type=checkbox]').forEach(c => c.addEventListener('change', () => { $('#cGo').disabled = !$$('#dlgCarve input[type=checkbox]').every(x => x.checked); }));
+// cases visibles toutes cochées (celle de la reprise n'apparaît que si on reprend)
+function checkCarveList() { $('#cGo').disabled = !$$('#dlgCarve input[type=checkbox]').filter(x => !x.closest('.hide')).every(x => x.checked); }
+$$('#dlgCarve input[type=checkbox]').forEach(c => c.addEventListener('change', checkCarveList));
 $('#cCancel').onclick = () => $('#dlgCarve').close();
-$('#cGo').onclick = () => { $('#dlgCarve').close(); startJob(); };
-function startJob() {
+$('#cGo').onclick = () => { const r = resumeFrom(); $('#dlgCarve').close(); startJob(r); };
+function startJob(from) { // from : point de reprise (src/reprise.js), sinon depuis le début
   if (!G || !machine.port || machine.state !== 'Idle') return;
+  const R = from ? resumeLines(G, from) : { lines: G.lines, off: 0, pre: 0 };
   // lignes de dégagement (G0 seul en Z jusqu'à la hauteur de sécurité) : points où une pause peut couper la broche
   const safe = S.machine.safeZ, retracts = [];
-  G.lines.forEach((l, k) => { const m = /^G0 Z(-?[\d.]+)$/.exec(l); if (m && +m[1] >= safe - 1e-6) retracts.push(k); });
-  job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), pause: null, retracts, step: stepIdx };
+  R.lines.forEach((l, k) => { const m = /^G0 Z(-?[\d.]+)$/.exec(l); if (m && +m[1] >= safe - 1e-6) retracts.push(k); });
+  job = { lines: R.lines, total: R.lines.length, next: 0, acked: 0, t0: Date.now(), pause: null, retracts, step: stepIdx, off: R.off, pre: R.pre, sig: gcodeSig(G) };
   refreshSteps();
   $('#job').classList.remove('hide'); refreshPauseBtn();
-  log('Gravure lancée (' + job.total + ' lignes).', 'msg'); keepAwake(true);
+  log(from ? `Reprise à « ${from.name} » (ligne ${from.line + 1} sur ${G.lines.length}) : ${job.total} lignes à envoyer.` : 'Gravure lancée (' + job.total + ' lignes).', 'msg'); keepAwake(true);
   feedJob(); pump(); updateButtons();
 }
 function updateJobUI() {
@@ -104,6 +109,7 @@ function checkStop() {
   if (moving && !late) return;
   machine.stopWait = null;
   if (w.endMsg) endJob(w.endMsg); // avant le reset : la bannière Grbl ne doit pas être prise pour un redémarrage en gravure
+  machine.softReset = late ? 0 : Date.now(); // reset machine arrêtée : GRBL garde la position, donc les zéros
   rt(0x18); machine.queue = []; machine.inflight = []; machine.used = 0;
   if (late) log('Reset envoyé alors que la machine bougeait encore : la position peut être perdue, refais l\'origine machine et les zéros.', 'err');
   else log('Machine arrêtée, broche coupée.', 'msg');
@@ -117,7 +123,7 @@ function abortJob(why) {
   else log('Machine en pause, broche allumée. Bouton « Stop » du panneau Machine pour couper.', 'msg');
 }
 function finishJob() {
-  const k = job.step, t = fmtTime((Date.now() - job.t0) / 1000);
+  const k = job.step, t = fmtTime((Date.now() - job.t0) / 1000); clearProgress(); job.sig = null; // étape finie : plus rien à reprendre
   if (k >= PLAN.length - 1) return endJob(PLAN.length > 1 ? `Dernière étape terminée en ${t}.` : `Gravure terminée en ${t}.`);
   stepIdx = k + 1;
   machine.zeroed.Z = false; // nouvelle fraise : son zéro Z est à refaire
@@ -125,7 +131,7 @@ function finishJob() {
   endJob(`Étape ${k + 1} terminée en ${t}.${at} Installe « ${PLAN[k + 1].tool.name} », refais le zéro Z${ZPOINT ? ' au papier à cet endroit' : ''} (sans toucher au zéro X/Y), puis lance l'étape ${k + 2}.`);
 }
 function endJob(msg) {
-  if (!job) return; job = null; log(msg, 'msg'); keepAwake(false);
+  if (!job) return; noteProgress(); job = null; log(msg, 'msg'); keepAwake(false);
   $('#job').classList.add('hide'); updateButtons(); recompute();
 }
 // écran (et donc PC) maintenu éveillé pendant une gravure : une mise en veille couperait l'envoi, broche allumée

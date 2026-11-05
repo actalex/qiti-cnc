@@ -19,6 +19,8 @@ Diagnostic du 2026-10-30 : risques connus d'un logiciel de FAO / pilotage GRBL, 
 - Arrêt : feed hold, reset seulement à `Hold:0` (pas d'alarme 3). [grbl-simule]
 - `error:` / `ALARM:` / redémarrage de la carte pendant une gravure : envoi arrêté. [grbl-simule]
 - Pause propre : arrêt au prochain dégagement, `M5`, reprise `M3` + temporisation. [grbl-simule]
+- Reprise d'une gravure interrompue (arrêt, câble, coupure de l'ordinateur ; avancement noté chaque seconde dans le navigateur) : seulement depuis un point de reprise (début d'une coupe) dépassé d'au moins 24 lignes acquittées (tampon de GRBL), pour le même G-code ; le programme repris remonte au dégagement, va en XY au point, démarre la broche (+ temporisation), redescend dans la saignée déjà coupée (rapide jusqu'à 0,5 mm au-dessus du brut, puis plongée), puis refait exactement la suite. Case obligatoire « brut et carte inchangés ». [gcode.test, grbl-simule]
+- Reset envoyé par la page après un arrêt complet : position et zéros gardés (GRBL ne perd la position qu'en reset pendant un mouvement). [grbl-simule]
 - Câble USB perdu pendant une gravure : fin de la gravure, alerte « broche peut-être encore allumée ». [grbl-simule]
 - Écran maintenu éveillé pendant une gravure (Wake Lock) : la veille couperait l'envoi.
 - Jog : seulement en Idle/Jog, sans répétition de touche, Z ≤ 500 mm/min. [grbl-simule]

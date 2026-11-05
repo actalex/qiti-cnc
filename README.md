@@ -60,7 +60,7 @@ Le filtre Inkscape « Inverser » est reconnu, et l'épaisseur du trait est igno
 - **Plusieurs fraises** : une étape par fraise, enchaînées avec changement de fraise et nouveau zéro Z. La page choisit d'office un point du brut que rien n'usine (repère bleu « Zéro Z ») : chaque étape s'y termine, et le zéro Z au papier s'y fait avec chaque fraise.
 - **Édition sur le plan** : déplacer, tourner, annuler et rétablir.
 - **Aperçus** : relief calculé avec la forme réelle de chaque fraise, trajectoires, durée estimée avec les accélérations lues sur la carte.
-- **Pilotage GRBL** (Web Serial) : lecture des réglages de la carte (`$$`), déplacements manuels, zéros, pause propre (fraise relevée, broche arrêtée), arrêt sans perte de position, réglage d'avance, console.
+- **Pilotage GRBL** (Web Serial) : lecture des réglages de la carte (`$$`), déplacements manuels, zéros, pause propre (fraise relevée, broche arrêtée), arrêt sans perte de position, reprise d'une gravure interrompue (arrêt, câble ou ordinateur coupé : repartir du début d'une passe sans tout refaire), réglage d'avance, console.
 - **Préréglages matériaux** : bois tendre, bois dur, MDF, contreplaqué, acrylique. Ce sont des valeurs de départ, à valider dans une chute.
 
 ## Sécurité

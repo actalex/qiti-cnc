@@ -310,6 +310,12 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div id="cSummary" class="note" style="margin-bottom:8px"></div>
     <div id="cAlert" style="color:#c0392b;font-weight:600;margin-bottom:8px"></div>
     <div id="cWarn" style="color:var(--warn);margin-bottom:8px"></div>
+    <div id="cResume" class="hide" style="border:1px solid var(--warn);border-radius:6px;padding:6px 8px;margin-bottom:8px">
+      <div id="cResumeWhen" style="font-weight:600"></div>
+      <label>Repartir de <select id="cFrom" style="max-width:100%"></select></label>
+      <div class="note">La fraise remonte au dégagement, va au-dessus du point de reprise, la broche démarre, puis la gravure continue. Ce qui précède n'est pas refait (le point choisi est un peu avant l'interruption : quelques passes à vide).</div>
+      <label class="check" id="cResumeChk"><input type="checkbox"> <span>Le brut n'a pas bougé et la carte n'a pas été éteinte ni réinitialisée en alarme depuis l'interruption (sinon : refais les zéros exactement au même endroit, ou repars du début).</span></label>
+    </div>
     <label class="check"><input type="checkbox"> <span>Le matériau est fixé solidement sur la table.</span></label>
     <label class="check"><input type="checkbox"> <span id="cTool">La bonne fraise est installée.</span></label>
     <label class="check"><input type="checkbox"> <span id="cOrigin">Le zéro X/Y est placé au coin avant-gauche du brut.</span></label>
@@ -986,7 +992,7 @@ function computeCAM() {
   return res;
 }
 function buildGcode(step, park) { // park : point de zéro Z où finir (changement de fraise), sinon retour à X0 Y0
-  const T = step.tool, m = S.machine, safe = m.safeZ, L = [], moves = [], lineMove = [];
+  const T = step.tool, m = S.machine, safe = m.safeZ, L = [], moves = [], lineMove = [], resume = [];
   const [gx, gy] = originOff();
   let x = gx, y = gy, z = safe, F = null, time = 0, zMin = 0;
   const push = s => { L.push(s); lineMove.push(moves.length); };
@@ -1022,10 +1028,14 @@ function buildGcode(step, park) { // park : point de zéro Z où finir (changeme
       const dl = Math.hypot(p0[0] - x, p0[1] - y), app0 = Math.min(safe, Math.max(0, c.zTop) + 0.5);
       const tRetract = (2 * safe - z - app0 + dl) / m.rapid + Math.max(0, app0 - z) / T.plunge;
       const link = !here && last && last.g === g && last.c.area && z < safe && dl / T.feed <= tRetract && segInArea(last.c.area, [x, y], p0);
-      if (link) mv(1, p0[0], p0[1], z, T.feed);
-      else if (!here) {
+      // point de reprise (src/reprise.js) au début de chaque coupe : état complet (position, avance) ; sous le dégagement,
+      // la fraise est dans ce qu'elle vient de couper, la colonne au-dessus est vide
+      const rp = () => resume.push({ line: L.length, x: f3(x - gx), y: f3(y - gy), z, f: F, name: g.shape.name, zc: p0[2] });
+      if (link) { rp(); mv(1, p0[0], p0[1], z, T.feed); }
+      else if (here) rp();
+      else {
         if (z < safe) mv(0, x, y, safe);
-        mv(0, p0[0], p0[1], safe);
+        rp(); mv(0, p0[0], p0[1], safe);
         if (app0 < safe) mv(0, p0[0], p0[1], app0);
       }
       if (!isV(T) && S.ramp.on && !c.finish && p0[2] < z - 1e-6) {
@@ -1048,7 +1058,7 @@ function buildGcode(step, park) { // park : point de zéro Z où finir (changeme
   else mv(0, gx, gy, safe);
   push('M2');
   if (m.plan) time = planTime(moves, m.plan) + Math.max(0, m.dwell); // accélérations lues sur la carte
-  return { lines: L, moves, lineMove, time, zMin, tool: T };
+  return { lines: L, moves, lineMove, resume, time, zMin, tool: T };
 }
 
 /* ====================== Fusion des poches ====================== */
@@ -1285,7 +1295,7 @@ function drawMoves() {
   }
 }
 function drawProgress() {
-  const upto = G.lineMove[Math.min(job.acked, G.lineMove.length - 1)] || 0;
+  const upto = G.lineMove[Math.max(0, Math.min((job.off || 0) + job.acked, G.lineMove.length - 1))] || 0;
   ctx.strokeStyle = 'rgba(46,139,87,.9)'; ctx.lineWidth = 2; ctx.beginPath();
   for (let k = 0; k < upto; k++) { const m = G.moves[k]; if (m.g !== 1) continue; const [a, b] = W2S(m.x0, m.y0), [c, d] = W2S(m.x, m.y); ctx.moveTo(a, b); ctx.lineTo(c, d); }
   ctx.stroke();
@@ -1968,7 +1978,9 @@ function handleLine(l) {
     if (c === 1) log('Clique « Déverrouiller », puis éloigne l\'axe du contacteur par petits pas (ex. Z− si Z était tout en haut). Refais ensuite les zéros : la position a pu glisser.', 'msg');
     if (job) abortJob('Alarme ' + c + ' : ' + (ALARMS[c] || '')); return; }
   // démarrage de la carte : sans homing, les zéros de travail ne valent plus (machine.zeroed)
-  if (/^Grbl/i.test(l)) { machine.queue = []; machine.inflight = []; machine.used = 0; machine.zeroed = {}; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); readGrblSettings(); return; }
+  if (/^Grbl/i.test(l)) {
+    const own = machine.softReset && Date.now() - machine.softReset < 3000; machine.softReset = 0; // bannière de notre reset d'arrêt
+    machine.queue = []; machine.inflight = []; machine.used = 0; if (!own) machine.zeroed = {}; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); readGrblSettings(); return; }
   if (/^\$\d+=/.test(l)) { const [k, v] = l.slice(1).split('='); machine.grbl[+k] = parseFloat(v); if (!machine.quietSettings) log(l); return; }
   if (l.startsWith('[PRB:')) { log(l, 'msg'); return; }
   log(l, l.startsWith('[MSG') ? 'msg' : '');
@@ -2132,7 +2144,8 @@ $('#bCarve').onclick = () => {
   $('#cSummary').innerHTML = (PLAN.length > 1 ? `<b>Étape ${stepIdx + 1}/${PLAN.length}</b> · ` : '') + `Durée estimée <b>${fmtTime(G.time)}</b> · profondeur max <b>${f3(-G.zMin)} mm</b> · ${G.lines.length.toLocaleString('fr')} lignes`;
   // zéros à refaire après un démarrage de la carte (pas de homing) ; Z à refaire après chaque changement de fraise
   const miss = [...'XYZ'].filter(a => !machine.zeroed[a]), alerts = [];
-  if (miss.length) alerts.push(`Zéro ${miss.join(', ')} pas refait depuis le démarrage de la carte${stepIdx > 0 && miss.includes('Z') && miss.length === 1 ? ' ou le changement de fraise' : ''} : sans homing, l'ancien zéro ne vaut plus.`);
+  if (miss.length && resumeChoices(G)) alerts.push(`Zéro ${miss.join(', ')} pas refait depuis l'ouverture de la page ou le démarrage de la carte. Pour reprendre, la carte ne doit pas avoir redémarré : vérifie la position avec « Aller au zéro »${ZPOINT ? ' et « Aller au point de zéro Z » (au papier)' : ''} avant de lancer.`);
+  else if (miss.length) alerts.push(`Zéro ${miss.join(', ')} pas refait depuis le démarrage de la carte${stepIdx > 0 && miss.includes('Z') && miss.length === 1 ? ' ou le changement de fraise' : ''} : sans homing, l'ancien zéro ne vaut plus.`);
   const deep = -G.zMin - S.stock.t;
   if (!SURF && deep > 1e-6) alerts.push(`La fraise descend ${f3(deep)} mm sous le brut, dans la table.`);
   $('#cAlert').textContent = alerts.join(' ');
@@ -2140,21 +2153,25 @@ $('#bCarve').onclick = () => {
   const own = cutOf(T); $('#cKnob').textContent = 'La vitesse de broche est réglée sur le variateur' + (own && own.knob ? ` (repère noté pour ce matériau : ${own.knob}).` : '.');
   $('#cWarn').textContent = warns; $('#cTool').textContent = `La fraise « ${T.name} » (${isV(T) ? 'en V ' + T.angle + '°' : 'Ø ' + T.d + ' mm'}) est installée.`;
   $('#cOrigin').textContent = S.origin === 'center' ? 'Le zéro X/Y est placé au centre du brut.' : 'Le zéro X/Y est placé au coin avant-gauche du brut.';
-  $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').disabled = true;
+  $$('#dlgCarve input[type=checkbox]').forEach(c => c.checked = false); $('#cGo').textContent = 'Lancer la gravure';
+  fillResume(); checkCarveList();
   $('#dlgCarve').showModal();
 };
-$$('#dlgCarve input[type=checkbox]').forEach(c => c.addEventListener('change', () => { $('#cGo').disabled = !$$('#dlgCarve input[type=checkbox]').every(x => x.checked); }));
+// cases visibles toutes cochées (celle de la reprise n'apparaît que si on reprend)
+function checkCarveList() { $('#cGo').disabled = !$$('#dlgCarve input[type=checkbox]').filter(x => !x.closest('.hide')).every(x => x.checked); }
+$$('#dlgCarve input[type=checkbox]').forEach(c => c.addEventListener('change', checkCarveList));
 $('#cCancel').onclick = () => $('#dlgCarve').close();
-$('#cGo').onclick = () => { $('#dlgCarve').close(); startJob(); };
-function startJob() {
+$('#cGo').onclick = () => { const r = resumeFrom(); $('#dlgCarve').close(); startJob(r); };
+function startJob(from) { // from : point de reprise (src/reprise.js), sinon depuis le début
   if (!G || !machine.port || machine.state !== 'Idle') return;
+  const R = from ? resumeLines(G, from) : { lines: G.lines, off: 0, pre: 0 };
   // lignes de dégagement (G0 seul en Z jusqu'à la hauteur de sécurité) : points où une pause peut couper la broche
   const safe = S.machine.safeZ, retracts = [];
-  G.lines.forEach((l, k) => { const m = /^G0 Z(-?[\d.]+)$/.exec(l); if (m && +m[1] >= safe - 1e-6) retracts.push(k); });
-  job = { lines: G.lines, total: G.lines.length, next: 0, acked: 0, t0: Date.now(), pause: null, retracts, step: stepIdx };
+  R.lines.forEach((l, k) => { const m = /^G0 Z(-?[\d.]+)$/.exec(l); if (m && +m[1] >= safe - 1e-6) retracts.push(k); });
+  job = { lines: R.lines, total: R.lines.length, next: 0, acked: 0, t0: Date.now(), pause: null, retracts, step: stepIdx, off: R.off, pre: R.pre, sig: gcodeSig(G) };
   refreshSteps();
   $('#job').classList.remove('hide'); refreshPauseBtn();
-  log('Gravure lancée (' + job.total + ' lignes).', 'msg'); keepAwake(true);
+  log(from ? `Reprise à « ${from.name} » (ligne ${from.line + 1} sur ${G.lines.length}) : ${job.total} lignes à envoyer.` : 'Gravure lancée (' + job.total + ' lignes).', 'msg'); keepAwake(true);
   feedJob(); pump(); updateButtons();
 }
 function updateJobUI() {
@@ -2213,6 +2230,7 @@ function checkStop() {
   if (moving && !late) return;
   machine.stopWait = null;
   if (w.endMsg) endJob(w.endMsg); // avant le reset : la bannière Grbl ne doit pas être prise pour un redémarrage en gravure
+  machine.softReset = late ? 0 : Date.now(); // reset machine arrêtée : GRBL garde la position, donc les zéros
   rt(0x18); machine.queue = []; machine.inflight = []; machine.used = 0;
   if (late) log('Reset envoyé alors que la machine bougeait encore : la position peut être perdue, refais l\'origine machine et les zéros.', 'err');
   else log('Machine arrêtée, broche coupée.', 'msg');
@@ -2226,7 +2244,7 @@ function abortJob(why) {
   else log('Machine en pause, broche allumée. Bouton « Stop » du panneau Machine pour couper.', 'msg');
 }
 function finishJob() {
-  const k = job.step, t = fmtTime((Date.now() - job.t0) / 1000);
+  const k = job.step, t = fmtTime((Date.now() - job.t0) / 1000); clearProgress(); job.sig = null; // étape finie : plus rien à reprendre
   if (k >= PLAN.length - 1) return endJob(PLAN.length > 1 ? `Dernière étape terminée en ${t}.` : `Gravure terminée en ${t}.`);
   stepIdx = k + 1;
   machine.zeroed.Z = false; // nouvelle fraise : son zéro Z est à refaire
@@ -2234,7 +2252,7 @@ function finishJob() {
   endJob(`Étape ${k + 1} terminée en ${t}.${at} Installe « ${PLAN[k + 1].tool.name} », refais le zéro Z${ZPOINT ? ' au papier à cet endroit' : ''} (sans toucher au zéro X/Y), puis lance l'étape ${k + 2}.`);
 }
 function endJob(msg) {
-  if (!job) return; job = null; log(msg, 'msg'); keepAwake(false);
+  if (!job) return; noteProgress(); job = null; log(msg, 'msg'); keepAwake(false);
   $('#job').classList.add('hide'); updateButtons(); recompute();
 }
 // écran (et donc PC) maintenu éveillé pendant une gravure : une mise en veille couperait l'envoi, broche allumée
@@ -2246,6 +2264,65 @@ async function keepAwake(on) {
 document.addEventListener('visibilitychange', () => { if (job && document.visibilityState === 'visible') keepAwake(true); }); // perdu quand l'onglet est caché
 window.addEventListener('beforeunload', e => { if (job) { e.preventDefault(); e.returnValue = ''; } });
 
+/* ====================== Reprise d'une gravure interrompue ====================== */
+// Points de reprise (G.resume, posés par buildGcode) : début d'une coupe abordée depuis la hauteur de dégagement.
+// L'avancement de la gravure est noté chaque seconde dans le navigateur : après un arrêt, un câble débranché ou une
+// coupure de l'ordinateur, la liste de vérification propose de repartir du dernier point de reprise sûrement passé.
+// Le zéro pièce (G54) reste dans la carte tant qu'elle n'a pas été éteinte : c'est ce qui rend la reprise possible.
+const RESUME_KEY = 'atelier-cnc-reprise';
+const RESUME_MARGIN = 24; // lignes acquittées par GRBL mais peut-être pas encore exécutées (tampon du planificateur)
+function gcodeSig(P) {
+  let h = 5381;
+  for (const l of P.lines) for (let i = 0; i < l.length; i++) h = (h * 33 + l.charCodeAt(i)) | 0;
+  return P.lines.length + ':' + (h >>> 0).toString(36);
+}
+function savedProgress() { try { return JSON.parse(localStorage.getItem(RESUME_KEY)); } catch (e) { return null; } }
+function noteProgress() {
+  if (!job || !job.sig || job.acked <= job.pre) return;
+  const done = job.off + job.acked - 1, old = savedProgress();
+  if (old && old.sig === job.sig && old.done >= done) return;
+  try { localStorage.setItem(RESUME_KEY, JSON.stringify({ sig: job.sig, step: job.step, done, t: Date.now() })); } catch (e) {}
+}
+function clearProgress() { localStorage.removeItem(RESUME_KEY); }
+// points de reprise possibles pour l'étape P : ceux que la gravure interrompue a sûrement dépassés, le plus récent d'abord
+function resumeChoices(P) {
+  const sv = savedProgress();
+  if (!sv || !P.resume || sv.sig !== gcodeSig(P)) return null;
+  const pts = P.resume.filter(r => r.line > P.resume[0].line && r.line <= sv.done - RESUME_MARGIN);
+  return pts.length ? { t: sv.t, pts: pts.reverse().slice(0, 40) } : null;
+}
+// programme repris : en-tête, dégagement, X/Y du point, broche, descente au Z du point (rapide jusqu'à 0,5 mm au-dessus
+// du brut, puis à la vitesse de plongée dans la saignée déjà coupée), avance du point, puis la suite
+function resumeLines(P, r) {
+  const m = S.machine, safe = m.safeZ, pre = [
+    `; Reprise à « ${r.name} » (ligne ${r.line + 1} sur ${P.lines.length})`, 'G21 G90 G17 G94 G54', `G0 Z${f3(safe)}`,
+    `G0 X${r.x} Y${r.y}`, `M3 S${Math.round(m.spindleS)}`, ...(m.dwell > 0 ? [`G4 P${m.dwell}`] : [])];
+  if (r.z < safe - 5e-4) {
+    const app = Math.min(safe, Math.max(0, r.z) + 0.5);
+    if (r.z >= app - 5e-4) pre.push(`G0 Z${f3(r.z)}`);
+    else { if (app < safe - 5e-4) pre.push(`G0 Z${f3(app)}`); pre.push(`G1 Z${f3(r.z)} F${Math.round(P.tool.plunge)}`); }
+  }
+  if (r.f) pre.push('F' + Math.round(r.f));
+  return { lines: pre.concat(P.lines.slice(r.line)), off: r.line - pre.length, pre: pre.length };
+}
+function fillResume() {
+  const C = G && resumeChoices(G), box = $('#cResume');
+  box.classList.toggle('hide', !C); if (!C) return;
+  const d = new Date(C.t), when = d.toLocaleDateString('fr', { day: '2-digit', month: '2-digit' }) + ' à ' + d.toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' });
+  $('#cResumeWhen').textContent = `Cette étape a été interrompue le ${when}.`;
+  const sel = $('#cFrom'); sel.innerHTML = '';
+  const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+  opt('', 'Au début (tout refaire)');
+  C.pts.forEach(r => opt(r.line, `« ${r.name} », passe à ${f3(Math.abs(r.zc)).replace('.', ',')} mm (${Math.round(r.line / G.lines.length * 100)} %)`));
+  $('#cFrom').value = String(C.pts[0].line); syncResume();
+}
+function syncResume() {
+  const on = !!$('#cFrom').value; $('#cResumeChk').classList.toggle('hide', !on);
+  $('#cGo').textContent = on ? 'Reprendre la gravure' : 'Lancer la gravure'; checkCarveList();
+}
+$('#cFrom').onchange = syncResume;
+const resumeFrom = () => { const v = $('#cFrom').value; return v && !$('#cResume').classList.contains('hide') ? G.resume.find(r => r.line === +v) : null; };
+setInterval(noteProgress, 1000);
 /* ====================== Démarrage ====================== */
 new ResizeObserver(resize).observe(cv);
 refreshAll(); updateButtons();

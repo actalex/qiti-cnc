@@ -297,7 +297,7 @@ function computeCAM() {
   return res;
 }
 function buildGcode(step, park) { // park : point de zéro Z où finir (changement de fraise), sinon retour à X0 Y0
-  const T = step.tool, m = S.machine, safe = m.safeZ, L = [], moves = [], lineMove = [];
+  const T = step.tool, m = S.machine, safe = m.safeZ, L = [], moves = [], lineMove = [], resume = [];
   const [gx, gy] = originOff();
   let x = gx, y = gy, z = safe, F = null, time = 0, zMin = 0;
   const push = s => { L.push(s); lineMove.push(moves.length); };
@@ -333,10 +333,14 @@ function buildGcode(step, park) { // park : point de zéro Z où finir (changeme
       const dl = Math.hypot(p0[0] - x, p0[1] - y), app0 = Math.min(safe, Math.max(0, c.zTop) + 0.5);
       const tRetract = (2 * safe - z - app0 + dl) / m.rapid + Math.max(0, app0 - z) / T.plunge;
       const link = !here && last && last.g === g && last.c.area && z < safe && dl / T.feed <= tRetract && segInArea(last.c.area, [x, y], p0);
-      if (link) mv(1, p0[0], p0[1], z, T.feed);
-      else if (!here) {
+      // point de reprise (src/reprise.js) au début de chaque coupe : état complet (position, avance) ; sous le dégagement,
+      // la fraise est dans ce qu'elle vient de couper, la colonne au-dessus est vide
+      const rp = () => resume.push({ line: L.length, x: f3(x - gx), y: f3(y - gy), z, f: F, name: g.shape.name, zc: p0[2] });
+      if (link) { rp(); mv(1, p0[0], p0[1], z, T.feed); }
+      else if (here) rp();
+      else {
         if (z < safe) mv(0, x, y, safe);
-        mv(0, p0[0], p0[1], safe);
+        rp(); mv(0, p0[0], p0[1], safe);
         if (app0 < safe) mv(0, p0[0], p0[1], app0);
       }
       if (!isV(T) && S.ramp.on && !c.finish && p0[2] < z - 1e-6) {
@@ -359,6 +363,6 @@ function buildGcode(step, park) { // park : point de zéro Z où finir (changeme
   else mv(0, gx, gy, safe);
   push('M2');
   if (m.plan) time = planTime(moves, m.plan) + Math.max(0, m.dwell); // accélérations lues sur la carte
-  return { lines: L, moves, lineMove, time, zMin, tool: T };
+  return { lines: L, moves, lineMove, resume, time, zMin, tool: T };
 }
 

@@ -35,6 +35,7 @@ const launch = require('./navigateur');
     Object.defineProperty(navigator, 'serial', { value: { requestPort: async () => port, addEventListener(t, f) { if (t === 'disconnect') window.__unplug = f; } } });
   });
   await p.goto('file://' + __dirname + '/../dist/atelier-cnc.html');
+  const checkAll = async () => { for (const c of await p.$$('#dlgCarve input[type=checkbox]')) if (await c.isVisible()) await c.check(); }; // cases visibles
   await p.setInputFiles('#fSvg', __dirname + '/exemple.svg');
   await p.click('#colNo'); // formes noires par défaut : couleurs ignorées, usinages réglés plus bas
   await p.waitForTimeout(400);
@@ -66,7 +67,7 @@ const launch = require('./navigateur');
   await p.click('#bCarve');
   const al1 = await p.textContent('#cAlert'); // seul le zéro Z a été fait
   if (!al1.includes('Zéro X, Y pas refait')) { console.error('ÉCHEC alerte zéros', al1); process.exitCode = 1; }
-  for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
+  await checkAll();
   await p.click('#cGo');
   await p.waitForTimeout(1500); await p.screenshot({ path: __dirname + '/shot-run.png' });
   for (let k=0;k<60;k++){ const j = await p.evaluate(()=>!!window.__atelier.job); if(!j) break; await p.waitForTimeout(500); }
@@ -77,17 +78,33 @@ const launch = require('./navigateur');
   if (errs.length || !log.includes('Gravure terminée')) { console.error('ÉCHEC'); process.exitCode = 1; }
   // « Arrêter » en pleine gravure : le reset ne doit partir qu'une fois la machine arrêtée (Hold:0), sans alarme 3
   await p.waitForTimeout(500);
-  await p.click('#bCarve'); for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
+  await p.click('#bCarve'); await checkAll();
   await p.click('#cGo'); await p.waitForTimeout(400);
   p.once('dialog', d => d.accept()); await p.click('#bStop');
   for (let k = 0; k < 30; k++) { if (await p.evaluate(() => !window.__atelier.job && !window.__atelier.machine.stopWait)) break; await p.waitForTimeout(200); }
   const stop = await p.evaluate(() => ({ resetIn: __grbl.resetIn, state: window.__atelier.machine.state, log: $('#log').innerText.split('\n').slice(-4) }));
   console.log('arrêt :', stop);
   if (stop.resetIn !== 'Hold:0' || stop.log.some(l => l.includes('ALARME')) || !stop.log.some(l => l.includes('broche coupée'))) { console.error('ÉCHEC arrêt'); process.exitCode = 1; }
+  // Reprise après l'arrêt : les zéros restent valides (reset de la page, machine arrêtée), la liste propose de repartir
+  // d'un point de reprise ; GRBL reçoit en-tête, dégagement, X/Y du point, broche, puis la suite ; à la fin, plus de reprise
+  await p.evaluate(() => { localStorage.setItem('atelier-cnc-reprise', JSON.stringify(Object.assign(JSON.parse(localStorage.getItem('atelier-cnc-reprise')), { done: 2000 }))); });
+  await p.waitForTimeout(300);
+  await p.click('#bCarve');
+  const rd = await p.evaluate(() => ({ box: !$('#cResume').classList.contains('hide'), n: $('#cFrom').options.length, v: $('#cFrom').value, alert: $('#cAlert').textContent, go: $('#cGo').textContent, zZ: !!window.__atelier.machine.zeroed.Z }));
+  await checkAll(); await p.screenshot({ path: __dirname + '/shot-reprise.png' });
+  const goOff = await p.$eval('#cGo', b => b.disabled);
+  const nRx0 = await p.evaluate(() => __grbl.rx.length);
+  await p.click('#cGo');
+  for (let k = 0; k < 60; k++) { if (await p.evaluate(() => !window.__atelier.job)) break; await p.waitForTimeout(250); }
+  const rr = await p.evaluate(([n, v]) => { const rx = __grbl.rx.slice(n), G = window.__atelier.G, r = G.resume.find(q => q.line === +v);
+    return { head: rx.slice(0, 5), r, sent: rx.length, want: G.lines.length - r.line, left: localStorage.getItem('atelier-cnc-reprise'), log: $('#log').innerText.split('\n').filter(l => l.includes('Reprise à')).length }; }, [nRx0, rd.v]);
+  console.log('reprise :', rd, rr.head, `${rr.sent} lignes envoyées`);
+  if (!rd.box || rd.n < 2 || !rd.v || !rd.zZ || !rd.alert.includes('Zéro X, Y pas refait') || !rd.alert.includes('Pour reprendre') || rd.go !== 'Reprendre la gravure' || goOff || rr.head[0] !== 'G21 G90 G17 G94 G54' || !/^G0 Z5$/.test(rr.head[1])
+    || rr.head[2] !== `G0 X${rr.r.x} Y${rr.r.y}` || !/^M3 S/.test(rr.head[3]) || rr.sent < rr.want || rr.left !== null || rr.log !== 1) { console.error('ÉCHEC reprise après arrêt', rr); process.exitCode = 1; }
   // Pause propre : arrêt au prochain dégagement (dernière ligne envoyée = G0 Z de sécurité), broche coupée (M5) ; reprise :
   // M3 puis la suite, jusqu'à la fin de la gravure
   await p.waitForTimeout(500);
-  await p.click('#bCarve'); for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
+  await p.click('#bCarve'); await checkAll();
   await p.click('#cGo'); await p.waitForTimeout(400);
   await p.click('#bPause');
   const waitBtn = await p.textContent('#bPause');
@@ -107,7 +124,7 @@ const launch = require('./navigateur');
   await p.evaluate(() => { const A = window.__atelier, v = A.S.tools.find(t => t.type === 'v'); A.D.shapes[3].tool = v.id; A.recompute(); });
   const carveStep = async () => {
     await p.click('#bCarve'); const z = await p.textContent('#cZ');
-    for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
+    await checkAll();
     await p.click('#cGo'); await p.waitForTimeout(300);
     for (let k = 0; k < 60; k++) { if (await p.evaluate(() => !window.__atelier.job)) break; await p.waitForTimeout(250); }
     await p.waitForTimeout(400);
@@ -132,7 +149,7 @@ const launch = require('./navigateur');
   // câble débranché pendant une gravure : fin de la gravure et alerte « broche peut-être encore allumée »
   await p.evaluate(() => { __grbl.s = 'Idle'; }); await p.waitForTimeout(400); // le test précédent l'a laissée en alarme
   await p.click('#bZeroXY'); await p.click('#bZeroZ'); await p.waitForTimeout(600);
-  await p.click('#bCarve'); for (const c of await p.$$('#dlgCarve input[type=checkbox]')) await c.check();
+  await p.click('#bCarve'); await checkAll();
   await p.click('#cGo'); await p.waitForTimeout(400);
   let alertMsg = ''; p.once('dialog', d => { alertMsg = d.message(); d.accept(); });
   await p.evaluate(() => window.__unplug({ target: window.__port })); await p.waitForTimeout(500);
