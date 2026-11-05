@@ -118,7 +118,7 @@ function recompute() {
   $('#iDepth').textContent = G ? f3(-Math.min(...PLAN.map(g => g.zMin))) + ' mm' : '—';
   refreshSteps();
   $('#warns').textContent = warns.length ? '⚠ ' + groupWarns(warns).join(' · ') : '';
-  refreshShapes(); updateButtons(); draw();
+  refreshShapes(); updateButtons(); draw(); refreshSummaries();
 }
 // Passage à une fraise en V : proposer de convertir les usinages qu'elle ne sait pas faire
 function offerVConvert() {

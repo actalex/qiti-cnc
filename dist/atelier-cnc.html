@@ -21,7 +21,20 @@ main{display:grid;grid-template-columns:290px 1fr 300px;height:calc(100% - 46px)
 aside{background:var(--panel);overflow:auto;border-right:1px solid var(--line)}
 aside#right{border-right:0;border-left:1px solid var(--line);display:flex;flex-direction:column}
 section.box{padding:10px 12px;border-bottom:1px solid var(--line)}
-section.box h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 8px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+section.box h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:#4a453d;margin:0 0 8px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+/* panneau de gauche : sections numérotées dans l'ordre du travail, liseré de couleur, repliables avec résumé (accordeon.js) */
+aside#left section.box{border-left:4px solid var(--c,var(--line));padding-left:10px}
+aside#left section.box>h2{font-size:13px;color:var(--txt);cursor:pointer;user-select:none}
+aside#left section.box>h2 .n{display:inline-flex;width:19px;height:19px;border-radius:50%;background:var(--c);color:#fff;font-size:11px;align-items:center;justify-content:center;margin-right:7px;letter-spacing:0}
+aside#left section.box>h2 .chev{display:inline-block;width:14px;margin-left:6px;color:var(--mut);font-style:normal;transition:transform .15s}
+aside#left section.box>h2 .chev::before{content:'▾'}
+aside#left section.box>h2:hover .chev{color:var(--txt)}
+aside#left section.closed>h2{margin:0}
+aside#left section.closed>h2 .chev{transform:rotate(-90deg)}
+aside#left .sum{display:none;color:var(--mut);font-size:12px;margin:3px 0 0 26px}
+aside#left section.closed>.sum{display:block}
+aside#left section.closed>:not(h2):not(.sum){display:none!important}
+aside#left .sub{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin:10px 0 4px}
 .row{display:flex;gap:6px;align-items:center;margin:4px 0}
 .row label{flex:1;color:var(--mut)}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
@@ -97,8 +110,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
 <main>
 <aside id="left">
   <div class="banner" id="serialBanner">La connexion USB (Web Serial) n'est disponible que dans <b>Chrome ou Edge</b>, avec la page en ligne (<b>actalex.github.io/qiti-cnc</b>) ou servie en http://localhost. La FAO et l'export du G-code fonctionnent partout.</div>
-  <section class="box">
-    <h2>Matériau</h2>
+  <section class="box" data-acc="brut" style="--c:#b8894a">
+    <h2><span><b class="n">1</b>Brut et matériau</span><i class="chev"></i></h2>
     <div class="grid3">
       <div><label>Largeur X</label><input type="number" id="stW" step="1" min="1"></div>
       <div><label>Hauteur Y</label><input type="number" id="stH" step="1" min="1"></div>
@@ -109,8 +122,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="note">mm — Z0 sur le dessus du brut.</div>
     <div class="row" style="margin-top:6px"><label>Matériau</label><select id="matSel" style="width:150px" title="Pré-remplit avance, plongée et profondeur par passe de toutes les fraises : tes réglages retenus pour ce matériau, sinon des valeurs de départ prudentes"></select></div>
   </section>
-  <section class="box">
-    <h2>Fraise <span><button id="bToolAdd" title="Dupliquer la fraise">+</button> <button id="bToolDel" title="Supprimer la fraise">−</button></span></h2>
+  <section class="box" data-acc="fraise" style="--c:#1f6feb">
+    <h2><span><b class="n">2</b>Fraise</span><span><button id="bToolAdd" title="Dupliquer la fraise">+</button> <button id="bToolDel" title="Supprimer la fraise">−</button><i class="chev"></i></span></h2>
     <select id="toolSel"></select>
     <div class="row"><label>Nom</label><input type="text" id="tName" style="width:150px"></div>
     <div class="row"><label>Type</label><select id="tType" style="width:150px"><option value="flat">Plate</option><option value="v">En V (pointue)</option><option value="ball">Boule (relief 3D)</option></select></div>
@@ -125,17 +138,16 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
     <div class="row flatonly"><label>Recouvrement poche (%)</label><input type="number" id="tSo" step="5" min="5" max="95"></div>
     <div class="note vonly" id="vNote"></div>
   </section>
-  <section class="box">
-    <h2>Placement du dessin</h2>
+  <section class="box" data-acc="dessin" style="--c:#2e8b57">
+    <h2><span><b class="n">3</b>Dessin</span><i class="chev"></i></h2>
+    <div class="sub" style="margin-top:0">Placement</div>
     <div class="grid3">
       <div><label>X (mm)</label><input type="number" id="pX" step="0.5"></div>
       <div><label>Y (mm)</label><input type="number" id="pY" step="0.5"></div>
       <div><label>Échelle %</label><input type="number" id="pS" step="1" min="1"></div>
     </div>
     <div class="row" style="margin-top:6px"><button id="bCenter">Centrer sur le brut</button><span id="dSize" class="note"></span></div>
-  </section>
-  <section class="box">
-    <h2>Formes <button id="bSelAll">Tout sélectionner</button></h2>
+    <div class="sub">Formes <button id="bSelAll">Tout sélectionner</button></div>
     <div class="shapes" id="shapeList"><div class="note" style="cursor:default">Importe un SVG (ou glisse-le sur la zone de travail).</div></div>
     <div id="selEdit" class="hide" style="margin-top:8px">
       <div class="note" id="selCount"></div>
@@ -159,8 +171,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
         <div class="row" style="gap:6px"><button id="bTabEdit">Placer à la main</button><button id="bTabAuto">Automatiques</button></div></div>
     </div>
   </section>
-  <section class="box">
-    <h2>Attaches</h2>
+  <section class="box" data-acc="attaches" data-closed="1" style="--c:#c77700">
+    <h2><span><b class="n">4</b>Attaches</span><i class="chev"></i></h2>
     <div class="row"><label><input type="checkbox" id="tabOn"> Ajouter des attaches aux découpes traversantes</label></div>
     <div class="grid3">
       <div><label>Nombre</label><input type="number" id="tabN" step="1" min="1"></div>
@@ -168,7 +180,8 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
       <div><label>Hauteur</label><input type="number" id="tabH" step="0.1" min="0.1"></div>
     </div>
   </section>
-  <section class="box">
+  <section class="box" data-acc="options" data-closed="1" style="--c:#7a746a">
+    <h2><span><b class="n">5</b>Options de fraisage</span><i class="chev"></i></h2>
     <div class="row"><label>Sens de fraisage</label>
       <select id="climb" style="width:150px"><option value="0">Conventionnel</option><option value="1">En avalant</option></select></div>
     <div class="note">Conventionnel : plus sûr sur une machine légère comme la TTC450.</div>
@@ -1618,7 +1631,7 @@ function recompute() {
   $('#iDepth').textContent = G ? f3(-Math.min(...PLAN.map(g => g.zMin))) + ' mm' : '—';
   refreshSteps();
   $('#warns').textContent = warns.length ? '⚠ ' + groupWarns(warns).join(' · ') : '';
-  refreshShapes(); updateButtons(); draw();
+  refreshShapes(); updateButtons(); draw(); refreshSummaries();
 }
 // Passage à une fraise en V : proposer de convertir les usinages qu'elle ne sait pas faire
 function offerVConvert() {
@@ -1765,6 +1778,36 @@ $('#bMachine').onclick = () => { MF.forEach(([id, k]) => $(id).value = S.machine
 $('#mCancel').onclick = () => $('#dlgMachine').close();
 $('#mOk').onclick = () => { MF.forEach(([id, k, t]) => { if (t === 's') S.machine[k] = $(id).value; else { const v = parseFloat($(id).value); if (isFinite(v) && v >= 0) S.machine[k] = v; } }); saveSettings(); $('#dlgMachine').close(); invalidate(); };
 
+/* ====================== Panneau de gauche : sections repliables ====================== */
+// Clic sur le titre d'une section (data-acc) : la replie ou la rouvre ; repliée, elle affiche le résumé de ses réglages.
+// État gardé dans le navigateur ; par défaut, Attaches et Options sont repliées (data-closed).
+const ACC_KEY = 'atelier-cnc-panneaux';
+const accState = (() => { try { return JSON.parse(localStorage.getItem(ACC_KEY)) || {}; } catch (e) { return {}; } })();
+const SUMMARY = {
+  brut: () => { const m = MATERIALS.find(x => x.id === S.material); return `${f3(S.stock.w)} × ${f3(S.stock.h)} × ${f3(S.stock.t)} mm · ${S.origin === 'center' ? 'origine au centre' : 'coin avant-gauche'} · ${m ? m.name : 'réglages manuels'}`; },
+  fraise: () => { const T = tool(); return `${T.name} · ${T.feed} mm/min · ${String(T.doc).replace('.', ',')} mm/passe`; },
+  dessin: () => D ? `${D.name} · ${D.shapes.length} forme${D.shapes.length > 1 ? 's' : ''} · ${f3(D.place.s)} %` : 'aucun dessin',
+  attaches: () => S.tabs.on ? `${S.tabs.n} × ${String(S.tabs.w).replace('.', ',')} mm, ${String(S.tabs.h).replace('.', ',')} mm de haut` : 'pas d\'attaches',
+  options: () => `${S.climb ? 'en avalant' : 'conventionnel'} · ${S.ramp.on ? 'rampe ' + S.ramp.angle + '°' : 'plongée verticale'}`
+};
+function refreshSummaries() {
+  for (const sec of $$('aside#left section[data-acc]')) { const f = SUMMARY[sec.dataset.acc], el = sec.querySelector(':scope > .sum'); if (f && el) try { el.textContent = f(); } catch (e) {} }
+}
+for (const sec of $$('aside#left section[data-acc]')) {
+  const k = sec.dataset.acc, h = sec.querySelector(':scope > h2'), sum = document.createElement('div');
+  sum.className = 'sum'; h.after(sum);
+  sec.classList.toggle('closed', k in accState ? accState[k] : sec.dataset.closed === '1');
+  h.title = 'Cliquer pour replier ou déplier';
+  h.addEventListener('click', e => {
+    if (e.target.closest('button,select,input')) return; // boutons du titre (+ / − des fraises)
+    accState[k] = sec.classList.toggle('closed');
+    try { localStorage.setItem(ACC_KEY, JSON.stringify(accState)); } catch (er) {}
+    refreshSummaries();
+  });
+}
+// résumés tenus à jour à chaque saisie dans le panneau, et après chaque recalcul (dessin importé, déplacé, mis à l'échelle)
+$('aside#left').addEventListener('change', () => setTimeout(refreshSummaries, 0));
+$('aside#left').addEventListener('input', () => setTimeout(refreshSummaries, 0));
 /* ====================== Attaches à la main ====================== */
 // sh.tabs = points du contour en coordonnées du dessin (ils suivent placement et échelle) ; vide = attaches réparties
 // automatiquement. En mode édition (tabEdit = id de la forme), un clic près du contour ajoute une attache, un clic sur
