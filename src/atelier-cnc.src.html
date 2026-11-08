@@ -214,7 +214,7 @@ dialog .ft{padding:10px 16px;border-top:1px solid var(--line);display:flex;justi
 
 <aside id="right">
   <section class="box">
-    <h2>Machine <span class="tag off" id="state">déconnectée</span></h2>
+    <h2>Machine <span class="tag off" id="state">déconnectée</span> <span class="tag off hide" id="spState"></span></h2>
     <div class="row">
       <button id="bConnect" class="pri" style="flex:1">Connecter (USB)</button>
       <button id="bUnlock" title="$X">Déverrouiller</button>
@@ -477,6 +477,7 @@ function toStockFn() {
 /*INCLUDE:grbl.js*/
 /*INCLUDE:gravure.js*/
 /*INCLUDE:reprise.js*/
+/*INCLUDE:broche.js*/
 /* ====================== Démarrage ====================== */
 new ResizeObserver(resize).observe(cv);
 refreshAll(); updateButtons();

@@ -70,7 +70,8 @@ Une CNC peut blesser et casser du matériel. L'atelier applique des garanties v�
 - jamais de déplacement rapide dans la matière ;
 - descente en Z jamais plus rapide que la vitesse de plongée ;
 - liste de vérification obligatoire, avec une alerte si les zéros n'ont pas été refaits depuis le démarrage de la carte ;
-- arrêt sans alarme, et envoi stoppé sur toute erreur.
+- arrêt sans alarme, et envoi stoppé sur toute erreur ;
+- pause immédiate si la carte indique la broche arrêtée alors qu'elle devrait tourner.
 
 Restent indispensables : **un arrêt d'urgence physique**, les protections (lunettes, audition, aspiration), et un premier essai à vide puis dans une chute. Le logiciel est fourni **sans aucune garantie** (voir la licence).
 

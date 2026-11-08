@@ -44,3 +44,16 @@ Deux étapes, environ **16 min** : ébauche à la fraise plate 3,175 (≈ 5 min 
 - Fond plat et cuvette aux bonnes profondeurs, dôme au ras : les deux zéros Z concordent (comme au test 4).
 - Marches d'ébauche encore visibles : la boule n'a pas atteint la surface, donc le zéro Z de la boule est trop haut, ou la surépaisseur est trop grande pour une seule passe.
 - Stries trop marquées : réduire le pas (0,2 mm) ou cocher les lignes croisées.
+
+## Résultats (2026-11-08)
+Photos : `test6-resultat-1.jpg`, `test6-resultat-2.jpg` (originaux `20261108_124910.jpg`, `20261108_124915.jpg`). Bois massif tendre.
+
+- **Console** : ni `error:` ni `ALARM:`. Après chaque Stop, bannière `Grbl 1.1h` (reset de la page) sans perte du zéro pièce.
+- **Accident** : la pièce a bougé pendant l'ébauche (rainures droites hors du cadre). Arrêt, refixation, puis ébauche refaite **depuis le début** : la reprise proposait « ébauche, ligne 19 », choisie exprès pour tout refaire, sans refaire le zéro X/Y.
+- **Broche pas redémarrée à la première reprise** : arrêt, puis seconde reprise, qui a marché. Le programme repris contient pourtant `M3 S…` (`resumeLines`). Cause inconnue, à établir (variateur coupé pendant l'arrêt ? comportement de la carte après le reset ?) : ne rien supposer.
+- **Relief** : dôme, cuvette, rampe et cadre bien formés, arêtes nettes ; plus de marches d'ébauche après la finition ; fines stries de finition en X (pas 0,3). Fibres arrachées par endroits sur les bords qui coupent le fil (bois tendre). Jugé **très satisfaisant** par l'utilisateur. Profondeurs non mesurées.
+- **Durées** : ébauche 15 min 16 s (5164 lignes), finition 20 min 47 s (17486 lignes) ; la page de l'utilisateur avait d'autres réglages que la fiche (ici 3636 et 10772 lignes, ≈ 5:33 et ≈ 10:48 estimées). Écart × 2 à × 3 à comprendre (≈ 14 lignes/s en finition). Écartés par calcul : accélérations et anticipation limitée du planificateur (< 1 %), dessin de la vue pendant la gravure (< 10 ms).
+- **Page lente** (déplacements aux flèches avec du retard) avec ce projet. Mesuré hors machine : chaque recalcul bloque la page (activation du relief ≈ 1 s, `recompute` ≈ 0,5 s, carte de la vue Relief ≈ 0,4 s, `zeroPoint` ≈ 0,1 s), mais les rapports d'état au repos ne coûtent presque rien. Cause du retard continu pas encore trouvée.
+
+### Conclusion
+Relief 3D validé sur la machine (ébauche plate + finition boule, zéro Z au point bleu). Restes : broche non relancée à une reprise, durées réelles × 2-3, page lente avec un gros relief.

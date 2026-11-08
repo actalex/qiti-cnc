@@ -15,13 +15,14 @@ const launch = require('./navigateur');
         for (const byte of chunk) {
           // « Run » tant que des lignes arrivent ; le hold met 600 ms à décélérer (Hold:1 → Hold:0)
           const state = () => st.s === 'Idle' && Date.now() - (st.lastT || 0) < 300 ? 'Run' : st.s;
-          if (byte === 0x3f) { emit(`<${state()}|MPos:${st.pos.map(v=>v.toFixed(3)).join(',')}|FS:0,0|WCO:0.000,0.000,0.000>`); continue; }
+          if (byte === 0x3f) { emit(`<${state()}|MPos:${st.pos.map(v=>v.toFixed(3)).join(',')}|FS:0,0|WCO:0.000,0.000,0.000|Ov:100,100,100${st.sp ? '|A:S' : ''}>`); continue; }
           if (byte === 0x21) { if (state() === 'Run') { st.s = 'Hold:1'; setTimeout(() => { if (st.s === 'Hold:1') st.s = 'Hold:0'; }, 600); } continue; }
           if (byte === 0x7e) { st.s = 'Idle'; continue; }
-          if (byte === 0x18) { st.resetIn = state(); if (st.resetIn === 'Run' || st.resetIn === 'Hold:1') { st.s = 'Alarm'; emit('ALARM:3'); } else st.s = 'Idle'; st.lastT = 0; emit("Grbl 1.1h ['$' for help]"); continue; }
+          if (byte === 0x18) { st.resetIn = state(); if (st.resetIn === 'Run' || st.resetIn === 'Hold:1') { st.s = 'Alarm'; emit('ALARM:3'); } else st.s = 'Idle'; st.lastT = 0; st.sp = false; emit("Grbl 1.1h ['$' for help]"); continue; }
           if (byte >= 0x80) continue;
           const ch = String.fromCharCode(byte);
           if (ch === '\n') { const l = st.buf.trim(); st.buf = ''; if (!l) continue; st.lines++; st.rx.push(l); if (!l.startsWith('$')) st.lastT = Date.now();
+            if (/^M[34]\b/.test(l) && !st.spFail) st.sp = true; else if (/^(M5|M2)\b/.test(l)) st.sp = false; // spFail : broche qui ne démarre pas
             const m = /X(-?[\d.]+)/.exec(l); if (m && !l.startsWith('$')) st.pos[0]=+m[1];
             const used = st.rx.length; // not exact
             const reglages = '$11=0.010 $20=0 $22=0 $30=1000 $110=3000 $111=3000 $112=600 $120=200 $121=200 $122=50 $130=450 $131=455 $132=80'.split(' ');
@@ -146,6 +147,19 @@ const launch = require('./navigateur');
   // mode laser lu sur la carte : avertissement
   const laser = await p.evaluate(() => { window.__atelier.machine.grbl[32] = 1; applyGrblSettings(); return $('#log').innerText.includes('Mode laser actif'); });
   if (!laser) { console.error('ÉCHEC mode laser'); process.exitCode = 1; }
+  // garde-fou broche : la carte a déjà montré la broche allumée ; M3 acquitté mais broche arrêtée → pause immédiate
+  await p.evaluate(() => { __grbl.s = 'Idle'; }); await p.waitForTimeout(400);
+  const sp0 = await p.evaluate(() => ({ seen: window.__atelier.S.machine.spReport, tag: $('#spState').textContent }));
+  await p.evaluate(() => { __grbl.spFail = true; });
+  await p.click('#bZeroXY'); await p.click('#bZeroZ'); await p.waitForTimeout(600);
+  await p.click('#bCarve'); await checkAll();
+  let spMsg = ''; p.once('dialog', d => { spMsg = d.message(); d.accept(); });
+  await p.click('#cGo');
+  for (let k = 0; k < 40; k++) { if (await p.evaluate(() => !window.__atelier.job && !window.__atelier.machine.stopWait)) break; await p.waitForTimeout(250); }
+  const sp = await p.evaluate(() => { const rx = __grbl.rx, k = rx.lastIndexOf(rx.filter(l => /^M3\b/.test(l)).pop()); return { job: !!window.__atelier.job, after: rx.length - 1 - k, tag: $('#spState').textContent, total: window.__atelier.G.lines.length }; });
+  console.log('broche :', sp0, sp, spMsg.split('\n')[0]);
+  if (!sp0.seen || sp.job || !spMsg.includes('broche arrêtée') || sp.after > sp.total / 2 || sp.tag !== 'broche arrêtée') { console.error('ÉCHEC garde-fou broche'); process.exitCode = 1; }
+  await p.evaluate(() => { __grbl.spFail = false; });
   // câble débranché pendant une gravure : fin de la gravure et alerte « broche peut-être encore allumée »
   await p.evaluate(() => { __grbl.s = 'Idle'; }); await p.waitForTimeout(400); // le test précédent l'a laissée en alarme
   await p.click('#bZeroXY'); await p.click('#bZeroZ'); await p.waitForTimeout(600);

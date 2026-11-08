@@ -27,6 +27,7 @@ function pump() {
 }
 function onAck(err) {
   const it = machine.inflight.shift(); if (it) machine.used -= it.len;
+  if (it && !err) spindleAck(it.q.line);
   if (err) {
     const code = +err; log(`error:${err} — ${ERRORS[code] || 'erreur GRBL'}${it ? ' (' + it.q.line + ')' : ''}`, 'err');
     if (job && it && it.q.meta === 'job') { abortJob('Erreur GRBL ' + err + ' sur la ligne « ' + it.q.line + ' »'); return; }
@@ -50,6 +51,7 @@ function parseStatus(s) {
     const [k, v] = p.split(':'); const a = (v || '').split(',').map(Number);
     if (k === 'MPos') machine.mpos = a; else if (k === 'WPos') machine.wpos = a; else if (k === 'WCO') machine.wco = a; else if (k === 'Ov') machine.ov = a;
   }
+  spindleReport(parts);
   if (parts.some(p => p.startsWith('MPos'))) machine.wpos = machine.mpos.map((v, k) => v - (machine.wco[k] || 0));
   else if (machine.wpos) machine.mpos = machine.wpos.map((v, k) => v + (machine.wco[k] || 0));
   const st = $('#state'); st.textContent = { Idle: 'Prête', Run: 'En cours', Hold: 'Pause', Jog: 'Jog', Alarm: 'Alarme', Door: 'Porte', Check: 'Test', Home: 'Homing', Sleep: 'Veille' }[machine.state] || machine.state; st.className = 'tag ' + machine.state;
@@ -74,7 +76,7 @@ function handleLine(l) {
   // démarrage de la carte : sans homing, les zéros de travail ne valent plus (machine.zeroed)
   if (/^Grbl/i.test(l)) {
     const own = machine.softReset && Date.now() - machine.softReset < 3000; machine.softReset = 0; // bannière de notre reset d'arrêt
-    machine.queue = []; machine.inflight = []; machine.used = 0; if (!own) machine.zeroed = {}; if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); readGrblSettings(); return; }
+    machine.queue = []; machine.inflight = []; machine.used = 0; if (!own) machine.zeroed = {}; spindleReset(); if (job) abortJob('La carte a redémarré pendant la gravure.'); log(l, 'msg'); readGrblSettings(); return; }
   if (/^\$\d+=/.test(l)) { const [k, v] = l.slice(1).split('='); machine.grbl[+k] = parseFloat(v); if (!machine.quietSettings) log(l); return; }
   if (l.startsWith('[PRB:')) { log(l, 'msg'); return; }
   log(l, l.startsWith('[MSG') ? 'msg' : '');
@@ -165,7 +167,7 @@ async function disconnect(lost) {
   try { machine.writer?.releaseLock(); } catch (e) {}
   try { await port?.close(); } catch (e) {}
   Object.assign(machine, { settingsAsked: false, grbl: {}, writer: null, reader: null, state: null, sub: null, stopWait: null, wpos: null, queue: [], inflight: [], used: 0 });
-  $('#state').textContent = 'déconnectée'; $('#state').className = 'tag off';
+  $('#state').textContent = 'déconnectée'; $('#state').className = 'tag off'; spindleReset();
   ['#wx', '#wy', '#wz'].forEach(id => $(id).textContent = '—');
   $('#bConnect').textContent = 'Connecter (USB)'; $('#bConnect').classList.add('pri');
   updateButtons(); draw();
