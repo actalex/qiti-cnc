@@ -92,6 +92,20 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="140mm" height="80mm"
   assert.deepStrictEqual(Object.keys(await ops()), Object.keys(o2), 'formes hors page toujours ignorées');
   assert.strictEqual(await p.evaluate(() => { const M = heightMap(window.__atelier.PLAN); return +M.H[Math.floor(27 / M.res) * M.nx + Math.floor(25 / M.res)].toFixed(2); }), 0, 'îlot après rechargement');
 
+  // Trou traversant noir posé sur une assise grise (vis à tête) : l'assise reste un disque plein, pas un anneau trop
+  // étroit ; une poche grise moins profonde posée dessus, elle, reste un palier
+  const vis = await p.evaluate(() => {
+    const A = window.__atelier;
+    A.loadDesign(`<svg xmlns="http://www.w3.org/2000/svg" width="60mm" height="30mm" viewBox="0 0 60 30">
+      <circle id="assise" cx="15" cy="15" r="3" fill="#4d4d4d"/><circle id="trou" cx="15" cy="15" r="1.5" fill="#000"/>
+      <circle id="large" cx="45" cy="15" r="9" fill="#4d4d4d"/><circle id="palier" cx="45" cy="15" r="3" fill="#ccc"/></svg>`, 'vis.svg', { pageOnly: true });
+    applyColors(); A.recompute();
+    const M = heightMap(A.PLAN), h = (x, y) => +M.H[Math.floor(y / M.res) * M.nx + Math.floor(x / M.res)].toFixed(2), d = n => A.D.shapes.find(s => s.name === n).depth;
+    return { skipped: A.D.shapes.filter(s => A.CAM.skipped.has(s.id)).map(s => s.name), assise: h(15, 15) === -d('assise') || h(15, 15), palier: h(45, 15) === -d('palier') || h(45, 15), large: h(39.5, 15) === -d('large') || h(39.5, 15) };
+  });
+  console.log('trou sur assise :', vis);
+  assert.deepStrictEqual(vis, { skipped: ['trou'], assise: true, palier: true, large: true }, 'assise creusée au centre (trou de 3 mm trop petit pour la fraise de 3,175 : ignoré)');
+
   // Fusion (dessin modulaire) : A et B bout à bout (même profondeur) = une seule poche, sans mur au raccord ;
   // C coupé en deux par un pont blanc posé dessus = deux morceaux, chacun usiné une fois ; D plus profond : à part
   const fu = await p.evaluate(() => {

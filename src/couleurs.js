@@ -77,9 +77,11 @@ function applyColors() {
 const hasPaint = sh => sh.paint && (sh.paint.fill != null || sh.paint.stroke != null);
 // Recouvrement (couleurs appliquées) : comme à l'écran, une forme remplie posée par-dessus (plus loin dans le fichier),
 // même blanche, retire sa surface des poches et remplissages en V situés dessous.
+// Sauf une poche à fond plat au moins aussi profonde (trou dans une assise de vis) : sa surface sera creusée de toute
+// façon, la poche du dessous la garde (sinon elle deviendrait un anneau trop étroit pour la fraise).
 function occluders(sh, tf) {
   if (!D.stack || (sh.op !== 'pocket' && sh.op !== 'vcarve')) return [];
   const k = D.shapes.indexOf(sh), out = [];
-  for (const o of D.shapes.slice(k + 1)) if (o.closed && o.paint && o.paint.fill != null) for (const s of o.subpaths) if (s.closed) out.push(toC(s.pts.map(tf)));
+  for (const o of D.shapes.slice(k + 1)) if (o.closed && o.paint && o.paint.fill != null && !(o.op === 'pocket' && depthOf(o) >= depthOf(sh) - 1e-6)) for (const s of o.subpaths) if (s.closed) out.push(toC(s.pts.map(tf)));
   return out;
 }
