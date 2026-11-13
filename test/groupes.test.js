@@ -43,6 +43,17 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.
   assert.ok((await rows())[1].endsWith('3 formes · réglages mixtes'));
   assert.ok(await p.evaluate(() => $('#shapeList > div:nth-child(2)').classList.contains('part')), 'groupe partiellement sélectionné');
 
+  // sur le plan, comme Inkscape : clic sur une forme de g12 = tout g12, Ctrl + clic = la forme seule (g12 se déplie), Maj = ajout
+  await p.evaluate(() => { D.open.clear(); sel.clear(); refreshShapes(); });
+  const scr = id => p.evaluate(id => { const s = D.shapes[id], tf = toStockFn(), q = s.subpaths[0].pts.map(tf), c = [(q[0][0] + q[2][0]) / 2, (q[0][1] + q[2][1]) / 2], [a, b] = W2S(...c), r = $('#cv').getBoundingClientRect(); return [r.x + a, r.y + b]; }, id);
+  const ids = () => p.evaluate(() => [...sel].sort((a, b) => a - b));
+  await p.mouse.click(...await scr(4)); assert.deepStrictEqual(await ids(), [2, 3, 4], 'clic = groupe entier (g13 compris dans g12)');
+  await p.keyboard.down('Shift'); await p.mouse.click(...await scr(0)); await p.keyboard.up('Shift');
+  assert.deepStrictEqual(await ids(), [0, 1, 2, 3, 4], 'Maj + clic ajoute Nord');
+  await p.keyboard.down('Control'); await p.mouse.click(...await scr(3)); await p.keyboard.up('Control');
+  assert.deepStrictEqual(await ids(), [3], 'Ctrl + clic = forme seule');
+  assert.ok((await rows()).some(r => r.startsWith('r2 |')), 'groupe de la forme déplié dans la liste');
+
   // rechargement : les groupes viennent du SVG enregistré, les réglages des formes suivent
   await p.waitForTimeout(700); await p.reload(); await p.waitForTimeout(500);
   const r2 = await rows();

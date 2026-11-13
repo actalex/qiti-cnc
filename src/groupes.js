@@ -68,3 +68,12 @@ function paintShapeList() {
     sm.textContent = (skipped ? '⚠ ignorée' + (n.kids ? '(s)' : '') + ' · ' : '') + (n.kids ? ms.length + (ms.length > 1 ? ' formes · ' : ' forme · ') : '') + (same ? [...labels][0] : 'réglages mixtes');
   }
 }
+// Sélection sur le plan, comme Inkscape : un clic prend le groupe le plus haut de la liste, Ctrl + clic la forme seule
+// (ses groupes se déplient dans la liste), Maj + clic ajoute ou retire
+function pickUnit(sh, single) {
+  if (!D._tree || D._tree.uid !== D.uid) D._tree = { uid: D.uid, top: groupTree(D.shapes) };
+  const path = [], find = (n, acc) => { if (n === sh) { path.push(...acc); return true; } return !!n.kids && n.kids.some(c => find(c, [...acc, n])); };
+  const top = D._tree.top.find(n => find(n, []));
+  if (single) { if (!D.open) D.open = new Set(); path.forEach(n => D.open.add(n.k)); return [sh]; }
+  return top ? members(top) : [sh];
+}

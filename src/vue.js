@@ -102,9 +102,9 @@ const canEditShapes = () => D && !SURF && !R3D.on && tabEdit === null && !job &&
 cv.addEventListener('mousedown', e => {
   const hit = e.button === 0 && canEditShapes() ? hitShape(e.offsetX, e.offsetY) : null;
   if (hit) {
-    const wasSel = sel.has(hit.id), mod = e.shiftKey || e.ctrlKey || e.metaKey;
-    if (!wasSel) { if (!mod) sel.clear(); sel.add(hit.id); refreshShapes(); draw(); }
-    drag = { mode: 'move', x: e.offsetX, y: e.offsetY, last: S2W(e.offsetX, e.offsetY), moved: false, hit, wasSel, mod }; return;
+    const unit = pickUnit(hit, e.ctrlKey || e.metaKey), wasSel = unit.every(s => sel.has(s.id)), mod = e.shiftKey; // groupes.js
+    if (!wasSel) { if (!mod) sel.clear(); unit.forEach(s => sel.add(s.id)); refreshShapes(); draw(); }
+    drag = { mode: 'move', x: e.offsetX, y: e.offsetY, last: S2W(e.offsetX, e.offsetY), moved: false, unit, wasSel, mod }; return;
   }
   drag = { x: e.offsetX, y: e.offsetY, ox: view.ox, oy: view.oy, moved: false };
 });
@@ -118,10 +118,10 @@ window.addEventListener('mouseup', e => {
   if (!drag) return; const d = drag; drag = null; cv.style.cursor = tabEdit !== null ? 'copy' : 'crosshair';
   if (d.mode === 'move') {
     if (d.moved) invalidate();
-    else { if (d.mod && d.wasSel) sel.delete(d.hit.id); else if (!d.mod) { sel.clear(); sel.add(d.hit.id); } refreshShapes(); draw(); }
+    else { if (d.mod && d.wasSel) d.unit.forEach(s => sel.delete(s.id)); else if (!d.mod) { sel.clear(); d.unit.forEach(s => sel.add(s.id)); } refreshShapes(); draw(); }
     return;
   }
-  if (!d.moved && e.target === cv) { if (tabEdit !== null) tabClick(e.offsetX, e.offsetY); else pick(e.offsetX, e.offsetY, e.shiftKey || e.ctrlKey || e.metaKey); }
+  if (!d.moved && e.target === cv) { if (tabEdit !== null) tabClick(e.offsetX, e.offsetY); else pick(e.offsetX, e.offsetY, e.shiftKey, e.ctrlKey || e.metaKey); }
 });
 cv.addEventListener('wheel', e => {
   e.preventDefault(); const k = Math.exp(-e.deltaY * 0.0015), [wx, wy] = S2W(e.offsetX, e.offsetY);
@@ -129,11 +129,11 @@ cv.addEventListener('wheel', e => {
 }, { passive: false });
 function pointInPoly(x, y, pts) { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
 function segDist(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy; let t = l ? ((px - a[0]) * dx + (py - a[1]) * dy) / l : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy); }
-function pick(sx, sy, add) {
+function pick(sx, sy, add, single) {
   if (!D) return;
-  const hit = hitShape(sx, sy);
+  const hit = hitShape(sx, sy), unit = hit ? pickUnit(hit, single) : [];
   if (!add) sel.clear();
-  if (hit) { if (add && sel.has(hit.id)) sel.delete(hit.id); else sel.add(hit.id); }
+  const all = unit.every(s => sel.has(s.id)); unit.forEach(s => add && all ? sel.delete(s.id) : sel.add(s.id));
   refreshShapes(); draw();
 }
 function hitShape(sx, sy) {
