@@ -64,6 +64,10 @@ header button:hover:not(:disabled){background:#4a463f;border-color:#5a564e}
 .shapes div{padding:3px 7px;cursor:pointer;display:flex;justify-content:space-between;gap:6px;border-bottom:1px solid #f0ede7}
 .shapes div:last-child{border-bottom:0}
 .shapes div.sel{background:#e8f0fe}
+.shapes div.part{background:#f3f7fe}
+.shapes div.grp{font-weight:600}
+.shapes div.grp small{font-weight:400}
+.shapes .tog{display:inline-block;width:12px;color:var(--mut);cursor:pointer}
 .shapes small{color:var(--mut);white-space:nowrap}
 .tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;background:#ddd}
 .tag.Idle{background:#d4f0dd;color:#1d6b3c}.tag.Run,.tag.Jog,.tag.Home{background:#dbe8ff;color:#1f4fb0}
@@ -467,6 +471,7 @@ function toStockFn() {
 /*INCLUDE:vue.js*/
 /*INCLUDE:relief.js*/
 /*INCLUDE:pointz.js*/
+/*INCLUDE:groupes.js*/
 /*INCLUDE:panneaux.js*/
 /*INCLUDE:accordeon.js*/
 /*INCLUDE:attaches.js*/

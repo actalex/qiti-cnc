@@ -46,10 +46,11 @@ Le filtre Inkscape « Inverser » est reconnu, et l'épaisseur du trait est igno
 - Passer Inkscape en boîte englobante **géométrique**.
 - Convertir les textes en chemins.
 - Utiliser *Chemin › Contour en chemin* pour une rainure plus large que la fraise.
+- Grouper et nommer dans Inkscape (*Objet › Calques et objets*) : l'atelier montre les groupes avec leurs noms, et un clic sur un groupe sélectionne toutes ses formes pour les régler ensemble.
 
 ## Fonctions
 
-- **Import SVG** : chemins, rectangles (même arrondis), cercles, ellipses, lignes, polylignes et polygones, transformations imbriquées, unités, page Inkscape utilisée comme brut.
+- **Import SVG** : chemins, rectangles (même arrondis), cercles, ellipses, lignes, polylignes et polygones, transformations imbriquées, unités, page Inkscape utilisée comme brut, groupes et calques gardés dans la liste des formes.
 - **Usinages** :
   - contours avec compensation du rayon de la fraise, poches avec îlots, gravure sur la ligne ;
   - remplissage en V, avec dégagement du fond à la fraise plate ;

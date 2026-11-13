@@ -109,6 +109,7 @@ function elementSubpaths(el, tol) {
   }
   return [];
 }
+const svgName = el => el.getAttribute('inkscape:label') || el.id || '';
 function importSVG(text, name) {
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
   const root = doc.documentElement;
@@ -127,7 +128,7 @@ function importSVG(text, name) {
     const els = [...svg.querySelectorAll('path,rect,circle,ellipse,line,polyline,polygon')].filter(el => !el.closest(skip));
     if (svg.querySelectorAll('text').length) warns.push('Les textes sont ignorés : dans Inkscape, convertis-les en chemins (Chemin › Objet en chemin).');
     if (svg.querySelectorAll('use').length) warns.push('Les clones (<use>) sont ignorés : dans Inkscape, utilise Édition › Cloner › Délier le clone.');
-    const shapes = [];
+    const shapes = [], gIdx = new Map([...svg.querySelectorAll('g')].map((g, k) => [g, k]));
     els.forEach((el, idx) => {
       for (let p = el; p && p !== svg; p = p.parentElement) if (getComputedStyle(p).display === 'none') return;
       let M = [1, 0, 0, 1, 0, 0];
@@ -148,7 +149,9 @@ function importSVG(text, name) {
       }
       if (!out.length) return;
       const closed = out.every(s => s.closed);
-      shapes.push({ id: shapes.length, name: el.getAttribute('inkscape:label') || el.id || (el.tagName.toLowerCase() + ' ' + (idx + 1)), subpaths: out, closed, op: closed ? 'outside' : 'on', depth: 1, paint: paintOf(el, svg) });
+      const grp = []; // groupes et calques Inkscape ancêtres, du plus haut au plus proche (liste des formes : groupes.js)
+      for (let p = el.parentElement; p && p !== svg; p = p.parentElement) if (gIdx.has(p)) grp.unshift({ k: gIdx.get(p), name: svgName(p) || 'groupe', named: !!p.getAttribute('inkscape:label') });
+      shapes.push({ id: shapes.length, name: svgName(el) || (el.tagName.toLowerCase() + ' ' + (idx + 1)), named: !!el.getAttribute('inkscape:label'), grp, subpaths: out, closed, op: closed ? 'outside' : 'on', depth: 1, paint: paintOf(el, svg) });
     });
     if (!shapes.length) throw new Error('Aucune forme exploitable dans ce SVG.' + (warns.length ? ' ' + warns.join(' ') : ''));
     // page Inkscape en mm (coordonnées du dessin : origine en haut à gauche), si le SVG la définit

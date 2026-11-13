@@ -30,23 +30,7 @@ function refreshShapeTools() {
 function refreshShapes() {
   const box = $('#shapeList');
   if (!D) return;
-  const label = { outside: 'ext.', inside: 'int.', on: 'ligne', pocket: 'poche', vcarve: 'V', none: '—' };
-  // mise à jour en place (reconstruire la liste ferait perdre le clic en cours)
-  if (box.dataset.design !== String(D.uid)) {
-    box.innerHTML = ''; box.dataset.design = String(D.uid);
-    for (const sh of D.shapes) {
-      const d = document.createElement('div'); d.innerHTML = '<span></span><small></small>'; d.firstChild.textContent = sh.name;
-      d.onclick = e => { const mod = e.shiftKey || e.ctrlKey || e.metaKey; if (!mod) sel.clear(); if (mod && sel.has(sh.id)) sel.delete(sh.id); else sel.add(sh.id); refreshShapes(); draw(); };
-      box.appendChild(d);
-    }
-  }
-  D.shapes.forEach((sh, k) => {
-    const d = box.children[k]; d.className = sel.has(sh.id) ? 'sel' : '';
-    const skipped = CAM && CAM.skipped && CAM.skipped.has(sh.id);
-    const sm = d.lastChild; sm.style.color = skipped ? '#c0392b' : OPCOL[sh.op];
-    const own = toolById(sh.tool);
-    sm.textContent = (skipped ? '⚠ ignorée · ' : '') + label[sh.op] + (sh.op !== 'none' ? ' · ' + (sh.through ? 'traversant' : sh.depth + ' mm') + (sh.finish && sh.op !== 'on' && sh.op !== 'vcarve' ? ' · finition' : '') + (own ? ' · ' + own.name : '') : '');
-  });
+  buildShapeList(box); paintShapeList(); // arbre des groupes Inkscape : src/groupes.js
   const ed = $('#selEdit');
   if (!sel.size) { ed.classList.add('hide'); refreshTabRow([]); return; }
   ed.classList.remove('hide');
